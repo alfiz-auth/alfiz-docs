@@ -1,0 +1,86 @@
+---
+title: "Alfiz — Authorization Framed in Your Code"
+sidebarTitle: "Introduction"
+description: "Alfiz is a TypeScript authorization library: declare permissions in code, check them in-process, and grow from one app to a federated org without changing the model."
+---
+
+Alfiz is an authorization layer for TypeScript applications. It is not in the business of authentication — identity stays with your identity provider, and resource data stays in your database. Alfiz owns everything in between: **who may do what, where, and why**. You declare your permission catalog once in code, and every runtime check runs in-process against your own database. Nothing Alfiz operates ever sits on your request path.
+
+## The three layers
+
+Alfiz is organized into three layers. The first two are open-source packages you install today; the third is a hosted service you add only when you need it.
+
+| Layer | Package | What it does |
+|---|---|---|
+| **Client** | `@alfiz-auth/core` | The evaluator: grammar, catalog, closures, check shapes, caches, graph integrity, and request evaluation. Every capability is a pure function over provider-supplied data — no storage, no I/O. |
+| **Application** | `@alfiz-auth/application` | The local provider: the same contract implemented against *your* database through a storage seam. Standalone, it is the org root — the complete system for one organization, with no external dependency. |
+| **Service** | Alfiz Cloud | A managed provider speaking the same contract: hosted administration via the Diwan dashboard, and federation (catalog registry, cross-application composition, the centralized org root). Nothing in the OSS packages depends on it. |
+
+<Note>
+Runtime checks never leave your application in any topology. Every `can()` runs in-process against your catalog, your rows, and your resolver — so nothing Alfiz operates can break your app.
+</Note>
+
+## Four commitments
+
+These are the semantic opinions that make up the product. They are stated as decisions, and none of them is configurable.
+
+<CardGroup cols={2}>
+  <Card title="The frame is drawn in code" icon="code">
+    The catalog declares every permission and every scope type. Nothing is inferred from call sites and nothing is dashboard-configured. Your CI can prove every surface is gated.
+  </Card>
+  <Card title="Checks happen at the doorway" icon="shield-check">
+    Every `can()` runs in-process against your own database. Nothing Alfiz operates is on your request path, so nothing it does can slow or break your application.
+  </Card>
+  <Card title="Openings nest" icon="layer-group">
+    A grant at any enclosing scope covers everything within it, resolved by walking outward from where you stand. Grants are stored once, never fanned out to descendants.
+  </Card>
+  <Card title="Growth adds bays" icon="building">
+    One app or twenty — standalone, linked, or federated — it is the same grant tuple, the same check, the same frame. Nothing is rebuilt when you scale.
+  </Card>
+</CardGroup>
+
+## What's included in the open-source packages
+
+The Client (`@alfiz-auth/core`) and Application (`@alfiz-auth/application`) packages are MIT-licensed and free forever. Together they give you:
+
+- **Permission grammar, catalog, and typed keys** — catalog-derived template-literal types mean every call site is verified at compile time
+- **`can` / `canAny` / `can.fresh`** — in-process checks; `canAny` is a visibility affordance only, never a gate; `can.fresh` bypasses all caches for destructive actions
+- **Four enforcement points** — page, navigation visibility, server action, and conditional UI; the verifier catches surfaces that skip any of the four
+- **Static verification and catalog lints** — `alfiz-verify` warns on ungated leaves and fails the build on exported actions with no gate
+- **Scoped grants, revokes, expiry, and provenance** — every grant is one row: `(subject, pattern, scope, expiry?)` with a full provenance record
+- **Groups, nested groups, roles, and reporting hierarchy** — union-only inheritance throughout; the single negative layer is the personal revoke
+- **Access requests and management-layer approvals** — requestable permissions flow through a built-in approval workflow
+- **Headless admin kit + unstyled reference assembly** — build your own admin UI from the same primitives the hosted dashboard uses
+- **Clerk adapter; provider-agnostic interface** — drop in Clerk or wire any identity provider through the open contract
+
+<Tip>
+The `@alfiz-auth/prisma` package adds a Prisma storage driver and schema fragment so the Application layer slots straight into your existing Prisma setup.
+</Tip>
+
+## Alfiz Cloud
+
+When a non-engineer needs to administer access, or when your second application arrives, Alfiz Cloud extends the open-source foundation without replacing it.
+
+<CardGroup cols={2}>
+  <Card title="Hosted Administration" icon="gauge">
+    Add admin seats and your team gets the **Diwan dashboard** — a hosted, styled, maintained UI for managing grants, approvals, and audit history. Your Application stays the org root and the only writer; Diwan operates by relay. Fully replaceable by assembling the same surface from the headless kit.
+  </Card>
+  <Card title="Federation" icon="diagram-project">
+    When you need cross-application authorization, federation adds a central **catalog registry** (namespace ownership, versioning, tombstones), cross-namespace role composition, cross-application request aggregation, and service-principal credential management.
+  </Card>
+</CardGroup>
+
+<Note>
+Runtime checks are never metered — in any topology. Per-check pricing is impossible by construction because checks never touch Alfiz infrastructure. The hosted tier meters only the work Alfiz performs: admin seats, federated applications, provisioned connectors, and retained audit volume.
+</Note>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Install `@alfiz-auth/core` and `@alfiz-auth/application`, define your first catalog, and run your first `can()` check in minutes.
+  </Card>
+  <Card title="Core Concepts" icon="book-open" href="/core-concepts">
+    Understand the catalog, scope types, grant model, inheritance rules, and the four enforcement points in depth.
+  </Card>
+</CardGroup>

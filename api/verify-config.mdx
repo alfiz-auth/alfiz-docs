@@ -1,0 +1,113 @@
+---
+title: "alfiz-verify.config.json Configuration Reference"
+sidebarTitle: "Verify Config"
+description: "Configure alfiz-verify with a JSON file to specify your catalog path, source directories, custom gate function names, and client-reach guards."
+---
+
+`alfiz-verify` reads its configuration from `alfiz-verify.config.json` in the current working directory, or from the path passed via `--config <path>`. The file is plain JSON — no JavaScript, no comments.
+
+## Config fields
+
+<ParamField body="catalog" type="string" required>
+  Path to the emitted catalog JSON file — the output of `catalog.toDocument()`. Resolved relative to the current working directory.
+
+  ```json
+  { "catalog": "alfiz-catalog.json" }
+  ```
+</ParamField>
+
+<ParamField body="include" type="string[]" default='["src"]' optional>
+  Directories (or individual files) to scan. Resolved relative to the current working directory. `alfiz-verify` walks each directory recursively and scans every `.ts`, `.tsx`, `.mts`, and `.cts` file it finds (`.d.ts` files are skipped).
+
+  ```json
+  { "include": ["src", "app", "pages"] }
+  ```
+</ParamField>
+
+<ParamField body="exclude" type="string[]" optional>
+  Path substrings to skip. A file is excluded when its path contains any of these strings. The built-in excludes `["node_modules", "dist", ".next", ".git"]` are always applied; this field adds to them.
+
+  ```json
+  { "exclude": ["__generated__", "vendor"] }
+  ```
+</ParamField>
+
+<ParamField body="gateNames" type="string[]" optional>
+  Additional function names to treat as concrete-permission gates, **added to** the built-in defaults (`can`, `fresh`, `require`, `requirePermission`, `gateAction`, `apiRequirePermission`). Gate calls are checked for typed key validity, mark the enclosing function as gated, and count toward coverage.
+
+  ```json
+  { "gateNames": ["assertTeaches", "requireCoursePermission"] }
+  ```
+
+  <Note>
+    This field is **additive** — it extends the defaults. You do not need to restate `can` or `require`. If you want full replacement of the defaults (dropping the built-ins), use the programmatic `verifyProject` API directly.
+  </Note>
+</ParamField>
+
+<ParamField body="visibilityNames" type="string[]" optional>
+  Additional function names to treat as visibility affordances, **added to** the built-in defaults (`canAny`, `requireAny`). Visibility affordances count toward key coverage but produce an error when used as a gate in a server file.
+
+  ```json
+  { "visibilityNames": ["showIfAny", "hiddenUnless"] }
+  ```
+
+  <Note>
+    Like `gateNames`, this is additive. The built-in visibility names are always included.
+  </Note>
+</ParamField>
+
+<ParamField body="serverFilePatterns" type="string[]" optional>
+  Additional RegExp source strings matched against file paths to identify server enforcement points, **added to** the built-in patterns (`app/**/route.(t|j)sx?`, `pages/api/`). Files matching these patterns are treated as server files even without a `"use server"` directive — exported async functions in them must contain a gate.
+
+  ```json
+  { "serverFilePatterns": ["app/actions/", "server/handlers/"] }
+  ```
+
+  Each string is compiled into a `RegExp`. If any entry is not a valid regular expression, `alfiz-verify` exits with code `2`.
+
+  <Note>
+    This is additive. The built-in patterns (`app/**/route.(t|j)sx?` and `pages/api/`) are always applied.
+  </Note>
+</ParamField>
+
+<ParamField body="forbidClientIdentifiers" type="string[]" optional>
+  Identifiers that must not appear in any `"use client"` module. Use this to ensure service-key material (environment variable names, key shim imports) can never reach the browser. When a listed identifier is found in a client-reachable file, `alfiz-verify` reports an error with the `client-reachable-secret` rule.
+
+  ```json
+  { "forbidClientIdentifiers": ["ALFIZ_SERVICE_KEYS", "serviceKeyShim"] }
+  ```
+
+  This is the build-time half of the service-principal security posture: `createServiceKeyShim` validates keys server-side; this guard ensures the key material can never be bundled into client JavaScript.
+</ParamField>
+
+## Complete example
+
+```json
+{
+  "catalog": "alfiz-catalog.json",
+  "include": ["src", "app"],
+  "exclude": ["__generated__", "e2e"],
+  "gateNames": ["assertTeaches", "requireCoursePermission"],
+  "visibilityNames": ["showIfCanAny"],
+  "serverFilePatterns": ["app/actions/", "server/handlers/"],
+  "forbidClientIdentifiers": ["ALFIZ_SERVICE_KEYS", "createServiceKeyShim"]
+}
+```
+
+## Additive vs. replacement
+
+The three name lists (`gateNames`, `visibilityNames`, `serverFilePatterns`) are always **additive** through the CLI. This is intentional: the CLI is the batteries-included path, and forgetting to restate `can` in `gateNames` should not silently un-gate your whole codebase.
+
+If you need full replacement of the built-in defaults — for example, a codebase that uses entirely custom gate wrappers and wants to treat the built-in names as errors — use the programmatic `verifyProject` API from `@alfiz-auth/verify` directly:
+
+```ts
+import { verifyProject } from "@alfiz-auth/verify";
+
+const report = verifyProject({
+  catalog,
+  files,
+  // Replacement, not addition: only your wrappers count as gates.
+  gateNames: ["assertTeaches", "requireCoursePermission"],
+  visibilityNames: ["showIfCanAny"],
+});
+```

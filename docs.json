@@ -1,72 +1,135 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mintlify Starter Kit",
+  "name": "Alfiz",
+  "theme": "luma",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
-  },
-  "favicon": "/favicon.svg",
-  "navigation": {
-    "pages": [
-      {
-        "group": "Getting Started",
-        "pages": [
-          "index",
-          "quickstart"
-        ]
-      }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
+    "primary": "#b43d2d",
+    "light": "#d4948c"
   },
   "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
+    "light": "https://media.brand.dev/2713d5d8-c76a-4cb3-b7d9-1375c17729f9.svg",
+    "dark": "https://media.brand.dev/2713d5d8-c76a-4cb3-b7d9-1375c17729f9.svg"
   },
+  "favicon": "https://media.brand.dev/e26a4d90-6e8a-4255-8a95-31dfb8bd1db5.svg",
   "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
     "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://app.mintlify.com"
+      "type": "github",
+      "href": "https://github.com/alfiz-auth/alfiz-ts"
     }
   },
-  "contextual": {
-    "options": [
-      "copy",
-      "view",
-      "chatgpt",
-      "claude",
-      "perplexity",
-      "mcp",
-      "cursor",
-      "vscode"
+  "fonts": {
+    "heading": {
+      "family": "Jost"
+    },
+    "body": {
+      "family": "Hanken Grotesk"
+    }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "core-concepts"
+            ]
+          },
+          {
+            "group": "The Catalog",
+            "pages": [
+              "catalog/overview",
+              "catalog/permissions",
+              "catalog/scope-types",
+              "catalog/navigation-wiring"
+            ]
+          },
+          {
+            "group": "Checks & Enforcement",
+            "pages": [
+              "enforcement/check-shapes",
+              "enforcement/four-points",
+              "enforcement/static-verification"
+            ]
+          },
+          {
+            "group": "Subjects & Access",
+            "pages": [
+              "access/grants-revokes",
+              "access/subjects-closures",
+              "access/scopes-hierarchy",
+              "access/roles-groups"
+            ]
+          },
+          {
+            "group": "Requests & Approvals",
+            "pages": [
+              "requests/overview",
+              "requests/approval-policies"
+            ]
+          },
+          {
+            "group": "Growth Path",
+            "pages": [
+              "growth/standalone",
+              "growth/linked",
+              "growth/federated"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Client API",
+            "pages": [
+              "api/create-alfiz-client",
+              "api/can",
+              "api/can-any",
+              "api/snapshot",
+              "api/explain",
+              "api/granted-scopes"
+            ]
+          },
+          {
+            "group": "Application",
+            "pages": [
+              "api/create-application",
+              "api/storage-drivers",
+              "api/session"
+            ]
+          },
+          {
+            "group": "Catalog Definition",
+            "pages": [
+              "api/define-catalog",
+              "api/catalog-types"
+            ]
+          },
+          {
+            "group": "Static Verification",
+            "pages": [
+              "api/alfiz-verify-cli",
+              "api/verify-config"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Changelog",
+        "groups": [
+          {
+            "group": "Releases",
+            "pages": [
+              "changelog"
+            ]
+          }
+        ]
+      }
     ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
   }
 }

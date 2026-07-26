@@ -1,0 +1,218 @@
+---
+title: "Scopes and Resource Hierarchies in Alfiz Explained"
+sidebarTitle: "Scopes"
+description: "Scopes let you grant permissions at any level of your resource hierarchy — folder, document, or global — and Alfiz walks ancestor chains at check time."
+---
+
+Every grant row carries a scope — the resource or level at which that grant applies. Alfiz lets you grant access at any point in your resource hierarchy, from a single document all the way up to the global scope. At check time, Alfiz walks the ancestor chain of the target resource and considers a grant valid if it was made at the target itself *or at any ancestor*, including the global scope `*`. This means you grant once and the access flows down automatically, without touching every descendant.
+
+## The global scope
+
+The global scope is the string constant `"*"`. A grant with no `scope` field — or one explicitly set to `"*"` — applies everywhere:
+
+```ts
+import { GLOBAL_SCOPE } from "@alfiz-auth/core";
+// GLOBAL_SCOPE === "*"
+```
+
+Because `*` is present in every object closure, a global grant satisfies any scoped check. Granting `docs.files.read` at `*` means the subject can read every document in the system, regardless of which folder it lives in.
+
+## Scope instance ids
+
+A scope instance id takes the form `<scopeType>:<instanceId>` — for example, `docs.doc:123` or `docs.folder:9`. The scope type is a dot-separated key that matches a declaration in the catalog; the instance id is an opaque string from your database.
+
+```ts
+import { scopeId, parseScopeId } from "@alfiz-auth/core";
+
+scopeId("docs.doc", "123")     // "docs.doc:123"
+parseScopeId("docs.doc:123")   // { type: "docs.doc", instanceId: "123" }
+```
+
+<Note>
+The hierarchy path is **never encoded in the id**. Moving a document from one folder to another is a data update to its parent pointer in your database. Every grant on it follows automatically, because the check engine resolves the ancestry dynamically at check time.
+</Note>
+
+## The ancestry resolver
+
+Alfiz cannot know your resource hierarchy — it lives in your tables. You expose it to the check engine through an `AncestryResolver`:
+
+```ts
+type AncestryResolver = (scope: ScopeId) => ScopeId[] | Promise<ScopeId[]>;
+```
+
+The resolver must return the **ancestor chain** of the given scope, ordered nearest-first, ending at the global scope `*`. The chain excludes the scope itself. You supply this to the Application at construction time:
+
+```ts
+import { createApplication } from "@alfiz-auth/application";
+import { parentPointerResolver } from "@alfiz-auth/core";
+
+const app = createApplication({
+  catalog,
+  storage: driver,
+  ancestry: parentPointerResolver((scope) => myDb.parentOf(scope)),
+});
+```
+
+The `parentPointerResolver` helper wraps a synchronous parent-pointer lookup into a conforming resolver. It walks up the parent chain breadth-first, deduplicates, and guarantees that `*` appears last. It handles both single-parent and multi-parent hierarchies:
+
+```ts
+import { parentPointerResolver } from "@alfiz-auth/core";
+
+// Single-parent: return one parent id or null
+const resolver = parentPointerResolver((scope) => {
+  if (scope === "docs.doc:123") return "docs.folder:9";
+  if (scope === "docs.folder:9") return "docs.folder:2";
+  return null; // top-level, parents directly to *
+});
+
+// Multi-parent: return an array
+const multiResolver = parentPointerResolver((scope) => {
+  const parents = myDb.parentsOf(scope); // string[]
+  return parents.length > 0 ? parents : null;
+});
+```
+
+For `docs.doc:123` nested inside `docs.folder:9` nested inside `docs.folder:2`, the resolver returns `["docs.folder:9", "docs.folder:2"]` and Alfiz appends `*` to produce the full object closure.
+
+## Check-time ancestry walk
+
+When you call `alfiz.can(principal, key, scope)`, Alfiz computes the *object closure* of `scope` — the set a grant's own scope must intersect to be relevant:
+
+```ts
+async function objectClosureOf(
+  scope: ScopeId,
+  resolve: AncestryResolver,
+): Promise<ScopeId[]>
+```
+
+For a document at `docs.doc:123` in `docs.folder:9` in `docs.folder:2`, the object closure is:
+
+```
+["docs.doc:123", "docs.folder:9", "docs.folder:2", "*"]
+```
+
+A grant anywhere in that list covers the target. The cost is O(depth) — one resolver call per ancestor level.
+
+<Tip>
+Scope types with `parent: null` in the catalog are flat by declaration. Their object closure is always `[scope, "*"]` — Alfiz can check them synchronously without consulting the resolver at all. Use `parent: null` for scope types whose instances don't nest (individual projects, top-level resources).
+</Tip>
+
+## The listing problem
+
+Point checks (`can()`) answer "can Alice read this document?" — one check, one object closure walk. Listing pages answer a different question: "which documents can Alice read?" Naive per-row checking is an N+1 death: you cannot load every document and call `can()` on each one.
+
+The correct pattern is:
+
+1. Compute the set of scopes at which Alice holds the relevant grant, using `alfiz.grantedScopes(principal, key)`.
+2. Push that set into your database as a filter, using your resource table's ancestry index.
+
+```ts
+const { granted, revoked } = await alfiz.grantedScopes(
+  { userId: "alice" },
+  "docs.files.read",
+);
+```
+
+Then use `planListing` to turn the granted/revoked sets into an actionable plan:
+
+```ts
+import { planListing } from "@alfiz-auth/core";
+
+const plan = planListing({ granted, revoked });
+// { mode: "all" }
+// { mode: "none" }
+// { mode: "all_except", exclude: ScopeId[] }
+// { mode: "scoped", include: ScopeId[], exclude: ScopeId[] }
+```
+
+### Materialized path queries
+
+If your resource table stores ancestry in a materialized path column (e.g. `/docs.folder:2/docs.folder:9/docs.doc:123/`), use the `matPathCondition` helper to generate the SQL fragment:
+
+```ts
+import { matPathCondition } from "@alfiz-auth/core";
+
+const { sql, params } = matPathCondition(
+  [...plan.include],
+  { pathColumn: "d.ancestry_path" },
+);
+// sql:    "(d.ancestry_path LIKE ? ESCAPE '\\' OR d.ancestry_path LIKE ? ESCAPE '\\')"
+// params: ["%/docs.folder:9/%", "%/docs.folder:2/%"]
+```
+
+For Prisma users, `prismaMatPathWhere` produces a `where` object directly:
+
+```ts
+import { prismaMatPathWhere } from "@alfiz-auth/core";
+
+const where = prismaMatPathWhere([...plan.include], {
+  pathField: "ancestryPath",
+});
+// { OR: [{ ancestryPath: { contains: "/docs.folder:9/" } }, ...] }
+```
+
+### Closure table queries
+
+If your resource table uses a closure table (one row per ancestor–descendant pair), use `closureTableCondition`:
+
+```ts
+import { closureTableCondition } from "@alfiz-auth/core";
+
+const { sql, params } = closureTableCondition(
+  [...plan.include],
+  {
+    closureTable: "doc_closure",
+    ancestorColumn: "ancestor_id",
+    descendantColumn: "descendant_id",
+    rowIdExpr: "d.id",
+  },
+);
+// sql:    "EXISTS (SELECT 1 FROM doc_closure WHERE doc_closure.descendant_id = d.id AND doc_closure.ancestor_id IN (?, ?))"
+```
+
+<Warning>
+Never short-circuit and run an unfiltered query when `planListing` returns `{ mode: "none" }`. A global revoke or zero matching grants means the principal is provably allowed nothing. Treat `none` as an empty result and return immediately.
+</Warning>
+
+## Object closure caching
+
+Ancestor chains are cached with a default 60-second TTL. The cache busts immediately when you call `app.notifyScopeMoved(scope)` — call this from the same code path that changes a parent pointer in your database:
+
+```ts
+// In your "move document" handler:
+await myDb.setParent("docs.doc:123", "docs.folder:7");
+app.notifyScopeMoved("docs.doc:123"); // immediate invalidation
+```
+
+Without this call, the cache TTL (60 seconds by default) bounds how long a stale ancestor chain can persist. For sensitive operations — moving a confidential document into a restricted folder — the old chain surviving for up to a minute is unacceptable.
+
+### Using `can.fresh` after moves
+
+For any operation that follows a move, bypass the object closure cache entirely:
+
+```ts
+// Immediately after moving a document to a restricted folder:
+const allowed = await alfiz.can.fresh(
+  { userId: "alice" },
+  "docs.files.read",
+  "docs.doc:123",
+);
+```
+
+`can.fresh` re-resolves the full ancestry chain on every call, skipping all caches. Use it for destructive actions and security-critical post-move checks.
+
+## Scope deletion
+
+When you delete a resource, call `app.deleteScope(scope, provenance)` from the same code path. This removes every grant and personal revoke at that scope, and cancels any pending access requests targeting it:
+
+```ts
+await app.deleteScope(
+  "docs.doc:123",
+  { kind: "admin", actorUserId: "root" },
+);
+// returns { deletedGrants: number, deletedRevokes: number }
+```
+
+<Note>
+Grants at **descendant** scopes are separate rows — Alfiz does not enumerate your subtree. When you delete a folder and all its contents, call `deleteScope` once per deleted resource id.
+</Note>

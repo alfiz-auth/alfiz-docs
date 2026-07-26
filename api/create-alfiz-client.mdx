@@ -1,0 +1,193 @@
+---
+title: "createAlfizClient — Initialize the Alfiz Client"
+sidebarTitle: "createAlfizClient"
+description: "createAlfizClient(options) creates a typed AlfizClient bound to a catalog and provider. All check methods are typed against the catalog's permission keys."
+---
+
+`createAlfizClient` is the single entry point for the evaluator. It binds a catalog and a provider together into an `AlfizClient` whose `can`, `canAny`, and `require*` methods are typed against the exact key and pattern unions your catalog declares — every call site is verified at compile time, and every runtime-string path is verified before evaluation. You call this once at application startup and share the resulting client across requests.
+
+## Signature
+
+```typescript
+function createAlfizClient<Cat extends AnyCatalog>(
+  options: Omit<AlfizClientOptions, "catalog"> & { catalog: Cat },
+): AlfizClient<Cat["$key"], Cat["$pattern"]>
+```
+
+The return type `AlfizClient<Cat["$key"], Cat["$pattern"]>` is equivalent to the `ClientOf<Cat>` type alias, which exists precisely so you can annotate a stored client without hand-writing the type parameters.
+
+```typescript
+import { type ClientOf } from "@alfiz-auth/core";
+// ClientOf<typeof catalog> ≡ AlfizClient<KeyOf<typeof catalog>, PatternOf<typeof catalog>>
+```
+
+## Options
+
+<ParamField body="catalog" type="AnyCatalog" required>
+  The built catalog returned by `defineCatalog`. Every key and pattern passed
+  to `can`, `canAny`, or any `require*` method is verified against this catalog
+  before evaluation. Passing an undeclared key raises
+  `UnknownPermissionError` — a programming error, not a denial.
+</ParamField>
+
+<ParamField body="provider" type="AlfizProvider" required>
+  The provider implementation — either the local `AlfizApplication` or the
+  managed `AlfizService`. The client attaches to the provider's invalidation
+  stream on construction and detaches when you call `client.close()`.
+</ParamField>
+
+<ParamField body="subjectCacheTtlMs" type="number" default="30000">
+  How long (in milliseconds) a principal's subject closure is cached before
+  it is re-fetched from the provider. Subject closures are wide, high-churn
+  data that tolerate seconds-to-minutes propagation delay. This is the
+  documented staleness bound for revocation propagation; `can.fresh` is the
+  escape hatch when you need an immediate check.
+</ParamField>
+
+<ParamField body="objectCacheTtlMs" type="number" default="60000">
+  How long (in milliseconds) a scope's ancestor chain is cached. Object
+  chains are narrow and near-static; provider `scope` invalidation events
+  bust them immediately when a resource moves. This TTL bounds staleness only
+  when a move was never reported via `notifyScopeMoved`.
+</ParamField>
+
+<ParamField body="maxSubjectCacheEntries" type="number" default="10000">
+  The maximum number of principals kept in the subject cache. When this limit
+  is exceeded, the oldest entries are evicted (the cache is insertion-ordered).
+  Tune this to match your active-user count — eviction causes a re-fetch on
+  the next check for the evicted principal.
+</ParamField>
+
+<ParamField body="clock" type="() => number">
+  Optional. A function that returns the current time as epoch milliseconds.
+  Defaults to `Date.now`. Override this in tests to control grant expiry
+  without manipulating wall time.
+</ParamField>
+
+## Return value
+
+<ResponseField name="AlfizClient<K, P>" type="object">
+  A fully initialized client. The type parameters `K` and `P` are the
+  catalog's derived key union and pattern union respectively, inferred at the
+  `createAlfizClient` call site. Store this as `ClientOf<typeof catalog>` on
+  your application context.
+
+  <Expandable title="Members">
+    <ResponseField name="can" type="CanFn<K>">
+      The primary authorization gate. Returns `Promise<boolean>`. Also
+      exposes `can.fresh(...)` for cache-bypassing checks.
+    </ResponseField>
+    <ResponseField name="canAny" type="(principal, pattern: P) => Promise<boolean>">
+      The visibility affordance. Tests whether the principal holds any
+      permission matching a pattern. Never use as a gate.
+    </ResponseField>
+    <ResponseField name="requirePermission" type="(principal, key: K, scope?) => Promise<void>">
+      Throwing form of `can`. Throws `AccessDeniedError` on denial.
+    </ResponseField>
+    <ResponseField name="requireAny" type="(principal, pattern: P) => Promise<void>">
+      Throwing form of `canAny`. Throws `AccessDeniedError` when no matching
+      permission is held.
+    </ResponseField>
+    <ResponseField name="snapshot" type="(principal, options?) => Promise<AlfizSnapshot<K, P>>">
+      Fetches all closure data in one round-trip, returning a snapshot with
+      synchronous `can`/`canAny` methods.
+    </ResponseField>
+    <ResponseField name="explain" type="(principal, key, scope?) => Promise<CheckExplanation & ...>">
+      Returns the full explanation of an authorization decision, including
+      matching grants and suppressing revokes.
+    </ResponseField>
+    <ResponseField name="grantedScopes" type="(principal, key) => Promise<{ granted: Set<ScopeId>, revoked: Set<ScopeId> }>">
+      The listing primitive: returns the scopes at which a principal holds a
+      permission.
+    </ResponseField>
+    <ResponseField name="holdsAnywhere" type="(principal, key) => Promise<boolean>">
+      Returns `true` if the principal holds the key at any scope.
+    </ResponseField>
+    <ResponseField name="effectiveKeys" type="(principal) => Promise<PermissionKey[]>">
+      Returns every catalog key the principal holds at some scope.
+    </ResponseField>
+    <ResponseField name="close" type="() => void">
+      Detaches from the provider's invalidation stream and clears all caches.
+      Call this on server shutdown to avoid leaked subscriptions.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## `ClientOf<Cat>` — the stored-client type alias
+
+When you attach the client to a framework context object or export it from a module, annotate it with `ClientOf` rather than spelling out the full generic:
+
+```typescript
+import { type ClientOf } from "@alfiz-auth/core";
+import { catalog } from "./catalog.js";
+
+// ✅ Clean annotation for context objects
+type AppContext = {
+  alfiz: ClientOf<typeof catalog>;
+};
+```
+
+## `client.close()`
+
+```typescript
+client.close(): void
+```
+
+Unsubscribes from the provider's invalidation stream and clears the subject and object caches. Call this when the server is shutting down or when you hot-reload the client (e.g., after a catalog republish). After `close()` is called, the client is unusable — construct a new one.
+
+## Complete initialization example
+
+```typescript
+import { defineCatalog, createAlfizClient } from "@alfiz-auth/core";
+import { AlfizApplication } from "@alfiz-auth/application";
+
+// 1. Define the catalog (once, at the module level).
+export const catalog = defineCatalog({
+  namespace: "docs",
+  projects: {
+    docs: {
+      groups: {
+        files: {
+          scopes: ["docs.doc"],
+          permissions: {
+            read:        true,
+            update_file: true,
+            delete:      { destructive: true },
+          },
+        },
+      },
+    },
+  },
+  scopeTypes: {
+    "docs.doc": { parent: "docs.folder" },
+    "docs.folder": { parent: null },
+  },
+});
+
+// 2. Construct the provider, wiring in the ancestry resolver.
+const app = new AlfizApplication({
+  db,
+  catalog,
+  resolveAncestors: (scope) => db.getAncestors(scope),
+});
+
+// 3. Create the client and export it for use across the application.
+export const alfiz = createAlfizClient({
+  catalog,
+  provider: app,
+  subjectCacheTtlMs: 30_000,
+  objectCacheTtlMs:  60_000,
+});
+
+// 4. On server shutdown, detach cleanly.
+process.on("SIGTERM", () => {
+  alfiz.close();
+});
+```
+
+<Note>
+  `createAlfizClient` attaches to the provider's invalidation stream
+  immediately on construction. The stream delivers cache-bust events whenever
+  a grant, membership, or scope move is written through the provider — you do
+  not need to manage cache invalidation manually.
+</Note>

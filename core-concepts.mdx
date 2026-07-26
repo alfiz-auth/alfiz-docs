@@ -1,0 +1,174 @@
+---
+title: "Core Concepts: How Alfiz Models Authorization"
+sidebarTitle: Core Concepts
+description: Learn Alfiz's five semantic building blocks — catalog, grants, scopes, subjects, and checks — and how they compose to model any access control policy.
+---
+
+Alfiz is not a general-purpose policy engine. It ships with strong, fixed opinions about how authorization should work — five building blocks that compose cleanly, and a set of semantic rules that are stated openly rather than buried in configuration. This page walks through each building block and then summarizes the rules as a table you can keep open while you design your permission tree.
+
+---
+
+## The catalog
+
+The catalog is your application's single source of truth for every permission key, every scope type, and the relationships between them. You declare it explicitly in TypeScript using `defineCatalog` — nothing is inferred from call sites, and nothing is configured in a dashboard.
+
+```ts
+import { defineCatalog } from "@alfiz-auth/core";
+
+export const catalog = defineCatalog({
+  namespace: "docs",
+  projects: {
+    docs: {
+      groups: {
+        files: {
+          permissions: {
+            read:        { scopes: ["docs.folder", "docs.doc"] },
+            update_file: { scopes: ["docs.folder", "docs.doc"] },
+            delete:      { scopes: ["docs.folder"] },
+          },
+        },
+      },
+    },
+  },
+  scopeTypes: {
+    "docs.folder": { parent: null },
+    "docs.doc":    { parent: "docs.folder" },
+  },
+});
+```
+
+`defineCatalog` throws at boot if the catalog is structurally invalid (bad segments, undeclared scope types, depth violations). That means a broken catalog fails fast, before your server accepts any requests.
+
+**Template-literal types** flow from the catalog literal to every call site. The type `KeyOf<typeof catalog>` resolves to the union `"docs.files.read" | "docs.files.update_file" | "docs.files.delete"` — plus the built-in `alfiz_internal.*` keys. Pass a misspelled key to `alfiz.can()` and TypeScript reports a compile-time error. The runtime evaluator also verifies every key before evaluating it, which closes the hole where a runtime-string path could pass for anyone holding a covering wildcard.
+
+The **naming floor** is enforced at build time by `@alfiz-auth/verify`: every tab must have at least one `read` permission; actions follow `<verb>_<noun>` in snake_case; destructive actions (`delete`, `delete_*`) stand alone as their own leaf.
+
+---
+
+## Grant rows
+
+A grant row is the atomic unit of access in Alfiz. Every form of access — an admin assignment, a role, a group membership, public (`everyone`) access, a time-bound elevation — reduces to the same tuple:
+
+```
+(subject, role-or-pattern, scope, expiry?)
+```
+
+You write grants with `app.createGrant` and bulk-import them with `app.createGrants`. Every write requires a `provenance` object that names the actor and the reason; the application writes an audit entry automatically before returning.
+
+```ts
+await app.createGrant({
+  subject: "group:editors",
+  pattern: "docs.files.*",           // a subtree wildcard: every key under docs.files
+  scope: "docs.folder:9",            // scoped to one folder
+  expiresAt: Date.now() + 86_400_000, // optional: 24-hour time-bound access
+  provenance: { kind: "admin", actorUserId: "root" },
+});
+```
+
+**Provenance** records the `kind` of change (`"admin"`, `"request"`, `"import"`, `"system"`, etc.) and the actor who made it. It is validated at the top of every write — never after storage is touched — so a bad provenance cannot leave a written row with no audit entry.
+
+Because grants key on subject and scope *strings* (not foreign keys), deleting a principal or a resource in your database does not automatically clean up its grants. Wire `app.deleteSubject(subject, provenance)` into your user-deletion path and `app.deleteScope(scope, provenance)` into your resource-deletion path. A reused ID would inherit stranded access without this discipline.
+
+---
+
+## Subjects
+
+A subject identifies *who* is being granted access. Alfiz recognizes several subject kinds:
+
+| Subject string | Meaning |
+|---|---|
+| `user:<id>` | A specific user |
+| `group:<id>` | All members of a group (transitively through parent groups) |
+| `org:<id>` | All members of an organization |
+| `everyone` | All authenticated principals, including users Alfiz has never seen |
+| `service:<id>` | A service account |
+| `directs:<userId>` | Everyone who reports directly to `userId` |
+| `orgof:<userId>` | The org tree rooted at `userId` |
+
+When Alfiz evaluates a check for a user, it first computes the **subject closure**: the complete set of subject strings that apply to that user at that moment. A user who is a member of `group:eng`, which is itself a child of `group:staff`, has a closure that includes `user:<id>`, `group:eng`, `group:staff`, `everyone`, and any relevant `org:` and manager-chain subjects.
+
+Subject closures are cached (default 30-second TTL) and busted immediately by invalidation events — so adding a user to a group or revoking a role takes effect within the TTL without requiring a restart or a manual cache flush.
+
+---
+
+## Scopes
+
+A scope identifies *where* a grant applies. Alfiz uses three levels:
+
+- **Global (`*`)** — the grant applies everywhere. A global `docs.files.read` grant lets the subject read any file in the system.
+- **Scope instance** — a specific resource, identified by a string like `docs.doc:123` or `docs.folder:42`. The format is `<scope-type>:<id>`.
+- **Scope type** — declared in the catalog (e.g. `docs.folder` with `parent: "docs.doc"`). The parent relationship defines the hierarchy.
+
+When a check arrives for `docs.doc:123`, Alfiz builds the **object closure**: the ancestor chain from that document up to `*`. For a document nested inside a folder, the chain is `["docs.doc:123", "docs.folder:42", "*"]`. A grant on any node in that chain satisfies the check.
+
+```
+*
+└── docs.folder:42   ← a grant here covers everything below
+    └── docs.doc:123 ← check target
+```
+
+Ancestor chains are walked **O(depth)** at check time against the ancestry resolver you supply. They are cached (default 60-second TTL) and busted immediately when you call `app.notifyScopeMoved(scope)` — so moving a sensitive document into a restricted folder takes effect at once if you pair the move with that call.
+
+Grants are **stored once** at the node where they are made. Alfiz never fans grants out to descendants, which means adding a document to a folder does not require rewriting any rows.
+
+---
+
+## The check
+
+`alfiz.can(principal, key, scope?)` asks: does this principal's subject closure intersect the access granted for this key at any node in this scope's object closure?
+
+Under the hood the evaluator:
+
+1. Fetches the subject closure (from cache or provider).
+2. Builds the object closure — the ancestor chain from the target scope to `*`.
+3. Looks for a grant row whose subject is in the closure, whose pattern matches the key, whose scope is in the object closure, and whose expiry (if any) has not passed.
+4. Checks whether any personal revoke for the user suppresses that grant.
+
+```ts
+// Global check: does the user hold docs.files.read at any scope?
+await alfiz.can({ userId }, "docs.files.read");
+
+// Scoped check: a grant on the parent folder satisfies this.
+await alfiz.can({ userId }, "docs.files.read", "docs.doc:123");
+
+// Visibility: does the user hold anything under docs.files.* at any scope?
+// Never use this as an authorization gate.
+await alfiz.canAny({ userId }, "docs.files.*");
+```
+
+**Forward-inclusive wildcards** mean that a stored `docs.files.*` grant matches `docs.files.read` today and will also match any new key you add under `docs.files` tomorrow, without touching any existing grant rows.
+
+**`can.fresh`** bypasses both the subject cache and the object cache. Pair it with every destructive action and every just-in-time elevation where the bounded staleness of the cached path is not acceptable.
+
+```ts
+// For deletes, purges, and time-bound elevations.
+await alfiz.can.fresh({ userId }, "docs.files.delete", "docs.folder:42");
+```
+
+For server-rendered pages that call multiple checks per request, take a **snapshot** instead of calling `can` repeatedly. A snapshot fetches subject and object data once, then checks synchronously — a stronger consistency guarantee than repeated async calls, and safe inside `.map()`:
+
+```ts
+const snap = await alfiz.snapshot({ userId });
+snap.can("docs.files.read");          // sync
+snap.canAny("docs.files.*");          // sync visibility
+snap.heldKeys;                        // every key held at any scope
+```
+
+---
+
+## Semantic opinions
+
+Alfiz is unopinionated about storage, transport, and deployment. It is maximally opinionated about authorization semantics. The rules below are fixed — they are not pluggable.
+
+| Rule | What it means |
+|---|---|
+| **Union-only inheritance** | Groups, roles, and object hierarchies only widen access. There is no way to use a group membership to narrow a permission — only personal revokes can do that. |
+| **Negative always wins, scope-inclusively** | A personal revoke at any scope suppresses matching access at that scope and every descendant, even if a more specific grant exists at a deeper object. |
+| **Forward-inclusive wildcards** | A stored `docs.files.*` grant covers keys added under `docs.files` in the future. This is deliberate: wildcards are a commitment to a subtree, not a snapshot of it at grant time. |
+| **Everything reduces to the grant row** | Every access surface — admin assignment, role, group membership, `everyone`, service account, time-bound elevation — is one row: `(subject, role-or-pattern, scope, expiry?)`. There is no other storage shape for access. |
+| **Closures cached, decisions not** | Subject closures and object ancestor chains are cached with configurable TTLs and event-driven invalidation. Individual check decisions are never cached — every `can()` call re-evaluates against the current (possibly cached) closure data. |
+| **Global satisfies every scoped check** | `*` is included in every object closure, so a global grant confers access at every scope. Adopting scopes in an existing system means splitting roles that currently grant globally — that split is the migration. |
+
+<Note>
+  The personal-revoke layer is the **only** negative in the system. It applies to individual users, not groups or roles. A revoke at a folder scope suppresses access at that folder and every document inside it, but does not affect other subtrees.
+</Note>

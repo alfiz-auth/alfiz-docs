@@ -1,0 +1,205 @@
+---
+title: "Scope Types: Typing Your Resource Hierarchy"
+sidebarTitle: "Scope Types"
+description: "Scope types define the resource hierarchy your permissions apply to — from a flat global scope to deeply nested folder-and-document trees."
+---
+
+Scope types are the static schema facts that tell Alfiz what kinds of resources exist in your application and how they nest. They are declared once in the catalog and consulted at every grant write and permission check — granting a permission at a resource type you never declared is a validation error, not a silent success.
+
+## Scope types vs. scope instances
+
+The catalog declares **scope types** — the shapes. Your application data holds **scope instances** — the individual resources. The distinction matters:
+
+| Concept | Example | Where it lives |
+|---|---|---|
+| Scope type | `docs.folder` | Catalog declaration |
+| Scope instance | `docs.folder:42` | Your database, as a parent pointer |
+| Global scope | `*` | Built-in — no declaration needed |
+
+A scope instance id is always `<scopeType>:<instanceId>`. The instance id (`42`) is an opaque string — it should be a primary key or UUID, never a path. The hierarchy is stored in your database as parent pointers, not encoded in the id:
+
+```ts
+import { scopeId, parseScopeId } from "@alfiz-auth/core";
+
+const folder = scopeId("docs.folder", "42");   // → "docs.folder:42"
+const doc    = scopeId("docs.doc",    "99");   // → "docs.doc:99"
+
+parseScopeId("docs.doc:99");
+// → { type: "docs.doc", instanceId: "99" }
+```
+
+Moving a resource (changing its parent pointer in your database) automatically re-resolves all grants on it at check time. No grants need to be rewritten when a document moves from one folder to another.
+
+## The global scope
+
+The global scope `*` is built into every catalog. A permission grantable only at `*` — one with no scope types declared — applies across your entire application, regardless of which resource the check names. You do not declare `*` in `scopeTypes`.
+
+For flat applications with no resource hierarchy, you do not need to declare any scope types at all. Every permission defaults to global-only grantability, and checks pass or fail based solely on whether the actor holds the permission globally.
+
+## Declaring scope types: `ScopeTypeInput`
+
+Add scope types to the `scopeTypes` record in your `CatalogInput`. Keys follow the same dotted-segment format as permission keys (`docs.folder`, `docs.doc`), and must fall within a declared namespace.
+
+```ts
+export interface ScopeTypeInput {
+  description?: string;
+  parent?:      ScopeType | null;
+  multiParent?: boolean;
+  requestable?: {
+    prompts?:       readonly RequestPromptInput[];
+    maxDurationMs?: number;
+    requireExpiry?: boolean;
+    policy:         ApprovalPolicyInput;
+  };
+}
+```
+
+<ParamField body="description" type="string">
+  Human-facing description of what this scope type represents, shown in admin surfaces and permission pickers.
+</ParamField>
+
+<ParamField body="parent" type="ScopeType | null">
+  The expected parent scope type for instances of this type. Use `null` for top-level types whose instances parent directly to `*`. This is a **commitment**, not a hint: declaring `parent: null` means the ancestor chain for every instance of this type is exactly `[instance, "*"]` — which lets the runtime check these synchronously without an async ancestry lookup.
+
+  For recursive hierarchies (folders inside folders), set the parent to the same type: `{ parent: "docs.folder" }`. Leave `parent` undefined when you want to defer the parent declaration — but note that the default is `null`.
+</ParamField>
+
+<ParamField body="multiParent" type="boolean" default="false">
+  Enables multi-parent instances for this scope type. With multi-parent on, an instance's effective access is the **union of all its parents' access** — a user with access to any one parent of a shared document has access to the document.
+
+  Multi-parent is off by default because it is a meaningful widening: in most products, a file having two parent folders should not mean that access granted in *either* folder propagates to the file. Use multi-parent explicitly for products where that union is the correct behavior — shortcuts, labels-as-folders, or cross-project sharing models.
+</ParamField>
+
+<ParamField body="requestable" type="object">
+  Declares that grants at instances of this scope type may be requested by end users. Nothing is requestable by default; you opt in here.
+
+  When set, the request form for this scope type shows the configured `prompts` (justification fields), respects `maxDurationMs` as a ceiling on how long a request may propose to run, and requires an expiry when `requireExpiry` is `true`. The `policy` field is required and must declare at least one approval stage.
+</ParamField>
+
+## Folder and document hierarchy: a complete example
+
+<CodeGroup>
+```ts Catalog definition
+import { defineCatalog } from "@alfiz-auth/core";
+
+export const catalog = defineCatalog({
+  namespace: "docs",
+
+  projects: {
+    docs: {
+      groups: {
+        files: {
+          label: "Files",
+          scopes: ["docs.folder", "docs.doc"],
+          permissions: {
+            read: {
+              kind: "read",
+              description: "View files and folders",
+              scopes: ["docs.folder", "docs.doc"],
+              impliedOnAncestors: true, // seeing a doc implies seeing its folder
+            },
+            update_file: {
+              description: "Edit file contents",
+              scopes: ["docs.doc"],
+            },
+            share_doc: {
+              description: "Share a document with others",
+              scopes: ["docs.doc"],
+            },
+            delete: {
+              destructive: true,
+              description: "Delete a folder and everything inside it",
+              scopes: ["docs.folder"],
+            },
+          },
+        },
+      },
+    },
+  },
+
+  scopeTypes: {
+    "docs.folder": {
+      description: "A folder that contains documents and sub-folders",
+      parent: null,       // top-level: instances sit directly under *
+    },
+    "docs.doc": {
+      description: "A document inside a folder",
+      parent: "docs.folder",
+    },
+  },
+});
+```
+
+```ts Runtime hierarchy
+import { parentPointerResolver } from "@alfiz-auth/core";
+import { db } from "./db";
+
+// Your database holds the parent pointer — Alfiz walks it at check time.
+const ancestry = parentPointerResolver((scope) => db.parentOf(scope));
+
+// A doc inherits from its folder; a folder inherits from *.
+// Moving doc:99 to a different folder is a DB update, not a grant rewrite.
+```
+</CodeGroup>
+
+## Per-scope-type grantability
+
+The `scopes` field on `PermissionLeafInput` (and `GroupInput`) controls which scope types a permission can be granted at. Alfiz validates this at the grant write path — attempting to grant a permission at a scope type it never declared is a hard error, not a silent no-op.
+
+```ts
+// ✅ docs.files.delete is declared with scopes: ["docs.folder"]
+// This grant is valid:
+await app.createGrant({
+  subject: "user:alice",
+  pattern: "docs.files.delete",
+  scope: "docs.folder:42",
+});
+
+// ❌ docs.files.update_file is declared with scopes: ["docs.doc"]
+// Granting it at a folder is a validation error:
+await app.createGrant({
+  subject: "user:alice",
+  pattern: "docs.files.update_file",
+  scope: "docs.folder:42",   // error: update_file is not grantable at docs.folder
+});
+```
+
+Wildcard patterns follow the same rule at a coarser granularity: a wildcard grant at a scope type is valid when **at least one matched leaf** is grantable at that type.
+
+## Single-parent vs. multi-parent
+
+<Tabs>
+  <Tab title="Single-parent (default)">
+    Each instance has exactly one parent. Access flows strictly up the chain — a grant on a folder covers everything inside it, and a grant on a document covers only that document.
+
+    ```ts
+    scopeTypes: {
+      "drive.folder": { parent: null },
+      "drive.file":   { parent: "drive.folder" },
+    }
+    // drive.file:99 → drive.folder:42 → *
+    // A grant on drive.folder:42 covers drive.file:99.
+    ```
+
+    This is the right model for most hierarchical products. It is the default — you do not need to say anything.
+  </Tab>
+  <Tab title="Multi-parent (explicit opt-in)">
+    Each instance may have multiple parents. Effective access is the union of all parents' access — holding a grant under *any* parent confers it on the child.
+
+    ```ts
+    scopeTypes: {
+      "wiki.space":  { parent: null },
+      "wiki.page":   {
+        parent:      "wiki.space",
+        multiParent: true,   // a page can live in multiple spaces
+      },
+    }
+    ```
+
+    Use multi-parent for shortcuts, cross-space linking, or label-as-folder models where the union semantics are genuinely correct. Be explicit: this is a security-relevant decision, and the opt-in is intentionally loud.
+  </Tab>
+</Tabs>
+
+<Note>
+  Scope type keys must fall within a declared namespace. `docs.folder` is valid when `docs` is in `namespace` or `additionalNamespaces`. A scope type referencing an undeclared namespace is a boot-time error from `defineCatalog`.
+</Note>

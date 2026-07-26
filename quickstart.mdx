@@ -1,47 +1,166 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: Get Started with Alfiz in Minutes
+sidebarTitle: Quickstart
+description: Install Alfiz, define your first permission catalog, wire a storage driver, and run your first can() check — all in under ten minutes.
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
-
-## Prerequisites
-
-Before you begin, you must have:
-
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+Alfiz ships as two packages: `@alfiz-auth/core` holds the evaluator — the catalog, grammar, closures, and check logic — and `@alfiz-auth/application` wraps a storage driver into the full local provider. You define your permissions in TypeScript, wire up storage, and every `can()` check runs in-process against your own database with no external round-trips required.
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
 
-    ```bash
-    npm install your-package
-    ```
-  </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+### Install the packages
 
-    ```bash
-    your-cli init
-    ```
-  </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+Install the core client and the application provider. If you are targeting a production Postgres, MySQL, or SQLite database, also install the Prisma driver.
 
-    ```bash
-    your-cli start
-    ```
-  </Step>
-</Steps>
+<CodeGroup>
+
+```bash Core + Application
+npm install @alfiz-auth/core @alfiz-auth/application
+```
+
+```bash With Prisma driver
+npm install @alfiz-auth/core @alfiz-auth/application @alfiz-auth/prisma
+```
+
+</CodeGroup>
+
+<Note>
+  `memoryDriver()` (bundled with `@alfiz-auth/application`) is a complete, correct in-memory implementation — perfect for tests and local development. Swap in `@alfiz-auth/prisma` before going to production so grants survive restarts.
+</Note>
+
+### Define the catalog
+
+The catalog is your single source of truth for every permission and scope type in the system. Call `defineCatalog` with your `namespace`, a `projects` tree, and the `scopeTypes` your resources belong to. The tree follows the shape `project → tab → permission`; `defineCatalog` throws at boot if anything is structurally invalid.
+
+```ts catalog.ts
+import { defineCatalog } from "@alfiz-auth/core";
+
+export const catalog = defineCatalog({
+  namespace: "docs",
+  projects: {
+    docs: {
+      groups: {
+        files: {
+          permissions: {
+            read:        { scopes: ["docs.folder", "docs.doc"] },
+            update_file: { scopes: ["docs.folder", "docs.doc"] },
+            delete:      { scopes: ["docs.folder"] }, // destructive: stands alone
+          },
+        },
+      },
+    },
+  },
+  scopeTypes: {
+    "docs.folder": { parent: null },          // top-level; no parent
+    "docs.doc":    { parent: "docs.folder" }, // doc lives inside a folder
+  },
+});
+```
+
+Every key in the catalog — `docs.files.read`, `docs.files.update_file`, `docs.files.delete` — becomes a compile-time–verified string. Pass the wrong key to `can()` and TypeScript catches it before your tests run.
+
+### Create the application
+
+The application is the local provider: it connects your storage driver and your resource hierarchy (the ancestry resolver) to Alfiz's evaluation engine.
+
+```ts app.ts
+import { parentPointerResolver } from "@alfiz-auth/core";
+import { createApplication, memoryDriver } from "@alfiz-auth/application";
+import { catalog } from "./catalog";
+import { db } from "./db"; // your own database client
+
+export const app = createApplication({
+  catalog,
+  storage: memoryDriver(), // swap for prismaDriver(prismaClient) in production
+  ancestry: parentPointerResolver((scope) => db.parentOf(scope)),
+});
+```
+
+The `ancestry` option tells Alfiz how to walk up your object hierarchy — so a grant on a folder covers every document inside it. Omit it if all your scopes are flat (`parent: null`).
+
+### Create the client
+
+The client wraps the application with typed check methods. Pass your catalog literal so TypeScript can derive the exact union of valid keys and patterns at every call site.
+
+```ts alfiz.ts
+import { createAlfizClient } from "@alfiz-auth/core";
+import { catalog } from "./catalog";
+import { app } from "./app";
+
+export const alfiz = createAlfizClient({ catalog, provider: app });
+```
+
+### Grant a permission
+
+Write a grant row using `app.createGrant`. Every grant records a `provenance` — who made the change and why — which feeds the audit log automatically.
+
+```ts
+await app.createGrant({
+  subject: "user:alice",          // or group:…, everyone, org:…, service:…
+  pattern: "docs.files.read",     // a concrete key, or docs.files.* for the whole tab
+  scope: "docs.folder:42",        // omit for a global grant (covers every scope)
+  provenance: { kind: "admin", actorUserId: "admin" },
+});
+```
 
 <Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
-
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
+  Grant the full tab wildcard `docs.files.*` to a group for bulk access, and then use concrete keys for narrower individual grants. Forward-inclusive wildcards mean a `docs.files.*` grant will also cover new permissions you add to the `files` tab in the future.
 </Tip>
+
+### Check a permission
+
+Call `alfiz.can(principal, key)` for a global check, or pass a scope ID to check against a specific resource. Both forms return a `Promise<boolean>`.
+
+```ts
+// Global: does alice hold docs.files.read at any scope?
+const canRead = await alfiz.can({ userId: "alice" }, "docs.files.read");
+
+// Scoped: does alice hold docs.files.read specifically at docs.doc:123?
+// (A grant on its parent folder docs.folder:42 also satisfies this.)
+const canReadDoc = await alfiz.can(
+  { userId: "alice" },
+  "docs.files.read",
+  "docs.doc:123",
+);
+```
+
+Use `alfiz.requirePermission` when you want to throw an `AccessDeniedError` instead of branching on a boolean — useful in server actions and route handlers:
+
+```ts
+// Throws AccessDeniedError (map to 403) if alice lacks the permission.
+await alfiz.requirePermission(
+  { userId: "alice" },
+  "docs.files.update_file",
+  "docs.doc:123",
+);
+```
+
+### Use `can.fresh` for destructive actions
+
+Standard `can()` checks draw from cached subject closures (default 30-second TTL) and cached ancestor chains (default 60-second TTL). For destructive or irreversible actions, bypass those caches entirely with `can.fresh`:
+
+```ts
+// Bypasses all caches — use for deletes, purges, and just-in-time elevations.
+const canDelete = await alfiz.can.fresh(
+  { userId: "alice" },
+  "docs.files.delete",
+  "docs.folder:42",
+);
+```
+
+<Warning>
+  Always pair `can.fresh` with destructive actions. A revocation that landed in the last 30 seconds may not yet be reflected by a cached check — `can.fresh` is the escape hatch that makes the bound irrelevant where it matters.
+</Warning>
+
+</Steps>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Core Concepts" icon="book-open" href="/core-concepts">
+    Understand the five semantic building blocks — catalog, grants, scopes, subjects, and checks — and how they compose.
+  </Card>
+  <Card title="Per-request snapshots" icon="camera" href="/api/snapshot">
+    Take one provider round-trip per request and check synchronously inside `.map()` — the recommended pattern for server-rendered frameworks.
+  </Card>
+</CardGroup>

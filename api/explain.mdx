@@ -1,0 +1,219 @@
+---
+title: "explain() — Understand Why Access Was Granted"
+sidebarTitle: "explain()"
+description: "explain(principal, key, scope?) returns a full CheckExplanation showing which grants, roles, and closures produced the authorization decision."
+---
+
+`explain` is the auditability surface of Alfiz. It runs the same evaluation as `can` — producing an identical boolean outcome — but returns the full working: which grant rows matched, which revoke rows suppressed them, what the computed object closure was, and whether the result was reached through ancestor implication rather than a direct grant match. Use `explain` when debugging unexpected access decisions, building audit UIs, or powering "why can you see this?" transparency features in your product.
+
+## `client.explain(principal, key, scope?)`
+
+```typescript
+async explain(
+  principal: PrincipalRef,
+  key: LooseKey<K>,
+  scope?: ScopeId,
+): Promise<
+  CheckExplanation & {
+    objectClosure: ScopeId[];
+    active: boolean;
+    implied: boolean;
+  }
+>
+```
+
+<ParamField body="principal" type="PrincipalRef" required>
+  Identifies who is being explained. Either `{ userId: string }` for a human
+  user or `{ serviceId: string }` for a machine principal.
+</ParamField>
+
+<ParamField body="key" type="LooseKey<K>" required>
+  A concrete permission key declared in your catalog. Unlike `canAny`, you
+  cannot pass a wildcard pattern here — `explain` always explains a specific
+  leaf. The key is verified against the catalog before evaluation; an unknown
+  key raises `UnknownPermissionError`.
+</ParamField>
+
+<ParamField body="scope" type="ScopeId">
+  Optional. The scope instance to explain the decision at — for example
+  `docs.doc:abc123`. Omit for a global-scope explanation. When provided,
+  the object closure (scope → ancestors → `*`) is included in the return
+  value.
+</ParamField>
+
+### Return value
+
+<ResponseField name="allowed" type="boolean">
+  `true` when the principal currently holds the key at the given scope —
+  identical to what `client.can(principal, key, scope)` would return.
+</ResponseField>
+
+<ResponseField name="matchedGrants" type="GrantRow[]">
+  The unexpired grant rows that would allow this key at this scope. Each
+  `GrantRow` carries its `id`, `subject`, `scope`, `pattern` or `roleId`,
+  optional `expiresAt`, and the `provenance` record describing who created
+  the grant and how. Empty when `allowed` is `false` and no suppression is
+  involved.
+</ResponseField>
+
+<ResponseField name="matchedRevokes" type="RevokeRow[]">
+  Personal revoke rows that suppress the access. When `matchedRevokes` is
+  non-empty, `allowed` is always `false` — revokes always win, regardless
+  of how many matching grants exist. Each `RevokeRow` carries its `id`,
+  `userId`, `pattern`, `scope`, and `provenance`.
+</ResponseField>
+
+<ResponseField name="objectClosure" type="ScopeId[]">
+  The resolved ancestor chain of the requested scope: `[scope, ...ancestors,
+  "*"]`. For a global-scope check this is `["*"]`. This is the set against
+  which grants and revokes were matched — it tells you exactly which ancestor
+  scopes were in scope for the evaluation.
+</ResponseField>
+
+<ResponseField name="active" type="boolean">
+  Whether the principal was active at evaluation time. An inactive principal
+  always evaluates to no access (`allowed: false`) even if `matchedGrants`
+  is non-empty.
+</ResponseField>
+
+<ResponseField name="implied" type="boolean">
+  `true` when access was granted through §7.5 ancestor implication rather
+  than a direct grant match. This happens when a permission leaf is declared
+  with `impliedOnAncestors: true` and the principal holds a grant of that
+  leaf at a descendant scope of the requested scope. When `implied` is
+  `true`, `matchedGrants` will be empty (the direct match found nothing) but
+  `allowed` is `true`.
+</ResponseField>
+
+---
+
+## When to use `explain`
+
+`explain` is a **diagnostic and auditability tool**, not a gate. Do not replace `can` with `explain` on hot paths — `explain` does the same evaluation work and returns more data, which means it allocates more objects and is more expensive to call at high frequency.
+
+Use `explain` for:
+
+- **Debugging during development** — unexpected `true` or `false` from `can` in tests.
+- **Audit log UIs** — displaying "why does this user have access to this document?" alongside the grant history.
+- **"Why can you see this?" transparency features** — showing users which of their roles granted them access.
+- **Access review tooling** — surface the grant provenance chain to reviewers.
+- **Automated tests** — asserting that a specific grant row (by id or pattern) is the one conferring a permission.
+
+<Note>
+  `explain` draws from the same caches as `can`. If you need a fresh
+  explanation that bypasses the cache, take a snapshot with `{ fresh: true }`
+  and call `snap.explain(key, scope)` instead.
+</Note>
+
+---
+
+## Examples
+
+### Basic explanation
+
+```typescript
+const explanation = await alfiz.explain(
+  { userId: "user_abc" },
+  "docs.files.read",
+  "docs.doc:123",
+);
+
+console.log(explanation.allowed);       // true or false
+console.log(explanation.active);        // true (principal is active)
+console.log(explanation.objectClosure); // ["docs.doc:123", "docs.folder:xyz", "*"]
+console.log(explanation.matchedGrants); // [{ id: "g_1", subject: "user:user_abc", ... }]
+console.log(explanation.matchedRevokes);// [] (no suppression)
+console.log(explanation.implied);       // false (direct match)
+```
+
+### Reading the explanation result
+
+```typescript
+const explanation = await alfiz.explain(
+  { userId },
+  "docs.files.update_file",
+  `docs.doc:${docId}`,
+);
+
+if (!explanation.active) {
+  console.log("Principal is inactive — no access regardless of grants.");
+} else if (explanation.matchedRevokes.length > 0) {
+  console.log("Access suppressed by personal revokes:");
+  for (const revoke of explanation.matchedRevokes) {
+    console.log(`  Pattern ${revoke.pattern} at scope ${revoke.scope}`);
+    console.log(`  Created by: ${JSON.stringify(revoke.provenance)}`);
+  }
+} else if (explanation.implied) {
+  console.log(
+    "Access granted through ancestor implication (§7.5): " +
+    "the principal holds this permission at a descendant scope.",
+  );
+} else if (explanation.allowed) {
+  console.log("Access granted through direct grants:");
+  for (const grant of explanation.matchedGrants) {
+    const via = grant.roleId
+      ? `role ${grant.roleId}`
+      : `pattern ${grant.pattern}`;
+    console.log(`  ${via} at scope ${grant.scope}`);
+    console.log(`  Provenance: ${JSON.stringify(grant.provenance)}`);
+    if (grant.expiresAt) {
+      const expiresIn = grant.expiresAt - Date.now();
+      console.log(`  Expires in: ${Math.round(expiresIn / 1000)}s`);
+    }
+  }
+} else {
+  console.log("Access denied: no matching grants found.");
+}
+```
+
+### Building an audit UI component
+
+```typescript
+async function WhyCanISeeThis({
+  userId,
+  docId,
+}: {
+  userId: string;
+  docId: string;
+}) {
+  const explanation = await alfiz.explain(
+    { userId },
+    "docs.files.read",
+    `docs.doc:${docId}`,
+  );
+
+  if (!explanation.allowed) return null;
+
+  const grants = explanation.matchedGrants;
+
+  return (
+    <details>
+      <summary>Why can you see this?</summary>
+      <ul>
+        {grants.map((grant) => (
+          <li key={grant.id}>
+            {grant.roleId
+              ? `Via role: ${grant.roleId}`
+              : `Direct permission: ${grant.pattern}`}
+            {" at "}
+            {grant.scope === "*" ? "global scope" : grant.scope}
+          </li>
+        ))}
+        {explanation.implied && (
+          <li>Inferred from access to a document in this folder.</li>
+        )}
+      </ul>
+    </details>
+  );
+}
+```
+
+### Using snapshot.explain for synchronous access in renders
+
+```typescript
+// Take one snapshot, then explain synchronously — no extra async.
+const snap = await alfiz.snapshot({ userId });
+
+const explanation = snap.explain("docs.files.read", `docs.doc:${docId}`);
+console.log(explanation.allowed, explanation.matchedGrants);
+```

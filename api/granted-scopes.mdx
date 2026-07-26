@@ -1,0 +1,277 @@
+---
+title: "grantedScopes() and holdsAnywhere() — Listing Utilities"
+sidebarTitle: "grantedScopes()"
+description: "grantedScopes(principal, key) returns the set of scopes where a principal holds a permission — the primitive for building efficient listing queries."
+---
+
+`grantedScopes` is the database-query primitive for permission-filtered lists. Instead of loading every resource and checking `can` per row — an O(N) pattern that defeats the purpose of database indexes — you call `grantedScopes` once, obtain the set of scope instance IDs where the principal holds the key, and push that filter into your query. Alfiz's companion listing helpers (`planListing`) generate the SQL predicate for you from the granted and revoked sets.
+
+## `client.grantedScopes(principal, key)`
+
+```typescript
+async grantedScopes(
+  principal: PrincipalRef,
+  key: LooseKey<K>,
+): Promise<{ granted: Set<ScopeId>; revoked: Set<ScopeId> }>
+```
+
+<ParamField body="principal" type="PrincipalRef" required>
+  Identifies who is being evaluated. Either `{ userId: string }` for a human
+  user or `{ serviceId: string }` for a machine principal.
+</ParamField>
+
+<ParamField body="key" type="LooseKey<K>" required>
+  A concrete permission key declared in your catalog. The key is verified
+  against the catalog before evaluation; an unknown key raises
+  `UnknownPermissionError`. Wildcard patterns are not valid here — this
+  method returns scope sets for one specific leaf.
+</ParamField>
+
+### Return value
+
+<ResponseField name="granted" type="Set<ScopeId>">
+  The set of scope instance IDs at which the principal holds an unexpired,
+  non-expired grant for `key`. This includes scopes granted via role
+  membership and via wildcard patterns that match `key`. For an inactive
+  principal, this set is always empty.
+</ResponseField>
+
+<ResponseField name="revoked" type="Set<ScopeId>">
+  The set of scope instance IDs at which the principal has a personal revoke
+  that suppresses `key`. Use this set to exclude rows from queries: a scope
+  in `revoked` (or any descendant of it) should not appear in the results
+  even if the scope's id appears in `granted` through an ancestor grant.
+</ResponseField>
+
+---
+
+## How to use `grantedScopes` with a listing query
+
+The pattern has three steps:
+
+1. Call `grantedScopes` to obtain the granted and revoked scope sets.
+2. Use the sets to build a SQL predicate that filters the resource table.
+3. Execute the query — the database applies the permission filter, so you
+   load only the rows the principal is allowed to see.
+
+<CodeGroup>
+
+```typescript Closure table (recommended)
+import { grantedScopes } from "./alfiz.js";
+
+async function listAccessibleDocs(userId: string) {
+  const { granted, revoked } = await alfiz.grantedScopes(
+    { userId },
+    "docs.files.read",
+  );
+
+  if (granted.size === 0) return [];
+
+  // Closure table: doc_ancestors(scope_id, ancestor_id)
+  // Row is accessible when ANY of its ancestors is in `granted`
+  // AND NONE of its ancestor chain is in `revoked`.
+  return db.query(
+    `
+    SELECT DISTINCT d.*
+    FROM docs d
+    JOIN doc_ancestors da ON da.scope_id = 'docs.doc:' || d.id
+    WHERE da.ancestor_id = ANY($1::text[])
+      AND NOT EXISTS (
+        SELECT 1 FROM doc_ancestors da2
+        WHERE da2.scope_id = 'docs.doc:' || d.id
+          AND da2.ancestor_id = ANY($2::text[])
+      )
+    `,
+    [[...granted], [...revoked]],
+  );
+}
+```
+
+```typescript Materialized path
+async function listAccessibleDocs(userId: string) {
+  const { granted, revoked } = await alfiz.grantedScopes(
+    { userId },
+    "docs.files.read",
+  );
+
+  if (granted.size === 0) return [];
+
+  // Materialized path: docs.path stores '/root/folder/doc'.
+  // A GIN index on a tsvector of path segments makes LIKE queries fast.
+  const grantedPaths  = await db.scopePaths([...granted]);
+  const revokedPaths  = await db.scopePaths([...revoked]);
+
+  return db.query(
+    `
+    SELECT * FROM docs
+    WHERE (
+        ${grantedPaths.map((_, i) => `path LIKE $${i + 1} || '%'`).join(" OR ")}
+      )
+      AND NOT (
+        ${revokedPaths.map((_, i) => `path LIKE $${i + grantedPaths.length + 1} || '%'`).join(" OR ")}
+      )
+    `,
+    [...grantedPaths, ...revokedPaths],
+  );
+}
+```
+
+```typescript Global grant shortcut
+async function listAccessibleDocs(userId: string) {
+  const { granted, revoked } = await alfiz.grantedScopes(
+    { userId },
+    "docs.files.read",
+  );
+
+  if (granted.size === 0) return [];
+
+  // Global grant (*) means the user can access all docs —
+  // fall through to a simpler query.
+  if (granted.has("*")) {
+    if (revoked.size === 0) {
+      return db.docs.findMany(); // unrestricted
+    }
+    // Still exclude revoked subtrees.
+    const revokedPaths = await db.scopePaths([...revoked]);
+    return db.docs.findManyExcluding(revokedPaths);
+  }
+
+  // Scoped grant path (closure table or materialized path as above).
+  return listByScopedGrants(granted, revoked);
+}
+```
+
+</CodeGroup>
+
+<Tip>
+  A GIN index on a `tsvector` column of path segments, or a dedicated
+  `doc_ancestors` closure table with an index on `(ancestor_id)`, makes the
+  `= ANY($1::text[])` filter a single index scan. Without an appropriate
+  index, this degrades to a sequential scan as the result set grows. See the
+  PostgreSQL docs on GIN indexes and closure tables for schema guidance.
+</Tip>
+
+---
+
+## `client.holdsAnywhere(principal, key)`
+
+```typescript
+async holdsAnywhere(
+  principal: PrincipalRef,
+  key: LooseKey<K>,
+): Promise<boolean>
+```
+
+Returns `true` if the principal holds `key` at **any** scope — the single-key "does this button exist at all?" probe. Use `holdsAnywhere` for unscoped conditional UI where the concrete scope is not yet known: an instructor who holds `publish_course` at only the courses they teach should still see the publish button surface. The button's server action still gates with `can` at its concrete scope.
+
+<ParamField body="principal" type="PrincipalRef" required>
+  The principal to check.
+</ParamField>
+
+<ParamField body="key" type="LooseKey<K>" required>
+  A concrete permission key in the catalog.
+</ParamField>
+
+### Return value
+
+<ResponseField name="Promise<boolean>" type="Promise<boolean>">
+  `true` when the principal holds an unexpired, non-globally-revoked grant
+  for `key` at any scope. `false` for inactive principals or when no grant
+  exists. Never a gate — use `can` for authorization.
+</ResponseField>
+
+<Warning>
+  `holdsAnywhere` is a visibility affordance, not an authorization gate.
+  It answers "should this surface exist at all for this user?" A positive
+  result does not authorize any action; every action behind the button still
+  gates with `client.can` at the concrete resource scope.
+</Warning>
+
+---
+
+## `client.effectiveKeys(principal)`
+
+```typescript
+async effectiveKeys(principal: PrincipalRef): Promise<PermissionKey[]>
+```
+
+Returns every concrete catalog key the principal holds somewhere — granted by an unexpired row at any scope, suppressed only by a global-scope revoke. This is the full "what can this user do?" list, and it is the right feed for unscoped conditional UI that needs to render multiple surfaces at once.
+
+<ParamField body="principal" type="PrincipalRef" required>
+  The principal to evaluate.
+</ParamField>
+
+### Return value
+
+<ResponseField name="Promise<PermissionKey[]>" type="Promise<PermissionKey[]>">
+  An array of every concrete key the principal holds at some scope. Empty for
+  inactive principals. Order matches the catalog's key order (alphabetical).
+  O(catalog size) — call once per request and reuse; `snapshot(principal).heldKeys`
+  does exactly that.
+</ResponseField>
+
+---
+
+## Examples
+
+### `holdsAnywhere` for unscoped conditional UI
+
+```typescript
+// Show the "Publish" button only if the user holds publish_course anywhere.
+const canPublishSomewhere = await alfiz.holdsAnywhere(
+  { userId },
+  "docs.files.update_file",
+);
+
+// The button action still gates with can() at the concrete doc scope.
+```
+
+### `effectiveKeys` for a permissions summary page
+
+```typescript
+const keys = await alfiz.effectiveKeys({ userId });
+
+return (
+  <PermissionSummary
+    keys={keys}
+    catalog={catalog}
+  />
+);
+```
+
+### Using `snapshot.grantedScopes` synchronously on a list page
+
+```typescript
+// If you already have a snapshot, grantedScopes is synchronous.
+const snap = await alfiz.snapshot({ userId });
+const { granted, revoked } = snap.grantedScopes("docs.files.read");
+
+const docs = await db.query(
+  `SELECT * FROM docs
+   WHERE scope_id = ANY($1::text[])
+     AND scope_id <> ALL($2::text[])`,
+  [[...granted], [...revoked]],
+);
+```
+
+### Combining with `snap.resolve` for a hierarchical list page
+
+```typescript
+// 1. Snapshot and gate the page.
+const snap = await alfiz.snapshot({ userId });
+snap.require("docs.files.read");
+
+// 2. Get the granted scope set and push the filter into the database.
+const { granted, revoked } = snap.grantedScopes("docs.files.read");
+const docs = await db.listDocsByGrantedScopes(granted, revoked);
+
+// 3. If you also need per-row edit/delete buttons, resolve the doc scopes
+//    into the snapshot so snap.can() works synchronously per row.
+await snap.resolve(docs.map((d) => `docs.doc:${d.id}`));
+
+return docs.map((doc) => ({
+  ...doc,
+  canEdit:   snap.can("docs.files.update_file", `docs.doc:${doc.id}`),
+  canDelete: snap.can("docs.files.delete",      `docs.doc:${doc.id}`),
+}));
+```

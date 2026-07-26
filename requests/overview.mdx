@@ -1,0 +1,212 @@
+---
+title: "Access Requests: User-Initiated Permission Workflows"
+sidebarTitle: "Overview"
+description: "Alfiz access requests let users propose a grant tuple with a justification and route it through configurable approval stages before writing any access."
+---
+
+Access requests give users a way to ask for permissions they don't currently hold. Rather than bypassing your authorization model, a request is a proposed grant tuple — `(requester, role-or-pattern, scope, expiry?)` — that sits in a pending workflow until every approval stage clears. When the final stage approves, that approval **is** the act of writing the grant row. Denial writes nothing. The request system adds no new access semantics; it is a workflow that gates row creation.
+
+## What a request is
+
+Every access request is an `AccessRequest` object with a proposed grant payload, a justification record, a snapshot of the approval stages, and a workflow state:
+
+```typescript
+interface AccessRequest {
+  id: string;
+  requesterUserId: string;
+  /** Exactly one of roleId / pattern — same rule as the grant row itself. */
+  roleId?: string | undefined;
+  pattern?: PermissionPattern | undefined;
+  scope: ScopeId;
+  /** Proposed expiry for time-bound or just-in-time access. */
+  proposedExpiresAt?: number | undefined;
+  /** Prompt id → answer, per the requestability declaration's prompts. */
+  justification: Record<string, string>;
+  state: RequestState;
+  /** Index of the stage currently awaiting a decision. */
+  stageIndex: number;
+  /**
+   * Stages snapshotted at submission. Stages reference layers and roles,
+   * never resolved people — they survive hierarchy changes and org-root
+   * promotion, resolving at evaluation time.
+   */
+  stages: readonly ApprovalStage[];
+  decisions: readonly RequestDecision[];
+  createdAt: number;
+  decidedAt?: number | undefined;
+}
+```
+
+The stages snapshot is intentional: because policies reference layers (`"2 layers up"`) and role ids rather than named individuals, a pending request survives org restructuring and org-root promotion without modification. The actual approver identity resolves fresh at evaluation time.
+
+## Declaring requestability in the catalog
+
+Nothing is requestable by default. You opt in at the catalog level, either on a role or on a scope type. A role can carry a `requestable` block; a scope type declares `requestable` inside `ScopeTypeInput`.
+
+<CodeGroup>
+```typescript Requestable role
+await app.createRole({
+  name: "Docs Editor",
+  patterns: ["docs.files.*"],
+  requestable: {
+    prompts: [
+      { id: "reason", label: "Why do you need this access?", required: true },
+    ],
+    stages: [
+      { kind: "auto", predicate: { type: "in_group", groupId: "editors" } },
+      { kind: "named_approvers", roleId: "content-owner" },
+    ],
+  },
+});
+```
+
+```typescript Requestable scope type (catalog)
+defineCatalog({
+  namespace: "docs",
+  projects: { /* ... */ },
+  scopeTypes: {
+    "docs.folder": {
+      parent: null,
+      requestable: {
+        prompts: [
+          { id: "reason", label: "Why do you need access to this folder?", required: true },
+          { id: "duration", label: "How long do you need it?", kind: "select",
+            options: ["1 day", "1 week", "30 days"] },
+        ],
+        policy: {
+          stages: [{ kind: "management", layers: 1 }],
+        },
+      },
+    },
+    "docs.doc": { parent: "docs.folder" },
+  },
+});
+```
+</CodeGroup>
+
+<Note>
+  Global access (scope `*`) is always requested through requestable **roles**, not patterns. Pattern requests require a scope whose type declares `requestable` — the requestability declaration lives on the scope type, not the permission itself.
+</Note>
+
+## Submitting a request
+
+Users submit requests through `app.submitRequest`. Supply a `requesterUserId`, exactly one of `roleId` or `pattern`, an optional `scope`, a `justification` map (prompt id → answer), and an optional `proposedExpiresAt` for time-bound access.
+
+```typescript
+const request = await app.submitRequest({
+  requesterUserId: "user-42",
+  roleId: "docs-editor",
+  justification: {
+    reason: "I'm joining the documentation team this sprint.",
+  },
+});
+// → AccessRequest with state: "pending" | "approved"
+```
+
+For a pattern request scoped to a resource instance:
+
+```typescript
+const request = await app.submitRequest({
+  requesterUserId: "user-42",
+  pattern: "docs.files.*",
+  scope: "docs.folder:proj-9",
+  proposedExpiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
+  justification: {
+    reason: "Temporary access for the launch sprint.",
+    duration: "1 week",
+  },
+});
+```
+
+<Tip>
+  If the requestability declaration sets `maxDurationMs`, Alfiz enforces the cap automatically. Omitting `proposedExpiresAt` when a cap is set does not bypass it — the cap becomes the expiry.
+</Tip>
+
+At submission, Alfiz runs any leading auto-approval stages immediately. If every stage passes at once, the request resolves to `approved` and the grant row is written before `submitRequest` returns.
+
+## Request workflow states
+
+<AccordionGroup>
+  <Accordion title="pending">
+    The request has been submitted and is waiting for a human decision on the current stage. The `stageIndex` field indicates which stage is active.
+  </Accordion>
+  <Accordion title="approved (auto-approved)">
+    Every stage passed. If all stages were `auto` predicates and every predicate evaluated to `true`, the request resolves without any human decision. The grant row is written atomically with the state transition.
+  </Accordion>
+  <Accordion title="approved">
+    A human approver advanced the final stage. The grant row is written as part of that decision — approval **is** row creation, with full provenance linking the row back to the request.
+  </Accordion>
+  <Accordion title="denied">
+    Any approver at any stage denied the request. No grant row is written. Denial at any stage is final.
+  </Accordion>
+</AccordionGroup>
+
+## Time-bound requests and just-in-time access
+
+A request may carry a `proposedExpiresAt` timestamp. When approved, the resulting grant row carries that expiry. This pairs naturally with `can.fresh` on destructive or sensitive surfaces — `can.fresh` bypasses the subject-side cache and evaluates the grant's expiry at the moment of the check, so temporary elevation takes effect and expires precisely.
+
+```typescript
+// The canonical just-in-time pattern:
+// 1. User requests time-bound access via submitRequest({ proposedExpiresAt })
+// 2. Approver calls decideRequest(...)
+// 3. Grant row is written with expiresAt set
+// 4. Enforcement bypasses the cache:
+await alfiz.can.fresh({ userId }, "docs.files.delete", "docs.folder:9");
+```
+
+The requestability declaration can enforce time bounds from the catalog side:
+
+- `requireExpiry: true` — every request to this role or scope type must propose an expiry; Alfiz rejects open-ended requests.
+- `maxDurationMs` — caps how far into the future `proposedExpiresAt` may be, even if `requireExpiry` is not set.
+
+## Where requests live
+
+Requests are homed where the resulting grant row would live:
+
+- **Global-scope requests** (role requests with no scope, or with scope `*`) run on the org root Application. If your Application is not the org root, submitting a global-scope request is rejected.
+- **Instance-scoped requests** (pattern requests targeting `scopeType:id`) run on the Application that owns that scope.
+
+Under federation, the `AccessRequest` shape is identical against every provider — workflows deepen without migration.
+
+## Approver operations
+
+<Steps>
+  <Step title="List your queue">
+    Call `listApproverQueue(approverUserId)` to fetch every pending request the given user may currently decide, based on their role grants and position in the reporting hierarchy.
+
+    ```typescript
+    const queue = await app.listApproverQueue("manager-uid");
+    ```
+  </Step>
+  <Step title="Decide a request">
+    Call `decideRequest` with the request id, a `deciderUserId`, and a decision of `"approved"` or `"denied"`. Optionally attach a note.
+
+    ```typescript
+    const updated = await app.decideRequest("req-abc", {
+      deciderUserId: "manager-uid",
+      decision: "approved",
+      note: "Confirmed with the team lead.",
+    });
+    ```
+
+    Alfiz validates that `deciderUserId` is entitled to decide the current stage before applying the decision. Approving the final stage triggers the grant write atomically.
+  </Step>
+  <Step title="Cancel a request">
+    The requester may cancel a pending request at any time:
+
+    ```typescript
+    await app.cancelRequest("req-abc", "user-42");
+    ```
+
+    Cancelled requests do not appear in approver queues. Alfiz also cancels all pending requests automatically when you call `deleteSubject` or `deleteScope`.
+  </Step>
+</Steps>
+
+## The headless admin surfaces
+
+The headless admin kit exposes two ready-made request surfaces:
+
+- **Request form** — renders the justification prompts declared on the requestable role or scope type, validates required fields and select options before submission, and calls `submitRequest` for you.
+- **Approver queue** — shows each approver their pending decisions, with the proposed grant details and justification answers, and wires the approve/deny actions to `decideRequest`.
+
+Both surfaces are headless: they own logic and state, not markup. Bring your own components.

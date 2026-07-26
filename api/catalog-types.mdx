@@ -1,0 +1,287 @@
+---
+title: "Catalog TypeScript Types Reference"
+sidebarTitle: "Catalog Types"
+description: "Reference for CatalogInput, PermissionLeafInput, GroupInput, ScopeTypeInput, NavItemInput, and the derived KeyOf and PatternOf types used throughout Alfiz."
+---
+
+This page covers every TypeScript type used when declaring a catalog with `defineCatalog`. All input types are imported from `@alfiz-auth/core`.
+
+```ts
+import type {
+  CatalogInput,
+  PermissionLeafInput,
+  GroupInput,
+  ScopeTypeInput,
+  NavItemInput,
+} from "@alfiz-auth/core";
+```
+
+## `CatalogInput`
+
+The top-level object passed to `defineCatalog`.
+
+<ParamField body="namespace" type="string" required>
+  Your application's primary namespace. Must be a single valid segment matching `/^[a-zA-Z][a-zA-Z0-9_]*$/`. Every top-level project key must match a declared namespace. `alfiz_internal` is reserved.
+</ParamField>
+
+<ParamField body="additionalNamespaces" type="readonly string[]" optional>
+  Additional namespaces this application owns. Each project key that does not match `namespace` must appear here. Catalogs are federation-shaped from the first commit: declaring namespaces explicitly means the shape is portable to a federated deployment without a later refactor.
+</ParamField>
+
+<ParamField body="projects" type="Record<string, GroupInput>" required>
+  Top-level permission groups, one per project. The blessed convention is `project → tab → permission` (three levels). Each project key must be a declared namespace.
+</ParamField>
+
+<ParamField body="scopeTypes" type="Record<string, ScopeTypeInput>" optional>
+  Scope type declarations. Required for any catalog that grants permissions at non-global resource scopes. Keys are dotted identifiers matching the full key grammar (e.g., `"docs.folder"`, `"docs.doc"`).
+</ParamField>
+
+<ParamField body="navigation" type="readonly NavItemInput[]" optional>
+  The sidebar navigation tree. Each item's `permission` controls its visibility. References are validated by `alfiz-verify` — nav items that reference unknown permissions produce errors.
+</ParamField>
+
+<ParamField body="allowArbitraryDepth" type="boolean" default="false" optional>
+  By default, `defineCatalog` requires exactly three levels (`project.tab.permission`). Set to `true` to permit two-level integration catalogs (`zoom.host`) or deeper nesting. This is an explicit opt-out; the linter does not flag it on opted-in catalogs.
+</ParamField>
+
+<ParamField body="includeAlfizInternal" type="boolean" default="true" optional>
+  When `true` (the default), Alfiz's own `alfiz_internal.*` permissions are merged into the catalog. Set to `false` only for catalogs that render no Alfiz administration UI. When false, all `alfiz_internal.*` features — including view-as — are unavailable.
+</ParamField>
+
+---
+
+## `PermissionLeafInput`
+
+A permission leaf is a concrete, grantable and checkable permission. Assign it to a key in `GroupInput.permissions`. The shorthand `true` is equivalent to an empty `PermissionLeafInput {}` and lets `defineCatalog` infer all fields.
+
+```ts
+type LeafInput = true | PermissionLeafInput;
+```
+
+<ParamField body="label" type="string" optional>
+  Short human-facing name for pickers and checkboxes, e.g. `"Publish course"`. Falls back to the permission name when absent. Keep it brief — the `description` field carries longer help text.
+</ParamField>
+
+<ParamField body="description" type="string" optional>
+  Longer help text shown beside the label in role editors and request forms.
+</ParamField>
+
+<ParamField body="kind" type='"read" | "action"' optional>
+  The read-versus-action taxonomy. When omitted, `defineCatalog` infers it: `"read"` for leaves named `read` or `read_*`; `"action"` for everything else.
+</ParamField>
+
+<ParamField body="destructive" type="boolean" optional>
+  Marks the permission as a destructive action that should be gated with `can.fresh()` (cache-bypassing) at enforcement points. When omitted, inferred `true` for leaves named `delete`, `delete_*`, `destroy`, `destroy_*`, `purge`, or `purge_*`; `false` for everything else.
+</ParamField>
+
+<ParamField body="scopes" type="readonly ScopeType[]" optional>
+  Scope types at which this permission is grantable, **in addition to the global scope `"*"`**. When omitted, inherits from the nearest enclosing `GroupInput` that declares `scopes`; falls back to `[]` (global-only) when no ancestor group declares scopes. Declare explicitly (including `[]` for global-only) to override the inherited default. Granting at an undeclared scope type is a validation error at write time.
+</ParamField>
+
+<ParamField body="impliedOnAncestors" type="boolean" default="false" optional>
+  Ancestor visibility (§7.5): when `true`, holding any grant of this leaf at a scope implies it on all ancestors of that scope. This enables the "a shared document shows its containing folder" pattern — a user granted access to `docs.doc:123` will also have `docs.files.read` at the folder that contains it. Off by default.
+</ParamField>
+
+---
+
+## `GroupInput`
+
+Groups are folders in the permission tree. They never carry keys themselves — only their leaves do. The blessed shape is `project → tab → permission`; the `groups` field inside `GroupInput` allows further nesting.
+
+<ParamField body="label" type="string" optional>
+  Short human-facing name for the group in admin UIs. Falls back to the group's path segment when absent.
+</ParamField>
+
+<ParamField body="description" type="string" optional>
+  Longer description for the group, shown in role editors and audit surfaces.
+</ParamField>
+
+<ParamField body="scopes" type="readonly ScopeType[]" optional>
+  Default scope types for every leaf under this group (including leaves in descendant groups), overridable per leaf or by a nearer enclosing group. Saves declaring an identical `scopes: [...]` on dozens of sibling leaves when a whole tab is scoped to one resource type.
+</ParamField>
+
+<ParamField body="permissions" type="Record<string, LeafInput>" optional>
+  The leaves directly under this group. Keys are single segments (e.g., `"read"`, `"update_file"`) and become the final segment of the full permission key.
+</ParamField>
+
+<ParamField body="groups" type="Record<string, GroupInput>" optional>
+  Nested child groups. Supports recursive nesting. When `allowArbitraryDepth` is `false` (the default), `defineCatalog` errors if any resulting key is not exactly three segments deep.
+</ParamField>
+
+---
+
+## `ScopeTypeInput`
+
+A scope type is the static schema fact declaring a resource kind. Instances of the type (e.g., `docs.folder:abc123`) are the runtime resource IDs stored in grants.
+
+<ParamField body="description" type="string" optional>
+  Human-readable description of the resource kind, shown in admin UIs and request forms.
+</ParamField>
+
+<ParamField body="parent" type="ScopeType | null" optional>
+  The expected parent scope type. `null` for top-level types whose instances parent directly to `"*"`. A type whose instances nest under other instances of the same type (folders in folders) declares itself as its own parent: `{ parent: "docs.folder" }`.
+
+  This is a **commitment**, not a hint. A `parent: null` type's instances have the ancestor chain `[scope, "*"]` by declaration, which lets the request-scoped snapshot check them synchronously without consulting the ancestry resolver.
+
+  When omitted, the parent defaults to `null`.
+</ParamField>
+
+<ParamField body="multiParent" type="boolean" default="false" optional>
+  When `true`, an instance's effective access is the **union** of all parents' access (e.g., a document in multiple folders). Off by default. Some products need this (shortcuts, labels-as-folders); others consider it a leak vector. Enable it explicitly.
+</ParamField>
+
+<ParamField body="requestable" type="object" optional>
+  Declares that grants at instances of this scope type are requestable. When absent, access at this scope type cannot be requested.
+
+  <ParamField body="requestable.prompts" type="readonly RequestPromptInput[]" optional>
+    Structured justification prompts shown on the request form. Each prompt has an `id`, `label`, and optional `required: boolean`.
+  </ParamField>
+
+  <ParamField body="requestable.maxDurationMs" type="number" optional>
+    Maximum grant duration a request may propose, in milliseconds. When the requester omits a proposed expiry, this cap becomes the expiry automatically. When the requester proposes an expiry exceeding this value, the request is rejected.
+  </ParamField>
+
+  <ParamField body="requestable.requireExpiry" type="boolean" default="false" optional>
+    When `true`, the request must propose an expiry — open-ended access cannot be requested for this scope type.
+  </ParamField>
+
+  <ParamField body="requestable.policy" type="ApprovalPolicyInput" required>
+    The approval workflow. Must declare at least one `stage`. A requestable scope type with an empty `stages` array is a catalog error, caught by `alfiz-verify`.
+
+    ```ts
+    interface ApprovalPolicyInput {
+      stages: ApprovalStage[];
+    }
+    ```
+
+    Stage kinds include `"self"` (auto-approved), `"management"` (manager approval chain, with configurable `layers`), and explicit approver lists.
+  </ParamField>
+</ParamField>
+
+---
+
+## `NavItemInput`
+
+Navigation items wire permission keys to sidebar entries. Each item's `permission` controls whether the item is visible to the current user.
+
+<ParamField body="label" type="string" required>
+  The display label for this navigation item.
+</ParamField>
+
+<ParamField body="href" type="string" optional>
+  The URL this item links to. Omit for section headers that group children without linking anywhere.
+</ParamField>
+
+<ParamField body="permission" type="PermissionPattern | readonly PermissionKey[]" required>
+  Visibility wiring: a concrete key, an array of keys (any-of), or a subtree pattern (evaluated via `canAny`). This controls visibility only — the target page still gates its own reads. `alfiz-verify` validates that every referenced key or pattern exists in the catalog.
+</ParamField>
+
+<ParamField body="children" type="readonly NavItemInput[]" optional>
+  Nested child nav items. Supports arbitrary nesting depth.
+</ParamField>
+
+---
+
+## Derived types
+
+### `KeyOf<Cat>`
+
+All concrete permission keys of the catalog as a TypeScript union:
+
+```ts
+import type { KeyOf } from "@alfiz-auth/core";
+import { catalog } from "./alfiz.js";
+
+type AppKey = KeyOf<typeof catalog>;
+// → "docs.files.read" | "docs.files.update_file" | "docs.files.delete" | ...
+```
+
+### `PatternOf<Cat>`
+
+All valid patterns — concrete keys, group wildcards, and the bare `"*"`:
+
+```ts
+import type { PatternOf } from "@alfiz-auth/core";
+import { catalog } from "./alfiz.js";
+
+type AppPattern = PatternOf<typeof catalog>;
+// → "*" | AppKey | "docs.*" | "docs.files.*" | ...
+```
+
+### `SessionOf<Cat>`
+
+The session type for a catalog (see [Sessions](/api/session)):
+
+```ts
+import type { SessionOf } from "@alfiz-auth/application";
+import { catalog } from "./alfiz.js";
+
+type AppSession = SessionOf<typeof catalog>;
+// → AlfizSession<KeyOf<typeof catalog>, PatternOf<typeof catalog>>
+```
+
+### `AlfizInternalKey`
+
+The union of all `alfiz_internal.*` permission keys:
+
+```ts
+import type { AlfizInternalKey } from "@alfiz-auth/core";
+// → "alfiz_internal.access.read"
+//   | "alfiz_internal.access.manage_roles"
+//   | "alfiz_internal.access.manage_groups"
+//   | "alfiz_internal.access.manage_grants"
+//   | "alfiz_internal.access.manage_revokes"
+//   | "alfiz_internal.access.manage_reporting"
+//   | "alfiz_internal.access.view_as"
+//   | "alfiz_internal.requests.read"
+//   | "alfiz_internal.requests.decide_request"
+//   | "alfiz_internal.audit.read"
+//   | "alfiz_internal.catalog.read"
+//   | "alfiz_internal.catalog.publish_catalog"
+```
+
+---
+
+## `ALFIZ_INTERNAL_PROJECT`
+
+The built-in administration project merged into every catalog where `includeAlfizInternal !== false`. Its four tab groups and their permission leaves are:
+
+### `alfiz_internal.access`
+
+Roles, groups, grants, revokes, hierarchy, and view-as.
+
+| Leaf | Kind | Description |
+|---|---|---|
+| `read` | read | View the access administration surface |
+| `manage_roles` | action | Create, edit, delete roles |
+| `manage_groups` | action | Create, edit, delete user groups and their parentage |
+| `manage_grants` | action | Create and delete grants |
+| `manage_revokes` | action | Create and delete personal revokes |
+| `manage_reporting` | action | Edit reporting (manager) edges |
+| `view_as` | action | Preview the product as a role or an individual |
+
+### `alfiz_internal.requests`
+
+Access requests and approvals.
+
+| Leaf | Kind | Description |
+|---|---|---|
+| `read` | read | View the approvals inbox |
+| `decide_request` | action | Approve or deny an access request |
+
+### `alfiz_internal.audit`
+
+The audit log.
+
+| Leaf | Kind | Description |
+|---|---|---|
+| `read` | read | Read the audit log |
+
+### `alfiz_internal.catalog`
+
+Catalog administration.
+
+| Leaf | Kind | Description |
+|---|---|---|
+| `read` | read | View the published catalog |
+| `publish_catalog` | action | Publish a verified catalog to the provider |

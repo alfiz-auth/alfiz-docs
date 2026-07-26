@@ -1,0 +1,217 @@
+---
+title: "Subjects and Subject Closures Explained in Alfiz"
+sidebarTitle: "Subjects"
+description: "A subject is anything that can hold a grant. Alfiz checks the full transitive subject closure — user, groups, ancestors, orgs, and everyone."
+---
+
+A subject is anything that can appear on the left-hand side of a grant row. When Alfiz evaluates a permission check, it does not ask "does this user have a grant?" — it asks "does any member of this user's *subject closure* have a grant?" That distinction is what makes groups, organizations, hierarchical group inheritance, and public access all work through the same single grant-row mechanism.
+
+## Subject kinds
+
+Subject identities are typed string encodings. Every subject id encodes its kind as a prefix so it can live in grant rows, indexes, and wire formats without a parallel object model:
+
+| Encoding | Kind | Description |
+|---|---|---|
+| `user:<id>` | `user` | An individual; the identity-provider user id |
+| `group:<id>` | `group` | An explicit user group |
+| `org:<id>` | `org` | An organization (identity-provider org id) |
+| `service:<id>` | `service` | A service principal (machine subject) |
+| `directs:<uid>` | `directs` | Implicit group — the direct reports of `<uid>` |
+| `orgof:<uid>` | `orgof` | Implicit group — everyone transitively reporting to `<uid>` |
+| `everyone` | `everyone` | The public subject — present in every closure |
+
+Helper constructors produce the correctly-encoded ids:
+
+```ts
+import {
+  userSubject,
+  groupSubject,
+  orgSubject,
+  serviceSubject,
+  directsSubject,
+  orgOfSubject,
+  EVERYONE,
+} from "@alfiz-auth/core";
+
+userSubject("alice")        // "user:alice"
+groupSubject("teachers")    // "group:teachers"
+orgSubject("org_acme")      // "org:org_acme"
+serviceSubject("ci-runner") // "service:ci-runner"
+directsSubject("mgr_jane")  // "directs:mgr_jane"
+orgOfSubject("mgr_jane")    // "orgof:mgr_jane"
+EVERYONE                    // "everyone"
+```
+
+## The subject closure
+
+When Alfiz evaluates a check for a user, it first computes the *subject closure* — the complete transitive set of subjects that user belongs to. The function that computes it takes a plain data input and is a pure function with no I/O:
+
+```ts
+interface SubjectClosureInput {
+  userId: string;
+  /** Explicit group memberships (group ids), as stored on the user record. */
+  groupIds: readonly string[];
+  /**
+   * Group parentage: child group id → parent group ids. Must be acyclic.
+   */
+  groupParents?: ReadonlyMap<string, readonly string[]> | undefined;
+  /** Organization memberships (identity-provider org ids). */
+  orgIds?: readonly string[] | undefined;
+  /**
+   * The user's management chain, nearest manager first.
+   */
+  managerChain?: readonly string[] | undefined;
+}
+
+function computeSubjectClosure(input: SubjectClosureInput): Set<SubjectId>
+```
+
+The result is deterministic and includes, in this order:
+
+1. `user:<userId>` — the user themselves
+2. Every explicit group they belong to (`group:<id>`), breadth-first
+3. Every ancestor of those groups, transitively breadth-first
+4. Implicit reporting groups: `directs:<directManager>` and `orgof:<m>` for every manager in the chain
+5. Every organization they belong to (`org:<id>`)
+6. `everyone`
+
+A concrete example: if Alice belongs to `group:teachers`, and `group:teachers` has parent `group:staff`, Alice's subject closure is:
+
+```
+user:alice
+group:teachers
+group:staff
+everyone
+```
+
+Any grant on `group:staff` reaches Alice automatically — she doesn't need a direct grant.
+
+## `everyone` is not special-cased
+
+The `everyone` subject is the mechanism for public or default access. "Anyone can read the public docs" is not a special flag or a mode switch — it is an ordinary grant row:
+
+```ts
+await app.createGrant({
+  subject: "everyone",
+  pattern: "docs.files.read",
+  scope: "docs.folder:public",
+  provenance: { kind: "admin", actorUserId: "root" },
+});
+```
+
+Because `everyone` is present in every subject closure — including unauthenticated or not-yet-provisioned users — this grant reaches all of them through the standard evaluation path. No special-casing is needed in the check engine.
+
+## Groups
+
+Groups are named bundles of subjects. You grant access to a group with the same `createGrant` call you use for a user or any other subject:
+
+```ts
+await app.createGrant({
+  subject: "group:teachers",
+  pattern: "docs.files.update_file",
+  scope: "docs.folder:curriculum",
+  provenance: { kind: "admin", actorUserId: "root" },
+});
+```
+
+Every member of `group:teachers` now holds `docs.files.update_file` at that scope through their subject closure. Group membership is stored on the user record as `groupIds: string[]`.
+
+Manage membership with `app.setGroupMembership(userId, groupIds, provenance)`:
+
+```ts
+await app.setGroupMembership(
+  "alice",
+  ["group_teachers", "group_staff"],
+  { kind: "admin", actorUserId: "root" },
+);
+```
+
+<Note>
+Groups only widen access — they never revoke. The only negative layer in Alfiz is the personal revoke, which lives on individual users. This is a deliberate semantic constraint, not a missing feature.
+</Note>
+
+### Group nesting
+
+A group may declare parent groups. It inherits the union of all its ancestors' access. The parent relationship is a DAG — Alfiz enforces acyclicity transactionally at every edge write. Attempts to insert a cycle throw a `GraphCycleError` naming the full cycle path:
+
+```ts
+await app.setGroupParents(
+  "group_biology_teachers",
+  ["group_teachers"],   // inherits everything teachers has
+  { kind: "admin", actorUserId: "root" },
+);
+```
+
+The `UserGroup` interface that backs groups in storage is:
+
+```ts
+interface UserGroup {
+  id: string;
+  name: string;
+  description?: string | undefined;
+  /** Parent group ids (the DAG; enforced provider-side). */
+  parents: string[];
+  /** True for virtual parents created by condensation or sync. */
+  virtual?: boolean | undefined;
+}
+```
+
+Group identity is the opaque `id` — renaming a group with `app.updateGroup(...)` never breaks any existing grant.
+
+## Reporting edges and implicit groups
+
+When you store reporting edges (`userId → managerUserId`) with `app.setReportingEdge(...)`, Alfiz derives two implicit group subjects for every manager automatically:
+
+- **`directs:<managerUserId>`** — everyone whose `reportsTo` edge points directly at that manager
+- **`orgof:<managerUserId>`** — the full transitive report tree under that manager
+
+These implicit subjects can be granted to just like any other subject:
+
+```ts
+// Grant every direct report of manager_jane the ability to read team docs
+await app.createGrant({
+  subject: "directs:manager_jane",
+  pattern: "docs.files.read",
+  scope: "docs.folder:team_q3",
+  provenance: { kind: "admin", actorUserId: "root" },
+});
+```
+
+The membership of `directs:manager_jane` is computed dynamically from the reporting tree — there is no separate membership list to maintain. When an employee's manager changes, the implicit group membership updates automatically and the affected subject closures are invalidated.
+
+## Cache dynamics
+
+Subject closures are cached with a default ~30-second TTL. Event-driven invalidation busts the cache immediately on:
+
+- Group membership changes (`setGroupMembership`)
+- Group parentage changes (`setGroupParents`)
+- Reporting edge changes (`setReportingEdge`)
+- User activation/deactivation (`setUserActive`)
+- Grant or revoke writes that touch a user-subject
+
+The TTL is the upper bound on over-access after a revocation when an invalidation event is not available (for example, in a multi-instance deployment where the event did not propagate). For sensitive changes, use `can.fresh(principal, key, scope)` to bypass the cache entirely.
+
+## Showing a user's subject closure
+
+Call `alfiz.explain(principal, key, scope)` to see the full picture — including which grants and revokes matched — for a specific check:
+
+```ts
+const result = await alfiz.explain(
+  { userId: "alice" },
+  "docs.files.read",
+  "docs.doc:123",
+);
+
+// result includes:
+// - allowed: boolean
+// - matchedGrants: GrantRow[]   — the rows that would allow it
+// - matchedRevokes: RevokeRow[] — the rows that suppress it
+```
+
+The underlying `SubjectAccessData` — accessible through `app.getSubjectAccess(principal)` — contains the raw `closure` array, which is the full list of subject ids the check engine evaluated against:
+
+```ts
+const data = await app.getSubjectAccess({ userId: "alice" });
+console.log(data.closure);
+// ["user:alice", "group:teachers", "group:staff", "everyone"]
+```

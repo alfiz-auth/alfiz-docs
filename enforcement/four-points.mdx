@@ -1,0 +1,322 @@
+---
+title: "The Four Enforcement Points Every Surface Needs"
+sidebarTitle: "Four Points"
+description: "Alfiz requires checks at four points — page, navigation, server action, and conditional UI — to fully protect every surface in your application."
+---
+
+A surface is not done until all four enforcement points hold. This is not a guideline — it is the rule that `alfiz-verify` checks at build time and the rule that makes Alfiz's convention document reliable for both human reviewers and coding agents. Skipping any one point leaves a real gap: a user can reach the page but not load it, or load it but submit a hidden form, or navigate without seeing the item but still hit the API directly. All four must hold together.
+
+## The four points
+
+<Steps>
+
+### Point 1 — The page
+
+Gate every page handler or server component at the top, before any data fetching. Use `requirePermission` with the concrete key for the page's primary action. For project root pages — where the right question is "does this user have _anything_ under this project?" — use `requireAny` to gate on the subtree pattern, but still call `requirePermission` for the page's own read:
+
+```ts
+// app/(portal)/drive/[id]/page.tsx
+export default async function DocumentPage({ params }: { params: { id: string } }) {
+  const session = await getSession();
+  const scope = `docs.doc:${params.id}` as const;
+
+  // Gate the page — throws AccessDeniedError → redirected by your error boundary
+  await alfiz.requirePermission({ userId: session.userId }, "docs.files.read", scope);
+
+  const doc = await db.docs.findUniqueOrThrow({ where: { id: params.id } });
+  // ...
+}
+```
+
+For a project index page that lists all documents the user can access, gate on the subtree pattern:
+
+```ts
+// Project root — gate visibility, then gate the read
+await alfiz.requireAny({ userId: session.userId }, "docs.*");
+```
+
+### Point 2 — Navigation visibility
+
+Evaluate each nav item's `permission` field from the catalog via `canAny` before rendering. Items whose pattern the principal does not match do not render — not "greyed out", not hidden with CSS, simply not emitted.
+
+```ts
+// Layout or navigation component
+const session = await getSession();
+const principal = { userId: session.userId };
+
+const navItems = await Promise.all(
+  catalog.navigation.map(async (item) => ({
+    ...item,
+    visible: await alfiz.canAny(principal, item.permission),
+  }))
+);
+
+// Render only the items the user can see
+const visibleItems = navItems.filter((item) => item.visible);
+```
+
+<Note>
+`canAny` is the only valid shape for navigation visibility checks. It answers the broad "does this principal hold anything under this pattern?" question. Do not use `can` for nav visibility — it requires a concrete scope that the navigation layer does not have. Do not use `canAny` as a gate anywhere else.
+</Note>
+
+### Point 3 — Server action or route handler
+
+Every server action and every route handler gates on a concrete permission before doing any work. This is the point that `alfiz-verify` enforces as an error (not a warning) on any exported async function in a `"use server"` file that contains no gate.
+
+<Tabs>
+  <Tab title="Server action">
+    ```ts
+    // app/actions/documents.ts
+    "use server";
+
+    import { alfiz } from "@/lib/alfiz";
+    import { getSession } from "@/lib/session";
+
+    export async function updateDocument(
+      docId: string,
+      updates: Partial<Doc>,
+    ) {
+      const session = await getSession();
+      const scope = `docs.doc:${docId}` as const;
+
+      // Gate before any work
+      await alfiz.requirePermission(
+        { userId: session.userId },
+        "docs.files.update_file",
+        scope,
+      );
+
+      return db.docs.update({ where: { id: docId }, data: updates });
+    }
+
+    export async function deleteDocument(docId: string) {
+      const session = await getSession();
+      const scope = `docs.doc:${docId}` as const;
+
+      // Destructive: bypass caches
+      const allowed = await alfiz.can.fresh(
+        { userId: session.userId },
+        "docs.files.delete",
+        scope,
+      );
+      if (!allowed) throw new AccessDeniedError({ reason: "forbidden", permission: "docs.files.delete", scope });
+
+      return db.docs.delete({ where: { id: docId } });
+    }
+    ```
+  </Tab>
+  <Tab title="Route handler">
+    ```ts
+    // app/api/docs/[id]/route.ts
+    import { alfiz } from "@/lib/alfiz";
+    import { getSession } from "@/lib/session";
+    import { isAccessDenied } from "@alfiz-auth/core";
+    import { NextResponse } from "next/server";
+
+    export async function PUT(
+      request: Request,
+      { params }: { params: { id: string } },
+    ) {
+      const session = await getSession();
+      const scope = `docs.doc:${params.id}` as const;
+
+      try {
+        await alfiz.requirePermission(
+          { userId: session.userId },
+          "docs.files.update_file",
+          scope,
+        );
+      } catch (err) {
+        if (isAccessDenied(err)) {
+          return NextResponse.json({ error: err.reason }, { status: 403 });
+        }
+        throw err;
+      }
+
+      const body = await request.json();
+      const doc = await db.docs.update({ where: { id: params.id }, data: body });
+      return NextResponse.json(doc);
+    }
+    ```
+  </Tab>
+</Tabs>
+
+When a server action bundles multiple field mutations, gate each field path on its own permission. A user who can update title but not move a document to a different folder should not be able to smuggle a `folderId` change through the same action.
+
+### Point 4 — Conditional UI
+
+Gate every button, panel, menu item, and interactive element the user can see. Use `can` (or the snapshot's `.can()`) with the concrete scope of the resource being rendered. This is distinct from navigation visibility (Point 2): navigation is about showing sections; conditional UI is about showing controls within a page the user has already been allowed to reach.
+
+```ts
+// Document detail page — using a snapshot for synchronous per-row checks
+const snap = await alfiz.snapshot({ userId: session.userId });
+snap.require("docs.files.read", scope); // Point 1 — gate the page
+
+// Point 4 — conditional UI controls
+const canEdit    = snap.can("docs.files.update_file", scope);
+const canDelete  = snap.can("docs.files.delete", scope);
+const canShare   = snap.can("docs.files.share", scope);
+```
+
+```tsx
+// In the component
+{canEdit   && <EditButton docId={doc.id} />}
+{canDelete && <DeleteButton docId={doc.id} />}
+{canShare  && <SharePanel docId={doc.id} />}
+```
+
+For unscoped conditional UI — buttons that should appear whenever the user _holds_ the permission at any scope — use `snap.holds(key)` rather than `snap.can(key)` without a scope. An editor who can update documents only in specific folders should still see the Edit button when it is relevant:
+
+```ts
+const editButtonExists = snap.holds("docs.files.update_file");
+// The button itself is still gated by the server action at the concrete scope
+```
+
+</Steps>
+
+---
+
+## Complete example — a document editor
+
+The following shows all four points implemented for a single document-editor feature.
+
+<CodeGroup>
+```ts Page (Point 1)
+// app/(portal)/docs/[id]/page.tsx
+import { alfiz } from "@/lib/alfiz";
+import { getSession } from "@/lib/session";
+import { DocumentEditor } from "./DocumentEditor";
+
+export default async function DocPage({ params }: { params: { id: string } }) {
+  const session = await getSession();
+  const scope = `docs.doc:${params.id}` as const;
+
+  // Point 1 — gate the page
+  const snap = await alfiz.snapshot(
+    { userId: session.userId },
+    { scopes: [scope] },
+  );
+  snap.require("docs.files.read", scope);
+
+  const doc = await db.docs.findUniqueOrThrow({ where: { id: params.id } });
+
+  // Point 4 — conditional UI resolved from the snapshot
+  const canEdit   = snap.can("docs.files.update_file", scope);
+  const canDelete = snap.can("docs.files.delete", scope);
+
+  return (
+    <DocumentEditor
+      doc={doc}
+      canEdit={canEdit}
+      canDelete={canDelete}
+    />
+  );
+}
+```
+
+```ts Navigation (Point 2)
+// app/(portal)/layout.tsx
+import { alfiz } from "@/lib/alfiz";
+import { getSession } from "@/lib/session";
+import { NavLink } from "@/components/NavLink";
+
+export default async function PortalLayout({ children }) {
+  const session = await getSession();
+  const principal = { userId: session.userId };
+
+  // Point 2 — navigation visibility
+  const showDocs    = await alfiz.canAny(principal, "docs.*");
+  const showAdmin   = await alfiz.canAny(principal, "admin.*");
+
+  return (
+    <div>
+      <nav>
+        {showDocs  && <NavLink href="/docs">Documents</NavLink>}
+        {showAdmin && <NavLink href="/admin">Admin</NavLink>}
+      </nav>
+      {children}
+    </div>
+  );
+}
+```
+
+```ts Server action (Point 3)
+// app/actions/documents.ts
+"use server";
+
+import { alfiz } from "@/lib/alfiz";
+import { getSession } from "@/lib/session";
+import { AccessDeniedError } from "@alfiz-auth/core";
+
+export async function saveDocument(docId: string, data: { title: string; body: string }) {
+  const session = await getSession();
+  const scope = `docs.doc:${docId}` as const;
+
+  // Point 3 — gate the action before any work
+  await alfiz.requirePermission(
+    { userId: session.userId },
+    "docs.files.update_file",
+    scope,
+  );
+
+  return db.docs.update({ where: { id: docId }, data });
+}
+
+export async function deleteDocument(docId: string) {
+  const session = await getSession();
+  const scope = `docs.doc:${docId}` as const;
+
+  // Point 3 — destructive: bypass caches
+  if (!(await alfiz.can.fresh({ userId: session.userId }, "docs.files.delete", scope))) {
+    throw new AccessDeniedError({ reason: "forbidden", permission: "docs.files.delete", scope });
+  }
+
+  return db.docs.delete({ where: { id: docId } });
+}
+```
+
+```tsx Conditional UI (Point 4)
+// app/(portal)/docs/[id]/DocumentEditor.tsx
+import { SaveButton } from "@/components/SaveButton";
+import { DeleteButton } from "@/components/DeleteButton";
+
+interface Props {
+  doc: Doc;
+  canEdit: boolean;
+  canDelete: boolean;
+}
+
+export function DocumentEditor({ doc, canEdit, canDelete }: Props) {
+  return (
+    <article>
+      <h1>{doc.title}</h1>
+      <div>{doc.body}</div>
+      <footer>
+        {/* Point 4 — render controls only when the check passed */}
+        {canEdit   && <SaveButton docId={doc.id} />}
+        {canDelete && <DeleteButton docId={doc.id} />}
+      </footer>
+    </article>
+  );
+}
+```
+</CodeGroup>
+
+---
+
+## Scoped forms
+
+All four points accept a `scope` argument wherever a concrete resource instance is available:
+
+| Point | Shape | Scope |
+|---|---|---|
+| Page | `snap.require(key, scope)` | The resource being rendered |
+| Navigation | `canAny(principal, pattern)` | Not applicable — visibility is scope-free |
+| Server action | `requirePermission(principal, key, scope)` | The resource being mutated |
+| Conditional UI | `snap.can(key, scope)` | The resource being displayed |
+
+For surfaces that operate globally (admin dashboards, org-level settings), omit the scope argument — a global grant satisfies every scoped check by definition.
+
+<Note>
+`alfiz-verify` checks coverage across all four points at build time. Run it in CI to catch ungated server actions, misused `canAny()` calls, and catalog keys that no gate references. See [Static Verification](/enforcement/static-verification) for configuration details.
+</Note>

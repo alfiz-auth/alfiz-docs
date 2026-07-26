@@ -1,0 +1,175 @@
+---
+title: "alfiz-verify CLI Reference"
+sidebarTitle: "alfiz-verify"
+description: "alfiz-verify is the static verification CLI for Alfiz. It checks typed keys, coverage, gate shapes, and catalog validity — run it in CI to catch ungated surfaces."
+---
+
+`alfiz-verify` is a static analysis tool that enforces Alfiz's four-point wiring checklist at build time. It parses your TypeScript source files (no type-checker invocation needed) and scans for permission check and gate call sites, coverage gaps, and catalog convention violations. Running it in CI means a new server action with no gate, a typo'd permission key, or a visibility affordance used as a gate becomes a build failure, not a production bug.
+
+## Installation
+
+```bash
+npm install --save-dev @alfiz-auth/verify
+```
+
+## Usage
+
+```bash
+alfiz-verify [--config <path>]
+```
+
+By default, `alfiz-verify` reads `alfiz-verify.config.json` in the current working directory. Pass `--config <path>` to use a different location.
+
+## What it checks
+
+`alfiz-verify` runs four categories of checks on every scan:
+
+### 1. Typed key validation
+
+Every string literal passed to a gate function (`can`, `require`, `gateAction`, etc.) that belongs to a known namespace is validated against the catalog. Unknown keys produce errors; near-misses (group paths where patterns are required) produce a specific suggestion:
+
+```
+✖ [unknown-pattern] src/actions/docs.ts:12 — "docs.files" is a group, not a key — groups are folders, and subtree patterns end in .*: did you mean "docs.files.*"?
+✖ [unknown-pattern] src/actions/docs.ts:34 — "docs.files.publsh" is not in the catalog (typo, or an undeclared key)
+```
+
+### 2. Coverage linting
+
+Warnings on catalog leaves that no gate or nav item references. Errors on exported async functions in server files that contain no gate call at all:
+
+```
+⚠ [unreferenced-leaf] <catalog>:0 — "docs.admin.manage_billing" is declared but referenced by no gate or nav item — dead permission, or missing enforcement?
+✖ [ungated-action] src/actions/billing.ts:8 — exported server action "updatePaymentMethod" contains no gate — every action gates on a concrete permission before doing work
+```
+
+<Note>
+  `alfiz_internal.*` keys are exempt from coverage warnings — they are gated inside Alfiz's own admin surfaces, not your application code.
+</Note>
+
+### 3. Gate-shape linting
+
+Errors when a visibility affordance (`canAny`, `requireAny`) is used directly as a gate in a server file. Visibility affordances tell you whether any matching key is held somewhere — they are not access control decisions:
+
+```
+✖ [visibility-as-gate] src/actions/export.ts:15 — canAny() is a visibility affordance, never a gate — server actions and route handlers gate on a concrete permission (can/require*)
+```
+
+### 4. Catalog linting
+
+Convention violations detected by running `lintCatalog` on the loaded catalog document:
+
+```
+✖ [catalog] <catalog>:0 — docs.files: below the naming floor: every tab defines at least one read permission (`read` or `read_<thing>`)
+⚠ [catalog] <catalog>:0 — docs.admin.ManageBilling: actions are named `<verb>_<noun>` in snake_case
+✖ [catalog] <catalog>:0 — docs.doc: requestable without a resolvable policy: declare at least one approval stage
+```
+
+## Emitting the catalog
+
+Before running `alfiz-verify`, emit your catalog to a JSON file that the CLI can load. Use `catalog.toDocument()`:
+
+```bash
+node --experimental-strip-types -e \
+  'import("./src/alfiz.ts").then(m => console.log(JSON.stringify(m.catalog.toDocument())))' \
+  > alfiz-catalog.json
+```
+
+If you use a build step that compiles TypeScript first, run from the compiled output:
+
+```bash
+node -e \
+  'import("./dist/alfiz.js").then(m => console.log(JSON.stringify(m.catalog.toDocument())))' \
+  > alfiz-catalog.json
+```
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Clean — no errors (warnings may be present) |
+| `1` | One or more error-severity issues found |
+| `2` | Config file missing or unparseable, or a `serverFilePatterns` entry is an invalid RegExp |
+
+## Output format
+
+Each issue is printed to stderr in the format:
+
+```
+<symbol> [<rule>] <file>:<line> — <message>
+```
+
+| Symbol | Meaning |
+|---|---|
+| `✖` | Error-severity issue |
+| `⚠` | Warning-severity issue |
+| `○` | Ignored file (skipped by `alfiz-verify-ignore-file` pragma) |
+
+A summary line follows all issues:
+
+```
+alfiz-verify: 42 file(s), 1 ignored, 2 error(s), 1 warning(s)
+```
+
+## File-level opt-out
+
+Files that authenticate outside the catalog by design (system trust domains, deploy-key surfaces, internal health endpoints) can opt out of scanning with a file-header pragma:
+
+```ts
+// alfiz-verify-ignore-file system trust domain, authenticates by deploy key
+"use server";
+
+// ... no Alfiz gates here by design
+```
+
+The pragma must appear in the file's header region — before the first non-directive statement. Comments before or between `"use server"` / `"use client"` / `"use strict"` directives all qualify. The reason text is required: an unexplained exemption in a security tool is how exemptions rot.
+
+<Warning>
+  A pragma that appears after the header region does nothing. `alfiz-verify` reports it as a warning rather than silently dropping it, so you can see that the file is still being scanned.
+</Warning>
+
+## GitHub Actions example
+
+```yaml
+# .github/workflows/verify.yml
+name: alfiz-verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Emit catalog
+        run: |
+          node --experimental-strip-types -e \
+            'import("./src/alfiz.ts").then(m => console.log(JSON.stringify(m.catalog.toDocument())))' \
+            > alfiz-catalog.json
+
+      - name: Run alfiz-verify
+        run: npx alfiz-verify
+```
+
+## Built-in gate and visibility names
+
+`alfiz-verify` recognizes the following names as gates and visibility affordances out of the box. The `gateNames` and `visibilityNames` config fields are **additive** — your custom wrappers extend the defaults; the defaults are always included via the CLI.
+
+**Default gate names:** `can`, `fresh`, `require`, `requirePermission`, `gateAction`, `apiRequirePermission`
+
+**Default visibility names:** `canAny`, `requireAny`
+
+**Default server file patterns:** `app/**/route.(t|j)sx?`, `pages/api/`
+
+<Tip>
+  Property access is matched on the final name only. `session.require`, `client.can`, and `can.fresh` all count as gates — you do not need to add them separately.
+</Tip>

@@ -1,0 +1,63 @@
+---
+title: "Alfiz Changelog — Releases and Version History"
+sidebarTitle: "Changelog"
+description: "Every Alfiz release, from 0.8 to 1.0. See what shipped, what changed, and what was fixed across the Client and Application packages."
+---
+
+Alfiz moves deliberately — each release addresses a concrete gap in how authorization is modeled, checked, or maintained. The entries below cover every version from 0.8 to 1.0, with enough context to understand not just *what* changed but *why* it had to.
+
+---
+
+## 1.0.0 — July 14, 2026
+
+<Note>
+  The Alfiz semantics are now **frozen**. Breaking changes to grammar, wildcard behavior, precedence rules, or the grant tuple shape will require a new major version. You can build on the 1.0 surface with confidence.
+</Note>
+
+Version 1.0 marks the point at which the core authorization model stops being negotiable. Union-only inheritance, negative-always-wins precedence, forward-inclusive wildcards, the naming floor, and the grant tuple shape are all locked. Template-literal key types derived from your catalog are now stable API — no more churn between minor versions.
+
+### What shipped
+
+**`can.fresh()`** — Destructive surfaces and time-bound elevations sometimes need a guarantee that the answer hasn't been served from a cache. Call `can.fresh()` to bypass any cached result and go straight to the source. This is especially useful on confirmation dialogs, irreversible mutations, and privilege-escalation flows.
+
+**Coverage linting now errors** — Previously, exporting a server action with no gate produced a warning. It now produces an error. If you ship a server action, Alfiz expects a gate to be present; a missing gate is a misconfiguration, not a style preference.
+
+**Per-scope-type grantability in `defineCatalog()`** — You can now declare which scope types a given permission is grantable within, directly in your catalog definition. This tightens the contract between catalog authors and the grant UI, making it impossible to offer a permission for grant in a context where it has no meaning.
+
+---
+
+## 0.9.2 — June 30, 2026
+
+Cycle detection existed before this release, but the errors it produced weren't actionable. A bare "cycle detected" message tells you something is wrong without telling you where to look. This release makes cycle errors unambiguous.
+
+### What shipped
+
+**Full cycle paths in errors** — When an interactive edit would create a cycle in the group parentage graph, Alfiz now hard-rejects the operation and names the complete path. Errors read as `A → B → C → A` so you can see exactly which nodes form the loop.
+
+**Auto-condensation of strongly connected components** — When you use directory imports, Alfiz now detects strongly connected components in the import graph and automatically condenses them into a virtual parent node. You receive a warning explaining what was condensed, so the graph remains navigable without requiring you to manually untangle cycles before import proceeds.
+
+---
+
+## 0.9.0 — June 11, 2026
+
+Organizational domains create a specific authorship problem: when data about your org structure can be written by multiple sources, enforcing a consistent hierarchy becomes impossible. This release establishes a single-writer model and provides the tooling to move an Application into — or out of — that model safely.
+
+### What shipped
+
+**Org root with audited handoff** — Organizational-domain data now has exactly one writer. The org root transfers ownership in both directions through an audited handoff, so there is always a clear record of who held write authority and when it changed.
+
+**Promotion** — Promoting a standalone Application into the directory imports its groups, roles, and global grants through the existing directory-import validation path. Reporting hierarchies that can't be resolved automatically are surfaced for human review, because trees are not union-safe and cannot be merged without a decision.
+
+**Demotion** — Demoting an Application out of the directory snapshots its dataset back down with full provenance attached. You get a complete record of what the dataset looked like at the moment of demotion, not a reconstruction.
+
+---
+
+## 0.8.4 — May 22, 2026
+
+When an application stops publishing a permission key, that key may still be referenced by centrally-managed roles. Hard-deleting it silently rewrote what those roles meant — checks that had been passing would start passing for a different reason, or failing for none at all. This release replaces deletion with tombstoning.
+
+### What shipped
+
+**Tombstones, not deletes** — Alfiz no longer hard-deletes permission keys that an application stops publishing. Instead, it tombstones them. Tombstoned keys stop matching authorization checks immediately so they can't be used to grant access, but they remain visible in editors marked as deprecated. This makes the gap between the published catalog and the roles that reference it explicit rather than invisible.
+
+**Drift reports** — The registry now emits a drift report whenever a role references permissions that are no longer published. The report names each affected role and the count of missing keys — for example, *"role X references 3 permissions no longer published"* — so you can resolve the gap deliberately rather than discovering it in production.

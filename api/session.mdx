@@ -1,0 +1,237 @@
+---
+title: "Sessions and the Identity Adapter"
+sidebarTitle: "Sessions"
+description: "The Alfiz Application verifies identity-provider tokens and constructs sessions for use in can() checks — the bridge between your auth system and Alfiz."
+---
+
+A session is the typed, per-request object your server code calls `can()` on. It carries an authenticated `actorUserId` and, optionally, a view-as state for admin preview. Sessions are the bridge between your identity provider (Clerk, Auth.js, or any other) and Alfiz's permission evaluation — Alfiz does not issue or validate tokens; you verify the token through your provider and pass the resulting user ID to `createSession`.
+
+## Creating a session
+
+```ts
+import { createSession } from "@alfiz-auth/application";
+
+async function createSession<K extends string, P extends string>(
+  client: AlfizClient<K, P>,
+  options: SessionOptions,
+): Promise<AlfizSession<K, P>>
+```
+
+### `SessionOptions`
+
+<ParamField body="actorUserId" type="string" required>
+  The ID of the authenticated user, as issued by your identity provider. This is the user whose **real** permissions are checked — it is never replaced by a view-as state for access decisions.
+</ParamField>
+
+<ParamField body="viewAs" type="ViewAsState | null" optional>
+  Activates a preview session. Pass `null` (or omit) for a normal session. The caller is responsible for verifying that the actor holds `alfiz_internal.access.view_as` before passing a non-null value — `createSession` enforces this gate and throws `AccessDeniedError` if the actor lacks it.
+
+  ```ts
+  type ViewAsState =
+    | { kind: "role"; roleId: string }
+    | { kind: "user"; userId: string }
+  ```
+</ParamField>
+
+### Return value
+
+<ResponseField name="AlfizSession" type="AlfizSession<K, P>">
+  A session object with `can`, `canAny`, `require`, and `requireAny` methods. All checks are preview-narrowed: a view-as session can only see access that both the actor **and** the previewed subject hold. A preview can narrow what is shown; it can never escalate privileges.
+</ResponseField>
+
+## Session methods
+
+```ts
+class AlfizSession<K, P> {
+  readonly actorUserId: string;
+  readonly viewAs: ViewAsState | null;
+  readonly subjectUserId: string;    // preview user's id during user preview, actor's otherwise
+
+  can(key: K | readonly K[], scope?: ScopeId): Promise<boolean>
+  canAny(pattern: P): Promise<boolean>
+  require(key: K | readonly K[], scope?: ScopeId): Promise<void>    // throws AccessDeniedError
+  requireAny(pattern: P): Promise<void>                              // throws AccessDeniedError
+}
+```
+
+<Note>
+  Always use `actorUserId` for audit attribution — it is never the previewed subject. Use `subjectUserId` for data-scoped surfaces (e.g., "show documents owned by this user") — it returns the previewed user's ID during a user preview, and the actor's ID otherwise.
+</Note>
+
+## Derived session type
+
+Use `SessionOf<typeof catalog>` to type session variables without writing out the `K` and `P` type parameters by hand:
+
+```ts
+import type { SessionOf } from "@alfiz-auth/application";
+import { catalog } from "./alfiz.js";
+
+type AppSession = SessionOf<typeof catalog>;
+// equivalent to AlfizSession<KeyOf<typeof catalog>, PatternOf<typeof catalog>>
+```
+
+## Wiring to Clerk (Next.js example)
+
+Alfiz does not provide a Clerk adapter package — you write a thin `getAlfizSession` helper that calls Clerk's `auth()` and passes the user ID to `createSession`. This keeps the integration explicit and avoids a hard dependency on any specific Clerk version.
+
+```ts
+// lib/alfiz-session.ts
+import { auth } from "@clerk/nextjs/server";
+import { createSession, parseViewAs } from "@alfiz-auth/application";
+import { alfiz } from "./alfiz.js"; // your AlfizClient
+
+export async function getAlfizSession() {
+  const { userId } = await auth();
+  if (!userId) return null;
+
+  // View-as state is persisted in a cookie set by your admin UI.
+  // Parse it server-side; createSession gates on the real actor's permissions.
+  const { cookies } = await import("next/headers");
+  const jar = await cookies();
+  const viewAsRaw = jar.get("alfiz_view_as")?.value ?? null;
+  const viewAs = parseViewAs(viewAsRaw);
+
+  return createSession(alfiz, { actorUserId: userId, viewAs });
+}
+```
+
+```ts
+// app/actions/publish-doc.ts
+"use server";
+
+import { getAlfizSession } from "@/lib/alfiz-session";
+
+export async function publishDoc(docId: string) {
+  const session = await getAlfizSession();
+  if (!session) throw new Error("Unauthenticated");
+
+  await session.require("docs.files.publish", `docs.doc:${docId}`);
+  // ... publish logic
+}
+```
+
+## View-as: admin preview
+
+Administrators holding `alfiz_internal.access.view_as` can preview the product as either a role or an individual user. `createSession` enforces this gate automatically — passing a non-null `viewAs` without the permission throws `AccessDeniedError`.
+
+```ts
+import { createSession, serializeViewAs, parseViewAs } from "@alfiz-auth/application";
+
+// Start a role preview (UI sets the cookie):
+const session = await createSession(alfiz, {
+  actorUserId: adminUserId,
+  viewAs: { kind: "role", roleId: "role-id-here" },
+});
+
+// Start a user preview:
+const session = await createSession(alfiz, {
+  actorUserId: adminUserId,
+  viewAs: { kind: "user", userId: "target-user-id" },
+});
+
+// End the preview (no permission check — stopping a preview is always allowed):
+const session = await createSession(alfiz, {
+  actorUserId: adminUserId,
+  viewAs: null,
+});
+```
+
+Serialize and deserialize view-as state for cookie storage:
+
+```ts
+import { serializeViewAs, parseViewAs } from "@alfiz-auth/application";
+
+// Serialize to a cookie value:
+const cookieValue = serializeViewAs({ kind: "role", roleId: "r1" });
+// → "role:r1"
+
+// Deserialize from a cookie value:
+const viewAs = parseViewAs(cookieValue);
+// → { kind: "role", roleId: "r1" }
+```
+
+<Warning>
+  Stopping a preview is deliberately ungated (anti-lockout). Never require `view_as` to exit a preview session. Build the "exit preview" button to call `createSession` with `viewAs: null`.
+</Warning>
+
+## `assertCanViewAs`
+
+If you need to check preview eligibility independently (for example, to show or hide the "view as" UI affordance), call `assertCanViewAs` directly:
+
+```ts
+import { assertCanViewAs } from "@alfiz-auth/application";
+
+async function assertCanViewAs<K extends string, P extends string>(
+  client: AlfizClient<K, P>,
+  actorUserId: string,
+): Promise<void>
+```
+
+Throws `AccessDeniedError` when the actor does not hold `alfiz_internal.access.view_as`, or when the catalog was built with `includeAlfizInternal: false`.
+
+## Service principals
+
+For machine-to-machine authentication — background jobs, CI pipelines, internal services — Alfiz provides a local service-key shim that validates shared bearer tokens server-side.
+
+### Creating the shim
+
+```ts
+import {
+  createServiceKeyShim,
+  parseServiceKeysEnv,
+} from "@alfiz-auth/application";
+
+// Parse keys from the conventional env format:
+// ALFIZ_SERVICE_KEYS="worker:key1current,key1previous;scheduler:key2"
+const configs = parseServiceKeysEnv(process.env.ALFIZ_SERVICE_KEYS);
+const serviceKeys = createServiceKeyShim(configs);
+```
+
+### Verifying a service request
+
+```ts
+// In a route handler or middleware:
+const result = serviceKeys.verify(request.headers.get("Authorization"));
+if (!result.ok) {
+  return Response.json({ error: "Unauthorized" }, { status: 401 });
+}
+
+// result.principal is a PrincipalRef — pass it to can() like any user:
+const allowed = await alfiz.can(result.principal, "docs.files.read");
+```
+
+A verified service key yields the machine subject `service:<serviceId>`. Grant to it like any other subject:
+
+```ts
+await app.createGrant({
+  subject: "service:worker",
+  pattern: "docs.files.*",
+  provenance: { kind: "admin", actorUserId: "root" },
+});
+```
+
+### The env format
+
+`parseServiceKeysEnv` parses `ALFIZ_SERVICE_KEYS` in the format:
+
+```
+<serviceId>:<currentKey>[,<previousKey>];<serviceId2>:<key>;...
+```
+
+Keep the previous key present during rotation, then remove it after confirming the new key is deployed everywhere.
+
+### Key length requirement
+
+Keys must be at least 16 characters. `createServiceKeyShim` throws at startup if any key is shorter.
+
+### Client-reach guard
+
+Service keys must never reach the browser. Add `ALFIZ_SERVICE_KEYS` to `forbidClientIdentifiers` in your `alfiz-verify.config.json` so the build fails if the key module ever becomes client-reachable:
+
+```json
+{
+  "forbidClientIdentifiers": ["ALFIZ_SERVICE_KEYS"]
+}
+```
+
+See [Verify Config](/api/verify-config) for the full configuration reference.

@@ -1,0 +1,205 @@
+---
+title: "createApplication — Set Up the Local Provider"
+sidebarTitle: "createApplication"
+description: "createApplication(options) creates the Alfiz Application — the local provider that serves permission checks against your own database with no external dependency."
+---
+
+`createApplication` wires together your catalog, your storage driver, and your object-hierarchy resolver into the Alfiz Application — a library-embedded authorization engine that runs entirely in-process. The Application implements the full provider contract (grants, revokes, roles, groups, access requests, directory ingestion, the audit log) against your own database. No external service is involved at runtime: every `can()` check resolves locally.
+
+## Signature
+
+```ts
+import { createApplication } from "@alfiz-auth/application";
+
+function createApplication(options: ApplicationOptions): AlfizApplication
+```
+
+## Parameters
+
+<ParamField body="catalog" type="AnyCatalog" required>
+  The catalog produced by `defineCatalog()`. The Application validates every grant and revoke against it — unknown patterns, scope-type mismatches, and group references in key positions are all rejected at write time.
+</ParamField>
+
+<ParamField body="storage" type="StorageDriver" required>
+  The storage driver the Application reads and writes through. Use `memoryDriver()` during development and tests; use `prismaDriver` from `@alfiz-auth/prisma` in production. You can also implement the `StorageDriver` interface yourself over any other database. See [Storage Drivers](/api/storage-drivers) for details.
+</ParamField>
+
+<ParamField body="ancestry" type="AncestryResolver" optional>
+  The ancestry seam: a function (or async function) that resolves a scope instance's ancestor chain from your application's own tables.
+
+  ```ts
+  type AncestryResolver = (scope: ScopeId) => ScopeId[] | Promise<ScopeId[]>
+  ```
+
+  The resolver must return the ancestor chain of `scope`, **ordered nearest-first**, ending at the global scope `"*"`. The chain excludes `scope` itself. For multi-parent scope types the result is the deduplicated union of all parents' chains.
+
+  Omit this field only for fully-global deployments where every scope is `"*"`. Any catalog that declares scope types with `parent` set (i.e., any scoped permission tree) requires an ancestry resolver — without one, scoped checks will not walk the hierarchy.
+</ParamField>
+
+<ParamField body="orgRoot" type="boolean" default="true" optional>
+  Controls whether this Application is the authoritative writer of organizational-domain data. See [orgRoot behavior](#orgroot-behavior) below.
+</ParamField>
+
+<ParamField body="clock" type="() => number" optional>
+  A function that returns the current time as epoch milliseconds. Defaults to `Date.now`. Override in tests to control time-based behavior (grant expiry, request duration validation).
+</ParamField>
+
+<ParamField body="ids" type="() => string" optional>
+  A function that generates unique IDs for new rows. Defaults to `randomUUID` from `node:crypto`. Override in tests if you need deterministic IDs.
+</ParamField>
+
+## Return value
+
+<ResponseField name="AlfizApplication" type="AlfizApplication">
+  An `AlfizApplication` instance implementing the `AlfizProvider` contract. Pass this as the `provider` when constructing an `AlfizClient` via `createAlfizClient`.
+</ResponseField>
+
+## `orgRoot` behavior
+
+<Tabs>
+  <Tab title="orgRoot: true (default)">
+    The Application is the **org root**: it owns organizational-domain data — groups, roles, global grants and revokes, the reporting tree — and is the sole writer of it. This is the correct setting for standalone single-organization deployments.
+  </Tab>
+  <Tab title="orgRoot: false">
+    The org root lives elsewhere; this Application holds organizational-domain data as a **synced read model**. Local writes to org-domain data (global-scope grants, groups, reporting edges, user provisioning) are rejected with `ProviderWriteRejectedError`. Use this setting in federated deployments where a central service manages the org layer and the local Application only handles resource-scoped grants.
+  </Tab>
+</Tabs>
+
+## The ancestry resolver
+
+The ancestry resolver is the bridge between Alfiz's permission evaluation engine and your application's object hierarchy. Because you own the hierarchy (a document lives in a folder, a folder lives in a workspace), only your code knows which ancestors a given scope has. The resolver is called during scoped `can()` checks; its output is the ancestor chain Alfiz uses to walk from the checked scope up to `"*"`.
+
+```ts
+import { parentPointerResolver } from "@alfiz-auth/core";
+
+// The simplest conforming implementation: wrap a single parent-pointer lookup.
+const ancestry = parentPointerResolver((scope) => myDb.parentOf(scope));
+```
+
+`parentPointerResolver` handles single-parent hierarchies and multi-parent cases (returning an array of parents), deduplication, and cycle detection. Implement the resolver directly for more complex cases:
+
+```ts
+const ancestry: AncestryResolver = async (scope) => {
+  const ancestors: ScopeId[] = [];
+  let current = await myDb.parentOf(scope);
+  while (current) {
+    ancestors.push(current);
+    current = await myDb.parentOf(current);
+  }
+  ancestors.push("*");
+  return ancestors;
+};
+```
+
+<Note>
+  If you move a resource (change its parent pointer), call `app.notifyScopeMoved(scope)` from the same code path. This emits the `scope` invalidation event that immediately busts cached ancestor chains. Without it, staleness is bounded only by the client's object-chain TTL (default 60 seconds).
+</Note>
+
+## Application methods overview
+
+The returned `AlfizApplication` exposes the full provider surface. Key method groups:
+
+| Category | Methods |
+|---|---|
+| **Grants** | `createGrant`, `createGrants`, `deleteGrant`, `listGrants`, `countGrants` |
+| **Revokes** | `createRevoke`, `deleteRevoke`, `listRevokes` |
+| **Roles** | `createRole`, `updateRole`, `deleteRole`, `listRoles` |
+| **Groups** | `createGroup`, `updateGroup`, `deleteGroup`, `setGroupMembership`, `getGroupMembers` |
+| **Users** | `setUserActive`, `setReportingEdge`, `getReportingEdges`, `deleteSubject` |
+| **Requests** | `submitRequest`, `decideRequest`, `listRequests`, `getRequest` |
+| **Directory** | `importDirectory` |
+| **Cleanup** | `deleteSubject`, `deleteScope` |
+| **Audit** | `listAuditEvents` |
+| **Events** | `onInvalidate`, `notifyScopeMoved` |
+
+<Note>
+  Call `deleteSubject(subject, provenance)` from the same code path that deletes a user or service account. Call `deleteScope(scope, provenance)` from the same code path that deletes a resource. These remove stranded grant and revoke rows; skipping them means a reused id inherits the previous principal's access.
+</Note>
+
+## Setup examples
+
+<CodeGroup>
+
+```ts Development (memory driver)
+import { defineCatalog, createAlfizClient, parentPointerResolver } from "@alfiz-auth/core";
+import { createApplication, memoryDriver } from "@alfiz-auth/application";
+
+export const catalog = defineCatalog({
+  namespace: "docs",
+  projects: {
+    docs: {
+      groups: {
+        files: {
+          permissions: {
+            read: { scopes: ["docs.folder", "docs.doc"] },
+            update_file: { scopes: ["docs.folder", "docs.doc"] },
+            delete: { scopes: ["docs.folder"] },
+          },
+        },
+      },
+    },
+  },
+  scopeTypes: {
+    "docs.folder": { parent: null },
+    "docs.doc": { parent: "docs.folder" },
+  },
+});
+
+const app = createApplication({
+  catalog,
+  storage: memoryDriver(),
+  // No ancestry needed for flat global-only use; supply a resolver once you
+  // have real scope instances.
+});
+
+export const alfiz = createAlfizClient({ catalog, provider: app });
+```
+
+```ts Production (Prisma driver)
+import { defineCatalog, createAlfizClient, parentPointerResolver } from "@alfiz-auth/core";
+import { createApplication } from "@alfiz-auth/application";
+import { prismaDriver } from "@alfiz-auth/prisma";
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
+
+export const catalog = defineCatalog({
+  namespace: "docs",
+  projects: {
+    docs: {
+      groups: {
+        files: {
+          permissions: {
+            read: { scopes: ["docs.folder", "docs.doc"] },
+            update_file: { scopes: ["docs.folder", "docs.doc"] },
+            delete: { scopes: ["docs.folder"] },
+          },
+        },
+      },
+    },
+  },
+  scopeTypes: {
+    "docs.folder": { parent: null },
+    "docs.doc": { parent: "docs.folder" },
+  },
+});
+
+const app = createApplication({
+  catalog,
+  storage: prismaDriver(prisma),
+  ancestry: parentPointerResolver(async (scope) => {
+    // Your table owns the hierarchy — look up parent pointers here.
+    const row = await prisma.resource.findUnique({
+      where: { id: scope.split(":")[1] },
+      select: { parentId: true, parentType: true },
+    });
+    if (!row?.parentId) return null;
+    return `${row.parentType}:${row.parentId}`;
+  }),
+  orgRoot: true,
+});
+
+export const alfiz = createAlfizClient({ catalog, provider: app });
+```
+
+</CodeGroup>

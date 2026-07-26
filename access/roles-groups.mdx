@@ -1,0 +1,235 @@
+---
+title: "Roles and Groups: Organizing Permission Assignments"
+sidebarTitle: "Roles & Groups"
+description: "Roles are named permission bundles. Groups are cohorts of users. Together they let you grant access to many people with a single row."
+---
+
+Roles and groups are the two organizing abstractions that keep your grant table from becoming one row per user per permission. A role names a bundle of permission patterns that belong together; a group names a cohort of users that should receive access together. Assigning a role to a group is a single grant row — and every member of that group, through their subject closure, picks it up automatically.
+
+## Roles
+
+A role is a named, reusable set of permission patterns. Roles carry no negative patterns — the only negative layer in Alfiz is the personal revoke. The interface that describes a role's core shape is `RoleDef`:
+
+```ts
+interface RoleDef {
+  id: string;
+  name: string;
+  description?: string | undefined;
+  patterns: PermissionPattern[];
+}
+```
+
+Role definitions stored by the provider extend this with requestability configuration:
+
+```ts
+interface RoleRecord extends RoleDef {
+  requestable?:
+    | {
+        prompts?: readonly RequestPromptInput[];
+        maxDurationMs?: number | undefined;
+        requireExpiry?: boolean | undefined;
+        stages: readonly ApprovalStage[];
+      }
+    | undefined;
+}
+```
+
+Role **identity is the opaque `id`** — renaming a role never breaks any existing grant. An admin can change `name` and `description` freely; the grants that reference the role's `id` continue to work.
+
+### Creating a role
+
+Use `app.createRole(input, provenance)` to define a new role. Supply a caller-chosen `id` when something outside the runtime must reference it by a stable identifier (e.g. a SQL migration seeding a well-known role). Omit `id` for a generated one.
+
+```ts
+const editorRole = await app.createRole(
+  {
+    id: "role_editor",       // optional: caller-supplied stable id
+    name: "Editor",
+    description: "Can read and update documents and folders",
+    patterns: [
+      "docs.files.read",
+      "docs.files.update_file",
+    ],
+  },
+  { kind: "admin", actorUserId: "root" },
+);
+```
+
+Use `app.updateRole(roleId, input, provenance)` to rename or re-describe a role, or to change its patterns. Use `app.deleteRole(roleId, provenance)` to remove one.
+
+### Assigning a role
+
+A role grant is an ordinary grant row — the same `createGrant` call you use for raw patterns, with `roleId` instead of `pattern`:
+
+```ts
+await app.createGrant({
+  subject: "group:teachers",
+  roleId: "role_editor",
+  scope: "docs.folder:curriculum",
+  provenance: { kind: "admin", actorUserId: "root" },
+});
+```
+
+At check time, Alfiz expands the role's `patterns` and evaluates each one against the requested permission key. Granting a role gives the subject every pattern the role carries — including patterns added to the role in future updates, because grants reference the role id, not a snapshot of its patterns.
+
+<Note>
+A grant carries exactly one of `roleId` or `pattern` — never both, never neither. Alfiz validates this at write time and rejects invalid grant rows before touching storage.
+</Note>
+
+## Groups
+
+A group is a named cohort of users that can be granted access in one row. The `UserGroup` interface is:
+
+```ts
+interface UserGroup {
+  id: string;
+  name: string;
+  description?: string | undefined;
+  /** Parent group ids (the DAG; enforced provider-side). */
+  parents: string[];
+  /** True for virtual parents created by condensation or sync. */
+  virtual?: boolean | undefined;
+}
+```
+
+Like roles, a group's identity is its opaque `id`. Renaming a group never breaks grants or memberships.
+
+### Creating and managing groups
+
+```ts
+// Create
+const teachers = await app.createGroup(
+  { name: "Teachers", description: "All teaching staff" },
+  { kind: "admin", actorUserId: "root" },
+);
+
+// Add a user to a group
+await app.setGroupMembership(
+  "alice",
+  ["group_teachers"],
+  { kind: "admin", actorUserId: "root" },
+);
+
+// List members
+const members = await app.getGroupMembers("group_teachers");
+```
+
+Group membership is stored on the user record as `groupIds: string[]`. At subject-closure computation time, every group in that list — and every ancestor of those groups — joins the closure.
+
+### Group nesting (the inheritance DAG)
+
+A group may declare parent groups. It inherits the union of all its parents' access. The parent graph must be a DAG — Alfiz enforces this transactionally at every `setGroupParents` call. Attempting to create a cycle throws a `GraphCycleError` with the full cycle path named:
+
+```ts
+await app.setGroupParents(
+  "group_biology_teachers",
+  ["group_teachers"],
+  { kind: "admin", actorUserId: "root" },
+);
+
+// Now group_biology_teachers inherits everything group_teachers can do.
+// If group_teachers has its own parents, those propagate too.
+```
+
+<Warning>
+Cycle detection is transactional but not automatically serialized across concurrent writes. The storage driver's `runExclusive("groups", ...)` method serializes graph writes per key. If you implement a custom storage driver, you must guarantee this serialization — two individually-safe edge insertions can jointly form a cycle.
+</Warning>
+
+### Groups never revoke
+
+Groups can only widen access — they never narrow it. The only mechanism for restricting a specific user's access is a personal revoke on that individual. This constraint is intentional: union-only inheritance is simple, predictable, and avoids the class of bugs that arise when "deny" semantics on one group override "allow" semantics on another.
+
+## Virtual parents
+
+When several groups should all receive exactly the same access, create a virtual parent group and grant access to it. Each child group declares the virtual parent as a parent, and inherits its grants through the normal DAG walk:
+
+```ts
+// Create a virtual parent
+const sharedAccess = await app.createGroup(
+  { name: "Shared Docs Access (virtual)" },
+  { kind: "admin", actorUserId: "root" },
+);
+
+// Grant access to the virtual parent
+await app.createGrant({
+  subject: `group:${sharedAccess.id}`,
+  roleId: "role_editor",
+  scope: "docs.folder:shared",
+  provenance: { kind: "admin", actorUserId: "root" },
+});
+
+// Multiple groups inherit from it
+await app.setGroupParents(
+  "group_biology_teachers",
+  ["group_teachers", sharedAccess.id],
+  { kind: "admin", actorUserId: "root" },
+);
+await app.setGroupParents(
+  "group_guest_editors",
+  [sharedAccess.id],
+  { kind: "admin", actorUserId: "root" },
+);
+```
+
+### Dissolving a virtual parent
+
+When a virtual parent is no longer needed, call `app.dissolveVirtualParent(groupId, provenance)`. Dissolution is a **snapshot** — every unexpired grant on the virtual parent is copied down to each child group with `provenance: { kind: "dissolution", ... }`, after which the parent is deleted and the children drift freely:
+
+```ts
+await app.dissolveVirtualParent(
+  sharedAccess.id,
+  { kind: "admin", actorUserId: "root" },
+);
+// The virtual parent's grants are now owned individually by each child.
+// Children can be edited independently going forward.
+```
+
+Directory imports that produce cyclic group graphs are **auto-condensed**: each strongly connected component collapses into a virtual parent automatically, with a warning returned in `DirectoryImportResult.warnings`. The semantics are correct — a cycle expresses "these groups are effectively one pool" — and you can dissolve the virtual parents manually afterward.
+
+## Role-based visibility with `canAny`
+
+Use `alfiz.canAny(principal, pattern)` to check whether a user holds any permission matching a wildcard pattern. This is the right tool for deciding whether to show an admin section, a management toolbar, or a restricted menu item — it never gates a concrete action:
+
+```ts
+// Show the admin section only if the user has any admin permission
+const showAdmin = await alfiz.canAny({ userId }, "alfiz_internal.access.*");
+
+// Show the "manage users" button only if the user can manage any org-level feature
+const showUserMgmt = await alfiz.canAny({ userId }, "alfiz_internal.*");
+```
+
+<Warning>
+`canAny` is a **visibility affordance only** — never use it as an authorization gate. Every page and action must still call `alfiz.can(principal, key, scope)` or `alfiz.requirePermission(...)` with a concrete key. The static verifier (`alfiz-verify`) will error on `canAny` used in a gate position.
+</Warning>
+
+## Built-in `alfiz_internal` permissions
+
+Alfiz's own administration surface is gated by a reserved namespace, `alfiz_internal`, that is added to every catalog automatically. These permissions gate the headless admin components that ship with Alfiz:
+
+| Permission key | Purpose |
+|---|---|
+| `alfiz_internal.access.read` | View the access administration surface |
+| `alfiz_internal.access.manage_roles` | Create, edit, and delete roles |
+| `alfiz_internal.access.manage_groups` | Create, edit, delete groups and their parentage |
+| `alfiz_internal.access.manage_grants` | Create and delete grants |
+| `alfiz_internal.access.manage_revokes` | Create and delete personal revokes |
+| `alfiz_internal.access.manage_reporting` | Edit reporting (manager) edges |
+| `alfiz_internal.access.view_as` | Preview the product as a role or individual |
+| `alfiz_internal.requests.read` | View the approvals inbox |
+| `alfiz_internal.requests.decide_request` | Approve or deny an access request |
+| `alfiz_internal.audit.read` | Read the audit log |
+| `alfiz_internal.catalog.read` | View the published catalog |
+| `alfiz_internal.catalog.publish_catalog` | Publish a verified catalog to the provider |
+
+Grant these to your admin group with the same `createGrant` call used for any other permission:
+
+```ts
+await app.createGrant({
+  subject: "group:admins",
+  pattern: "alfiz_internal.access.*",  // all access-management capabilities
+  // scope omitted → global
+  provenance: { kind: "admin", actorUserId: "bootstrap" },
+});
+```
+
+The `alfiz_internal` namespace is reserved and cannot be used in your own catalog definition — it is added automatically and will never collide with your application's permission tree.

@@ -1,0 +1,268 @@
+---
+title: "Configuring Approval Policies for Access Requests"
+sidebarTitle: "Approval Policies"
+description: "Approval policies define who approves access requests via auto-approval predicates, named approver roles, or management-layer routing, and in what order."
+---
+
+An approval policy is a sequence of ordered stages attached to a requestable role or scope type. Each stage either evaluates automatically or waits for a human decision. Stages are processed in order: the first stage runs at submission, subsequent stages unlock one at a time as each preceding stage approves. A denial at any stage is final and writes nothing. Because a policy stores **stages** — not resolved approver identities — it survives org restructuring and hierarchy promotion without modification.
+
+## The `ApprovalPolicyInput` type
+
+```typescript
+interface ApprovalPolicyInput {
+  /** Ordered stages; every non-auto stage requires an explicit decision. */
+  stages: readonly ApprovalStage[];
+}
+
+type ApprovalStage =
+  | { kind: "auto"; predicate: AutoApprovalPredicate }
+  | { kind: "named_approvers"; roleId: string }
+  | { kind: "management"; layers?: number };
+```
+
+You supply an `ApprovalPolicyInput` wherever a requestability declaration expects a `policy` field — on a scope type in the catalog, or inside a role's `requestable` block.
+
+## Stage types
+
+### Auto-approval predicates
+
+An `auto` stage evaluates a condition against the requester's subject closure — the same `can()` machinery that powers every check in Alfiz. There is no separate rules engine. If the predicate passes, the stage is recorded as auto-approved and the workflow immediately advances to the next stage. If it fails, the stage is skipped and the next stage becomes active.
+
+```typescript
+type AutoApprovalPredicate =
+  | { type: "in_group"; groupId: string }
+  | { type: "in_org"; orgId: string }
+  | { type: "member_of"; subject: SubjectId }
+  /** The requester's effective access already intersects this pattern. */
+  | { type: "holds_pattern"; pattern: PermissionPattern };
+```
+
+<ParamField path="in_group" type="{ type: &quot;in_group&quot;; groupId: string }">
+  Passes when the requester is a member of the given group (directly or through group inheritance).
+</ParamField>
+
+<ParamField path="in_org" type="{ type: &quot;in_org&quot;; orgId: string }">
+  Passes when the requester belongs to the given organization in the directory.
+</ParamField>
+
+<ParamField path="member_of" type="{ type: &quot;member_of&quot;; subject: SubjectId }">
+  Passes when the requester's subject closure contains the given subject. Works with any valid subject including implicit groups like `directs:<uid>` or `orgof:<uid>` — for example, `{ type: "member_of", subject: "directs:team-lead-uid" }` auto-approves everyone who reports directly to a particular manager.
+</ParamField>
+
+<ParamField path="holds_pattern" type="{ type: &quot;holds_pattern&quot;; pattern: PermissionPattern }">
+  Passes when the requester's effective access already intersects the given pattern. Grounded in the catalog's concrete keys; a fully-revoked requester never passes, and a pattern matching no catalog key never passes. Negative-always-wins holds here exactly as it does in `can()`.
+</ParamField>
+
+### Named approvers
+
+A `named_approvers` stage requires approval from any subject who holds an unexpired grant of the designated role — directly, or through any closure member.
+
+```typescript
+{ kind: "named_approvers"; roleId: string }
+```
+
+The canonical use is expressing the application owner as a role on the namespace. Rather than naming a specific person, you name the role: whoever holds it at evaluation time is the approver. This keeps the policy stable across ownership changes.
+
+```typescript
+{ kind: "named_approvers", roleId: "content-owner" }
+```
+
+<Note>
+  To approve a `named_approvers` stage, a user must hold an **unexpired** grant of the designated role, either on their own subject or through a group or org they belong to. Expired grants do not confer approval authority.
+</Note>
+
+### Management layers
+
+A `management` stage routes the request to the requester's manager, or `layers` transitive managers upward in the reporting hierarchy. The chain is resolved by walking reporting edges at evaluation time.
+
+```typescript
+{ kind: "management"; layers?: number }
+```
+
+`layers` defaults to `1`, which means the requester's direct manager. `layers: 2` means the manager's manager, and so on. Where the reporting chain is shorter than `layers`, the topmost manager approves.
+
+```typescript
+// Direct manager
+{ kind: "management" }
+// or equivalently:
+{ kind: "management", layers: 1 }
+
+// Skip-level: the manager's manager
+{ kind: "management", layers: 2 }
+```
+
+<Warning>
+  A policy with a `management` stage is a **configuration error** when no reporting hierarchy is populated in the provider. Alfiz surfaces this at policy attachment time (for roles) and at request submission time (for catalog scope types) — never silently skipped. Populate reporting edges via `setReportingEdge` or `importDirectory` before attaching management-layer policies.
+</Warning>
+
+Because stages reference a layer count rather than a resolved person, they survive org-root promotion untouched. A pending request that was created with `"2 layers up"` still means exactly that after a hierarchy reorganization — the new two-layers-up manager becomes the approver at their next evaluation.
+
+## Policy attachment
+
+<Tabs>
+  <Tab title="On a role">
+    Attach an approval policy directly to a role's `requestable` block using `createRole`. The policy applies to every request for that role, regardless of scope.
+
+    ```typescript
+    await app.createRole({
+      name: "Docs Editor",
+      patterns: ["docs.files.*"],
+      requestable: {
+        prompts: [
+          {
+            id: "reason",
+            label: "Why do you need this access?",
+            required: true,
+          },
+        ],
+        stages: [
+          // Stage 0: auto-approve members of the trusted-editors group
+          {
+            kind: "auto",
+            predicate: { type: "in_group", groupId: "trusted-editors" },
+          },
+          // Stage 1 (fallthrough): content owner decides
+          { kind: "named_approvers", roleId: "content-owner" },
+        ],
+      },
+    });
+    ```
+  </Tab>
+  <Tab title="On a scope type">
+    Attach an approval policy to a scope type's `requestable` block inside the catalog. The policy applies to every request whose scope is an instance of that type.
+
+    ```typescript
+    defineCatalog({
+      namespace: "docs",
+      projects: { /* ... */ },
+      scopeTypes: {
+        "docs.folder": {
+          parent: null,
+          requestable: {
+            prompts: [
+              {
+                id: "reason",
+                label: "Why do you need access to this folder?",
+                required: true,
+              },
+            ],
+            requireExpiry: true,
+            maxDurationMs: 30 * 24 * 60 * 60 * 1000, // 30 days
+            policy: {
+              stages: [
+                { kind: "management", layers: 1 },
+              ],
+            },
+          },
+        },
+      },
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## A complete three-stage policy example
+
+This policy uses all three stage types in order: first try to auto-approve, then fall through to a named application owner, and finally escalate to a skip-level manager.
+
+```typescript
+await app.createRole({
+  name: "Project Admin",
+  patterns: ["projects.admin.*"],
+  requestable: {
+    prompts: [
+      {
+        id: "project_id",
+        label: "Which project do you need admin access for?",
+        required: true,
+      },
+      {
+        id: "justification",
+        label: "Why do you need admin access?",
+        required: true,
+      },
+      {
+        id: "duration",
+        label: "How long do you need it?",
+        kind: "select",
+        options: ["1 week", "1 month", "Permanent"],
+        required: true,
+      },
+    ],
+    stages: [
+      // Stage 0: auto-approve if the requester already holds a covering pattern
+      // (e.g. they are an existing admin on a parent project)
+      {
+        kind: "auto",
+        predicate: {
+          type: "holds_pattern",
+          pattern: "projects.admin.*",
+        },
+      },
+      // Stage 1: any subject holding the "project-owner" role may approve
+      {
+        kind: "named_approvers",
+        roleId: "project-owner",
+      },
+      // Stage 2: the requester's manager's manager (skip-level) also approves
+      {
+        kind: "management",
+        layers: 2,
+      },
+    ],
+  },
+});
+```
+
+In this flow:
+1. **Stage 0** — runs immediately at submission. If the requester's effective access already includes `projects.admin.*`, the stage auto-approves and the workflow falls through to stage 1.
+2. **Stage 1** — any user holding the `project-owner` role sees this request in their approver queue and may approve or deny it.
+3. **Stage 2** — only after stage 1 approves does the skip-level manager receive the request. Their approval writes the grant row.
+
+## Nearest-ancestor resolution
+
+When a requestability policy is attached to a **namespace node** in the hierarchy, it governs every request under that node unless a nearer node declares its own policy. This applies to scope-type policies: a policy on a parent scope type does not propagate to child scope types — each scope type declares its own `requestable` block independently.
+
+<Note>
+  A requestable scope type must declare at least one approval stage. A `policy` with an empty `stages` array is a validation error, surfaced by `lintCatalog` at build time and by `assertPolicyResolvable` at request submission.
+</Note>
+
+## Just-in-time access
+
+The canonical just-in-time (JIT) access pattern combines three features:
+
+1. **`requireExpiry: true`** on the requestable role or scope type — every request must propose an expiry; open-ended requests are rejected.
+2. **`proposedExpiresAt`** in the request — the requester proposes how long they need the access; the `maxDurationMs` cap enforces an upper bound.
+3. **`can.fresh()`** at enforcement points — bypasses the subject-side cache so the grant expiry is evaluated at exactly the moment of the check, not against a potentially stale snapshot.
+
+```typescript
+// Declare the scope type as JIT-only (max 8 hours, expiry required)
+scopeTypes: {
+  "infra.environment": {
+    parent: null,
+    requestable: {
+      requireExpiry: true,
+      maxDurationMs: 8 * 60 * 60 * 1000, // 8 hours
+      prompts: [
+        { id: "incident", label: "Incident or change ticket ID", required: true },
+      ],
+      policy: {
+        stages: [{ kind: "management", layers: 1 }],
+      },
+    },
+  },
+}
+
+// After the request is approved and the grant row is written:
+await alfiz.can.fresh(
+  { userId },
+  "infra.environment.deploy",
+  "infra.environment:prod",
+);
+// Returns false the moment the grant's expiresAt passes —
+// no cache TTL delay on a destructive surface.
+```
+
+<Tip>
+  `can.fresh` is the right choice for any destructive action that may have been time-limited by an approved request. It is the only check shape guaranteed to reflect expiry at the instant of evaluation rather than at the last cache fill.
+</Tip>

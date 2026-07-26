@@ -1,0 +1,171 @@
+---
+title: "canAny() and requireAny() — Visibility Affordances"
+sidebarTitle: "canAny()"
+description: "canAny(principal, pattern) checks whether a principal holds any permission matching a pattern. Use it for navigation visibility — never as an authorization gate."
+---
+
+`canAny` answers a different question from `can`: not "does this principal hold *this specific permission* here?" but "does this principal hold *anything under this subtree* at all?" That distinction makes `canAny` the right tool for show/hide decisions in navigation and conditional UI — and the wrong tool for anything that authorizes an action. The static verifier (`@alfiz-auth/verify`) produces a build error if it detects `canAny` in a server action or route handler, treating it as a gate.
+
+## `canAny(principal, pattern)`
+
+```typescript
+async canAny(
+  principal: PrincipalRef,
+  pattern: P,
+): Promise<boolean>
+```
+
+<ParamField body="principal" type="PrincipalRef" required>
+  Identifies who is being checked. Either `{ userId: string }` for a human
+  user or `{ serviceId: string }` for a machine principal.
+</ParamField>
+
+<ParamField body="pattern" type="P" required>
+  A permission pattern declared in your catalog. Three shapes are valid:
+
+  - A concrete key, e.g. `"docs.files.read"` — matches exactly that key.
+  - A subtree wildcard, e.g. `"docs.*"` or `"admin.*"` — matches every key
+    under the named group, at any depth.
+  - The bare `"*"` — matches every key in the catalog.
+
+  The TypeScript compiler validates patterns against the catalog's derived
+  `PatternOf<typeof catalog>` union at literal call sites. At runtime, an
+  unknown pattern raises `UnknownPermissionError`.
+</ParamField>
+
+### Return value
+
+<ResponseField name="Promise<boolean>" type="Promise<boolean>">
+  Resolves to `true` when the principal holds at least one unexpired,
+  non-revoked grant whose effective permission set intersects the pattern.
+  Resolves to `false` for inactive principals, or when no matching grant
+  exists at any scope. This method never throws for a denial.
+</ResponseField>
+
+---
+
+## `requireAny(principal, pattern)`
+
+```typescript
+async requireAny(
+  principal: PrincipalRef,
+  pattern: P,
+): Promise<void>
+```
+
+The throwing form of `canAny`. Throws `AccessDeniedError` (with `reason: "forbidden"` or `reason: "inactive"`) when no matching permission is held. Use this for project-root visibility checks — for example, to guard the project settings page against users with no access to the project at all, without requiring a specific leaf key.
+
+<Warning>
+  `requireAny` is still a visibility affordance, not a gate. Use it to block
+  navigation to an entirely foreign project; never use it as the sole check
+  protecting a write operation or a privileged read. The page you land on
+  after `requireAny` passes must gate its own actions with `can`.
+</Warning>
+
+---
+
+## Visibility affordance, never a gate
+
+`canAny` and `can` answer complementary questions:
+
+| | `canAny(principal, "docs.*")` | `can(principal, "docs.files.read", scope)` |
+|---|---|---|
+| **Question** | Does this user belong in the docs section at all? | Can this user read this specific document? |
+| **Use in** | Nav visibility, section headers, card rendering | Route handlers, server actions, data fetches |
+| **Authorization gate** | ❌ Never | ✅ Always |
+
+When you use `canAny` as a gate, you admit any user who holds *any* permission in the subtree — including, for example, a user who can only delete documents but cannot read them. A grant of `docs.files.delete` at one specific document would pass `canAny(p, "docs.*")`, but that user must not be able to call a `GET /docs/:id` route for arbitrary documents.
+
+---
+
+## Pattern syntax
+
+Patterns are the typed string union `PatternOf<typeof catalog>`, which includes:
+
+- Every concrete permission key in the catalog (`"docs.files.read"`, `"docs.files.update_file"`, …)
+- Every group-level wildcard (`"docs.*"`, `"docs.files.*"`, `"admin.*"`, …)
+- The global wildcard `"*"`
+
+Group paths without the `.*` suffix are not valid patterns — `"docs.files"` is a group name, not a pattern. The catalog rejects unknown patterns with a suggestion: if you pass `"docs.files"`, the error will recommend `"docs.files.*"`.
+
+---
+
+## The correct pattern: `canAny` for nav, `can` for the gate
+
+```typescript
+// ── Navigation component (client or server) ──────────────────────────────
+async function AppNavigation({ userId }: { userId: string }) {
+  const principal = { userId };
+
+  const [showDocs, showAdmin] = await Promise.all([
+    alfiz.canAny(principal, "docs.*"),
+    alfiz.canAny(principal, "admin.*"),
+  ]);
+
+  return (
+    <nav>
+      {showDocs  && <NavLink href="/docs">Docs</NavLink>}
+      {showAdmin && <NavLink href="/admin">Admin</NavLink>}
+    </nav>
+  );
+}
+
+// ── Route handler (server) ────────────────────────────────────────────────
+// The page itself still gates with can() — canAny() in the nav does NOT
+// authorize loading the page.
+export async function GET(req: Request, { params }: { params: { docId: string } }) {
+  const { userId } = await getSession(req);
+
+  // Concrete gate — not canAny.
+  await alfiz.requirePermission(
+    { userId },
+    "docs.files.read",
+    `docs.doc:${params.docId}`,
+  );
+
+  return Response.json(await db.docs.findById(params.docId));
+}
+```
+
+### Showing a project card
+
+```typescript
+// Show the card only when the user holds any permission in the project.
+const showProjectCard = await alfiz.canAny(
+  { userId },
+  "docs.*",
+);
+```
+
+### Showing a settings gear icon
+
+```typescript
+// Show the settings icon only for users who can manage something.
+const showSettings = await alfiz.canAny(
+  { userId },
+  "admin.*",
+);
+```
+
+### `requireAny` for project-root access
+
+```typescript
+// Block navigation to a project the user has no access to at all.
+export async function loader({ params }: LoaderArgs) {
+  const { userId } = await getSession();
+
+  // Visibility gate: does the user belong in this project?
+  await alfiz.requireAny({ userId }, "docs.*");
+
+  // Now the page renders. Individual actions gate with can().
+  return json({ docs: await db.docs.listForUser(userId) });
+}
+```
+
+<Note>
+  `canAny` uses the same subject-closure cache as `can`. You do not pay an
+  extra provider round-trip for `canAny` calls that follow a `can` call for
+  the same principal within the same `subjectCacheTtlMs` window. Use
+  `client.snapshot(principal)` when you need both in the same render to
+  ensure they operate over one consistent data instant.
+</Note>

@@ -1,0 +1,149 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "Alfiz",
+  "projectDescription": "A TypeScript authorization library that lets you declare a permission catalog in code, enforce it in-process against your own database, and scale from a single application to a federated org — without anything on your request path ever leaving your process.",
+  "theme": "luma",
+  "primaryColor": "#b43d2d",
+  "lightColor": "#d4948c",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "core-concepts"
+            ]
+          },
+          {
+            "group": "The Catalog",
+            "pages": [
+              "catalog/overview",
+              "catalog/permissions",
+              "catalog/scope-types",
+              "catalog/navigation-wiring"
+            ]
+          },
+          {
+            "group": "Checks & Enforcement",
+            "pages": [
+              "enforcement/check-shapes",
+              "enforcement/four-points",
+              "enforcement/static-verification"
+            ]
+          },
+          {
+            "group": "Subjects & Access",
+            "pages": [
+              "access/grants-revokes",
+              "access/subjects-closures",
+              "access/scopes-hierarchy",
+              "access/roles-groups"
+            ]
+          },
+          {
+            "group": "Requests & Approvals",
+            "pages": [
+              "requests/overview",
+              "requests/approval-policies"
+            ]
+          },
+          {
+            "group": "Growth Path",
+            "pages": [
+              "growth/standalone",
+              "growth/linked",
+              "growth/federated"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Client API",
+            "pages": [
+              "api/create-alfiz-client",
+              "api/can",
+              "api/can-any",
+              "api/snapshot",
+              "api/explain",
+              "api/granted-scopes"
+            ]
+          },
+          {
+            "group": "Application",
+            "pages": [
+              "api/create-application",
+              "api/storage-drivers",
+              "api/session"
+            ]
+          },
+          {
+            "group": "Catalog Definition",
+            "pages": [
+              "api/define-catalog",
+              "api/catalog-types"
+            ]
+          },
+          {
+            "group": "Static Verification",
+            "pages": [
+              "api/alfiz-verify-cli",
+              "api/verify-config"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Changelog",
+        "groups": [
+          {
+            "group": "Releases",
+            "pages": [
+              "changelog"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Permission catalog declared in TypeScript — every key and scope type verified at build time via template-literal types",
+    "In-process checks via can(), canAny(), can.fresh() — nothing on your request path ever calls out",
+    "Scope inheritance: grants stored once at a node, ancestor chains walked at check time (O(depth))",
+    "Union-only inheritance with personal-only revokes; negative-always-wins precedence",
+    "Forward-inclusive wildcards: docs.files.* absorbs future permissions automatically",
+    "Static verification (alfiz-verify): typed keys, coverage linting, gate-shape linting, catalog linting",
+    "Four mandatory enforcement points: page, navigation, server action, conditional UI",
+    "Access requests and approval workflows: auto-approval predicates, named approvers, management-layer routing",
+    "Headless administration components: permission tree, role editor, grant/revoke pickers, approvals queue",
+    "Snapshot API: one provider round-trip for synchronous in-map() checks",
+    "Prisma storage driver with structural delegate interface (no hard @prisma/client dep)",
+    "Alfiz Cloud: hosted Diwan dashboard, admin seats, federation, provisioned connectors"
+  ],
+  "publicApiSurface": [
+    "createAlfizClient(options) → AlfizClient",
+    "AlfizClient.can(principal, key, scope?)",
+    "AlfizClient.can.fresh(principal, key, scope?)",
+    "AlfizClient.canAny(principal, pattern)",
+    "AlfizClient.requirePermission(principal, key, scope?)",
+    "AlfizClient.requireAny(principal, pattern)",
+    "AlfizClient.snapshot(principal, options?) → AlfizSnapshot",
+    "AlfizClient.explain(principal, key, scope?) → CheckExplanation",
+    "AlfizClient.grantedScopes(principal, key)",
+    "AlfizClient.holdsAnywhere(principal, key)",
+    "AlfizClient.effectiveKeys(principal)",
+    "defineCatalog(input) → Catalog",
+    "createApplication(options) → Application",
+    "memoryDriver() → StorageDriver",
+    "@alfiz-auth/prisma: PrismaDriver",
+    "alfiz-verify CLI: verify, lint, catalog-emit",
+    "alfiz-verify.config.json: catalog, include, exclude, gateNames, visibilityNames, serverFilePatterns, forbidClientIdentifiers"
+  ]
+}

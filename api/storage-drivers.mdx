@@ -1,0 +1,306 @@
+---
+title: "Storage Drivers: Memory and Prisma"
+sidebarTitle: "Storage Drivers"
+description: "Alfiz ships a memory driver for testing and development, and a Prisma driver for production. Both implement the same StorageDriver interface."
+---
+
+The storage seam is the single interface a database must satisfy to host an Alfiz Application. All application semantics — graph integrity, request workflows, org-root gating, the audit log — live above the seam in the Application layer and are identical regardless of which driver you use. Drivers store and retrieve; they never interpret. All IDs are assigned by the Application.
+
+## The `StorageDriver` interface
+
+```ts
+import type { StorageDriver } from "@alfiz-auth/application";
+```
+
+A `StorageDriver` is a flat bundle of async methods organized into eight areas:
+
+| Area | Methods |
+|---|---|
+| **Grants** | `insertGrant`, `deleteGrant`, `listGrants`, `countGrants` |
+| **Revokes** | `insertRevoke`, `deleteRevoke`, `listRevokes` |
+| **Roles** | `upsertRole`, `getRole`, `listRoles`, `deleteRole` |
+| **Groups** | `upsertGroup`, `getGroup`, `listGroups`, `deleteGroup` |
+| **Users** | `getUser`, `upsertUser`, `deleteUser`, `listUsers`, `listUsersInGroup` |
+| **Requests** | `insertRequest`, `updateRequest`, `getRequest`, `listRequests` |
+| **Catalog** | `putCatalog`, `getCatalog` |
+| **Audit** | `appendAudit`, `listAudit` |
+
+One additional method, `runExclusive(key, fn)`, serializes graph writes per key to prevent concurrent insertions from jointly forming a group or reporting cycle. Implement it with a SQL advisory lock in multi-node deployments (see [Multi-node note](#multi-node-deployments)).
+
+## `memoryDriver()`
+
+The in-memory driver is the reference implementation of the storage seam. It is complete and correct — every Application feature works with it — making it the natural choice for unit tests, local development, and ephemeral deployments.
+
+```ts
+import { memoryDriver } from "@alfiz-auth/application";
+```
+
+```ts
+import { createApplication, memoryDriver } from "@alfiz-auth/application";
+
+const app = createApplication({
+  catalog,
+  storage: memoryDriver(),
+});
+```
+
+Each call to `memoryDriver()` returns an independent, empty store. Two calls produce two isolated stores — useful for testing multi-tenant scenarios or provider federation in-process.
+
+<Warning>
+  The memory driver is not persistent. Everything is lost when the process exits. Use it for tests and local dev only; use `prismaDriver` (or a custom driver) for anything you need to survive a restart.
+</Warning>
+
+### Testing with the memory driver
+
+```ts
+import { describe, it, expect, beforeEach } from "vitest";
+import { createApplication, memoryDriver } from "@alfiz-auth/application";
+import { createAlfizClient } from "@alfiz-auth/core";
+import { catalog } from "./alfiz.js";
+
+describe("document access", () => {
+  let app: ReturnType<typeof createApplication>;
+  let alfiz: ReturnType<typeof createAlfizClient<typeof catalog>>;
+
+  beforeEach(() => {
+    // Fresh isolated store per test — no teardown needed.
+    app = createApplication({ catalog, storage: memoryDriver() });
+    alfiz = createAlfizClient({ catalog, provider: app });
+  });
+
+  it("denies before any grant", async () => {
+    const result = await alfiz.can({ userId: "u1" }, "docs.files.read");
+    expect(result).toBe(false);
+  });
+
+  it("allows after a grant", async () => {
+    await app.createGrant({
+      subject: "user:u1",
+      pattern: "docs.files.read",
+      provenance: { kind: "admin", actorUserId: "root" },
+    });
+    const result = await alfiz.can({ userId: "u1" }, "docs.files.read");
+    expect(result).toBe(true);
+  });
+});
+```
+
+## `prismaDriver`
+
+The Prisma driver is the production driver shipped in `@alfiz-auth/prisma`. It maps the `StorageDriver` interface onto a generated Prisma client without taking `@prisma/client` as a hard dependency — it operates against a structural delegate interface instead.
+
+### Installation
+
+```bash
+npm install @alfiz-auth/prisma
+```
+
+`@prisma/client` must be in your own dependencies and generated from a schema that includes the Alfiz models. `@alfiz-auth/prisma` does not depend on it directly.
+
+### Creating a Prisma driver
+
+```ts
+import { prismaDriver } from "@alfiz-auth/prisma";
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
+
+const storage = prismaDriver(prisma);
+```
+
+Pass the `PrismaClient` instance directly. Any Prisma client generated from a schema containing the Alfiz models satisfies the `AlfizPrismaDelegates` interface structurally — no cast required.
+
+### `PrismaDriverOptions`
+
+`prismaDriver` accepts an optional second argument:
+
+<ParamField body="lock" type="<T>(key: string, fn: () => Promise<T>) => Promise<T>" optional>
+  A cross-node serialization function for graph writes. In a single-process deployment the default in-process promise-chain mutex is sufficient. In a **multi-node deployment** you must provide a database advisory lock here so concurrent graph writes on different nodes cannot jointly form a cycle. Example for Postgres:
+
+  ```ts
+  const storage = prismaDriver(prisma, {
+    lock: async (key, fn) => {
+      return prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
+        return fn();
+      });
+    },
+  });
+  ```
+</ParamField>
+
+### The delegate interface
+
+`prismaDriver` requires only the subset of the generated Prisma client it actually calls, expressed as the `AlfizPrismaDelegates` interface. The ten delegate properties map directly to the Alfiz schema models:
+
+```ts
+interface AlfizPrismaDelegates {
+  alfizGrant: AlfizGrantDelegate;
+  alfizRevoke: AlfizRevokeDelegate;
+  alfizRole: AlfizRoleDelegate;
+  alfizGroup: AlfizGroupDelegate;
+  alfizGroupParent: AlfizGroupParentDelegate;
+  alfizUser: AlfizUserDelegate;
+  alfizMembership: AlfizMembershipDelegate;
+  alfizRequest: AlfizRequestDelegate;
+  alfizCatalog: AlfizCatalogDelegate;
+  alfizAudit: AlfizAuditDelegate;
+}
+```
+
+A generated `PrismaClient` for a schema containing the Alfiz models satisfies this interface automatically. You can also pass a hand-rolled mock for testing:
+
+```ts
+import type { AlfizPrismaDelegates } from "@alfiz-auth/prisma";
+
+const mockDb: AlfizPrismaDelegates = {
+  alfizGrant: { /* ... */ },
+  // ...
+};
+
+const storage = prismaDriver(mockDb);
+```
+
+### Schema fragment
+
+Add the following models to your `schema.prisma`. These are a fragment — they have no `datasource` or `generator` blocks and inherit yours. All models are prefixed `Alfiz` to avoid colliding with your own models.
+
+```prisma
+/// The atomic grant tuple: (subject, role-or-pattern, scope, expiry?).
+model AlfizGrant {
+  id         String  @id
+  subject    String
+  roleId     String?
+  pattern    String?
+  scope      String
+  expiresAt  BigInt?
+  provenance Json
+  createdAt  BigInt
+
+  @@index([subject])
+  @@index([scope])
+  @@index([roleId])
+}
+
+/// Personal revoke — the single negative layer; only users hold revokes.
+model AlfizRevoke {
+  id         String @id
+  userId     String
+  pattern    String
+  scope      String
+  provenance Json
+  createdAt  BigInt
+
+  @@index([userId])
+  @@index([scope])
+}
+
+/// A named bundle of permission patterns, plus its requestability policy.
+model AlfizRole {
+  id          String  @id
+  name        String
+  description String?
+  patterns    Json
+  requestable Json?
+}
+
+/// A user group node; its parent edges live in AlfizGroupParent.
+model AlfizGroup {
+  id          String  @id
+  name        String
+  description String?
+  virtual     Boolean @default(false)
+}
+
+/// Group parentage edges (the group DAG).
+model AlfizGroupParent {
+  childId  String
+  parentId String
+
+  @@id([childId, parentId])
+  @@index([parentId])
+}
+
+/// The authorization-relevant user record; identity stays in the IdP.
+model AlfizUser {
+  userId        String  @id
+  active        Boolean
+  orgIds        Json
+  managerUserId String?
+}
+
+/// Explicit user → group membership edges.
+model AlfizMembership {
+  userId  String
+  groupId String
+
+  @@id([userId, groupId])
+  @@index([groupId])
+}
+
+/// An access request with workflow state and snapshotted approval policy.
+model AlfizRequest {
+  id                String  @id
+  requesterUserId   String
+  roleId            String?
+  pattern           String?
+  scope             String
+  proposedExpiresAt BigInt?
+  justification     Json
+  state             String
+  stageIndex        Int
+  stages            Json
+  decisions         Json
+  createdAt         BigInt
+  decidedAt         BigInt?
+
+  @@index([state])
+  @@index([requesterUserId])
+}
+
+/// The published catalog — a versioned singleton (always id = 1).
+model AlfizCatalog {
+  id       Int  @id @default(1)
+  version  Int
+  document Json
+}
+
+/// Append-only audit log, ordered by `at` (epoch ms).
+model AlfizAudit {
+  id     String @id
+  at     BigInt
+  actor  String
+  action String
+  target String
+  detail Json?
+
+  @@index([target])
+}
+```
+
+<Note>
+  Timestamps (`createdAt`, `expiresAt`, `at`, etc.) are stored as `BigInt` (epoch milliseconds) for lossless round-tripping with the core types' `number` fields. IDs are opaque strings assigned by the Application — no `autoincrement` or `cuid()` is used. No Prisma relations or cascades are declared; referential integrity between Alfiz rows is enforced by the Application layer above the seam.
+</Note>
+
+## Multi-node deployments
+
+The default in-process mutex inside both the memory driver and the Prisma driver only serializes within one Node.js process. When you run multiple application instances against the same database, two concurrent group-parentage or reporting-edge writes could each pass their individual cycle checks while jointly forming a cycle. Supply the `lock` option with a database advisory lock to prevent this.
+
+## Implementing a custom driver
+
+If you use a database without a Prisma provider — DynamoDB, a raw SQL driver, MongoDB, or similar — implement `StorageDriver` directly. The interface is in `@alfiz-auth/application`:
+
+```ts
+import type { StorageDriver } from "@alfiz-auth/application";
+
+export function myCustomDriver(): StorageDriver {
+  return {
+    async insertGrant(row) { /* ... */ },
+    async deleteGrant(id) { /* ... */ },
+    // ... all other methods
+    async runExclusive(key, fn) { /* advisory lock or mutex */ },
+  };
+}
+```
+
+Every method that returns a deleted row returns `null` (not `undefined`, not a thrown error) when the row is absent — the memory driver and Prisma driver both follow this convention and your implementation should too.

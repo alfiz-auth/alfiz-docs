@@ -1,0 +1,155 @@
+---
+title: "Define Your Permission Catalog in TypeScript"
+sidebarTitle: "Overview"
+description: "The Alfiz catalog declares every permission, scope type, and navigation entry for your application — in code, verified at build time, never in a dashboard."
+---
+
+The catalog is the single source of truth for everything Alfiz knows about your application's permission model. You declare it once in TypeScript, call `defineCatalog()`, and from that moment every permission key in your codebase is verified at compile time against the shape you described — no dashboard to drift, no runtime surprises from a misspelled key.
+
+## What the catalog contains
+
+The catalog is not an enum of strings. It is a structured description of four things:
+
+- **Permissions** — every leaf action and read your application exposes, organized into named groups.
+- **Scope types** — the resource hierarchy your permissions apply to (folders, documents, projects, or nothing at all for flat apps).
+- **Navigation entries** — the menu structure your UI renders, wired to permission patterns so items hide automatically for users who hold nothing under them.
+- **Namespaces** — the ownership prefixes that keep your keys from colliding with a future federated neighbor.
+
+None of this is inferred from call sites. Nothing is configured in a dashboard. Every structural fact is in code, at the top of your authorization module, readable by any engineer and provable by CI.
+
+## The namespace and the three-level key convention
+
+Every permission key follows the convention `<project>.<tab>.<permission>`:
+
+- **project** — the top-level namespace your application owns, declared in `namespace` or `additionalNamespaces`.
+- **tab** — the logical section or feature area (a "group" in the catalog's data model).
+- **permission** — the leaf action or read.
+
+```
+docs.files.read
+docs.files.update_file
+docs.files.delete
+
+billing.invoices.read
+billing.invoices.export
+billing.subscriptions.manage
+```
+
+This three-level shape is the default and `alfiz-verify` enforces it. If you need two levels (for a thin integration catalog) or four (for a deeper feature tree), set `allowArbitraryDepth: true` in your `CatalogInput` to opt out explicitly.
+
+## `defineCatalog()` — function signature and minimal example
+
+`defineCatalog` accepts a `CatalogInput` object and returns a typed `Catalog<C>` instance. It throws a `CatalogError` at boot when the input is structurally invalid — a broken catalog fails immediately, not at the first check.
+
+```ts
+import { defineCatalog } from "@alfiz-auth/core";
+
+export const catalog = defineCatalog({
+  namespace: "docs",
+
+  projects: {
+    docs: {
+      description: "Document management",
+      groups: {
+        files: {
+          label: "Files",
+          description: "File and folder operations",
+          scopes: ["docs.folder", "docs.doc"],
+          permissions: {
+            read: {
+              description: "View files and folders",
+              kind: "read",
+            },
+            update_file: {
+              description: "Edit file contents",
+            },
+            delete: {
+              description: "Delete a folder and its contents",
+              scopes: ["docs.folder"], // narrower than the group default
+              destructive: true,
+            },
+          },
+        },
+      },
+    },
+  },
+
+  scopeTypes: {
+    "docs.folder": { parent: null },
+    "docs.doc":    { parent: "docs.folder" },
+  },
+
+  navigation: [
+    {
+      label: "Files",
+      href: "/files",
+      permission: "docs.files.*",
+    },
+  ],
+});
+```
+
+`defineCatalog` throws on:
+- Invalid key segments (segments must match `/^[a-zA-Z][a-zA-Z0-9_]*$/`)
+- Keys at the wrong depth when `allowArbitraryDepth` is not set
+- Duplicate permission keys
+- Projects not covered by a declared namespace
+- References to undeclared scope types
+
+Semantic-convention violations — the naming floor, action naming style, nav reference validity — are reported by `lintCatalog` and enforced at build time by `alfiz-verify`, not at boot.
+
+## Derived template-literal types
+
+When you pass a literal object to `defineCatalog`, TypeScript derives a union of every valid key from your input shape. Those unions flow into the phantom fields `catalog.$key` and `catalog.$pattern`, and Alfiz's check methods are typed against them:
+
+```ts
+// Resolves to "docs.files.read" | "docs.files.update_file" | "docs.files.delete"
+type MyKey = typeof catalog.$key;
+
+// Every key is checked at compile time:
+await alfiz.can(actor, "docs.files.read");          // ✅
+await alfiz.can(actor, "docs.files.reead");         // ✅ TypeScript error
+await alfiz.canAny(actor, "docs.files.*");          // ✅ wildcard pattern
+await alfiz.canAny(actor, "docs.typo.*");           // ✅ TypeScript error
+```
+
+Two utility types let you reference these unions by name without re-declaring them:
+
+```ts
+import type { KeyOf, PatternOf } from "@alfiz-auth/core";
+
+type MyPermissionKey     = KeyOf<typeof catalog>;
+type MyPermissionPattern = PatternOf<typeof catalog>;
+```
+
+Use `KeyOf` and `PatternOf` to type function parameters that receive permission keys or patterns at runtime.
+
+## Emitting the catalog for `alfiz-verify`
+
+`alfiz-verify` reads your catalog from a JSON snapshot rather than importing your source module directly. Emit the snapshot with:
+
+```bash
+node --experimental-strip-types -e \
+  'import("./src/alfiz.ts").then(m => console.log(JSON.stringify(m.catalog.toDocument())))' \
+  > alfiz-catalog.json
+```
+
+`toDocument()` returns a `CatalogDocument` — the stable wire shape of a catalog publish — which `alfiz-verify` reads to check coverage, gate shapes, and naming conventions. Add this step to your CI pipeline before running the verifier.
+
+<Note>
+  The `alfiz_internal.*` permissions (role management, access requests, audit log) are included in every catalog by default. Set `includeAlfizInternal: false` in your `CatalogInput` only when your application renders no Alfiz administration surface.
+</Note>
+
+## What's next
+
+<CardGroup cols={3}>
+  <Card title="Permissions" href="/catalog/permissions">
+    Keys, kinds, wildcards, and the naming floor
+  </Card>
+  <Card title="Scope Types" href="/catalog/scope-types">
+    Resource hierarchies and per-type grantability
+  </Card>
+  <Card title="Navigation Wiring" href="/catalog/navigation-wiring">
+    Menu visibility tied to real permissions
+  </Card>
+</CardGroup>

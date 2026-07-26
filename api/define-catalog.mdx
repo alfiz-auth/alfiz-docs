@@ -1,0 +1,239 @@
+---
+title: "defineCatalog() — Declare Your Permission Tree"
+sidebarTitle: "defineCatalog()"
+description: "defineCatalog(input) creates the Alfiz catalog object for your application — the source of truth for permission keys, scope types, navigation, and derived types."
+---
+
+`defineCatalog` is where your authorization model lives. It takes a structured declaration of your permission tree and produces a `Catalog` object that the Application validates writes against, the client checks keys against, and the build-time verifier consumes. The catalog is declared in code — not configured in a dashboard and not inferred from call sites — so it is always the ground truth.
+
+`defineCatalog` throws `CatalogError` immediately on structural invalidity (bad segments, undeclared namespaces, missing scope types). Semantic convention violations — the naming floor, nav wiring — are reported by `alfiz-verify` at build time, not at runtime.
+
+## Signature
+
+```ts
+import { defineCatalog } from "@alfiz-auth/core";
+
+function defineCatalog<const C extends CatalogInput>(input: C): Catalog<C>
+```
+
+## Parameters
+
+<ParamField body="namespace" type="string" required>
+  Your application's primary namespace — the first segment of every permission key your application declares. Must be a single valid segment (`[a-zA-Z][a-zA-Z0-9_]*`). `alfiz_internal` is reserved.
+
+  Example: `"docs"` produces keys like `docs.files.read`.
+</ParamField>
+
+<ParamField body="additionalNamespaces" type="string[]" optional>
+  Additional namespaces this application owns. In a multi-project portal where you declare more than one top-level project, every project name must appear in either `namespace` or `additionalNamespaces`. Catalogs are federation-shaped from the first commit — declaring namespaces explicitly means the shape is portable to a federated deployment without refactoring.
+</ParamField>
+
+<ParamField body="projects" type="Record<string, GroupInput>" required>
+  Top-level permission groups, one per project (namespace). The blessed structure is `project → tab → permission` — three levels. Each project key must match a declared namespace.
+
+  See [Catalog Types](/api/catalog-types) for the full `GroupInput` field reference.
+</ParamField>
+
+<ParamField body="scopeTypes" type="Record<string, ScopeTypeInput>" optional>
+  Scope types this catalog uses. Required for any catalog that grants permissions at resource scopes (anything other than global `"*"`). Keys are dotted identifiers like `"docs.folder"` or `"docs.doc"`.
+
+  See [Catalog Types](/api/catalog-types) for the full `ScopeTypeInput` field reference.
+</ParamField>
+
+<ParamField body="navigation" type="NavItemInput[]" optional>
+  Sidebar / nav tree wiring. Each item declares a `permission` (a key, array of keys, or subtree pattern) that controls visibility of that nav item. The `alfiz-verify` linter checks that all referenced permissions exist in the catalog.
+
+  See [Catalog Types](/api/catalog-types) for the full `NavItemInput` field reference.
+</ParamField>
+
+<ParamField body="allowArbitraryDepth" type="boolean" default="false" optional>
+  The blessed convention is exactly three levels (`project.tab.permission`). Set this to `true` to permit two-level integration catalogs (`zoom.host`) or deeper nesting. This is an explicit opt-out, not a default, so the linter does not treat it as an error on opted-in catalogs.
+</ParamField>
+
+<ParamField body="includeAlfizInternal" type="boolean" default="true" optional>
+  When `true` (the default), Alfiz's own administration permissions are included under `alfiz_internal.*`. Set to `false` only for catalogs that render no Alfiz admin UI surface. When `false`, view-as and all other `alfiz_internal.*` features are unavailable — `createSession` will deny any view-as attempt because the permission key does not exist.
+</ParamField>
+
+## Return value
+
+<ResponseField name="Catalog" type="Catalog<C>">
+  A `Catalog` object carrying:
+  - `catalog.leaves` — `ReadonlyMap<string, LeafMeta>` of all permission keys
+  - `catalog.groups` — `ReadonlyMap<string, GroupMeta>` of all group paths
+  - `catalog.scopeTypes` — `ReadonlyMap<string, ScopeTypeMeta>`
+  - `catalog.navigation` — the built nav tree
+  - `catalog.namespace` / `catalog.namespaces`
+  - `catalog.toDocument()` — emits the JSON wire shape for `alfiz-verify`
+
+  The phantom fields `catalog.$key` and `catalog.$pattern` carry the derived `CatalogKeys<C>` and `CatalogPatterns<C>` union types. Extract them with `KeyOf<typeof catalog>` and `PatternOf<typeof catalog>`.
+</ResponseField>
+
+## `catalog.toDocument()`
+
+`toDocument()` serializes the catalog to the stable `CatalogDocument` wire shape consumed by `alfiz-verify` and the provider's catalog publish endpoint.
+
+```ts
+// Emit to a file for use by alfiz-verify:
+node --experimental-strip-types -e \
+  'import("./src/alfiz.ts").then(m => console.log(JSON.stringify(m.catalog.toDocument())))' \
+  > alfiz-catalog.json
+```
+
+## Template-literal types
+
+Importing the catalog and using `KeyOf` / `PatternOf` gives you compile-time verified permission strings everywhere:
+
+```ts
+import type { KeyOf, PatternOf } from "@alfiz-auth/core";
+import { catalog } from "./alfiz.js";
+
+type AppKey = KeyOf<typeof catalog>;
+// → "docs.files.read" | "docs.files.update_file" | "docs.files.delete" | "alfiz_internal.access.read" | ...
+
+type AppPattern = PatternOf<typeof catalog>;
+// → "*" | AppKey | "docs.*" | "docs.files.*" | "alfiz_internal.*" | ...
+
+// Type a function that accepts any valid permission key:
+function requirePermission(key: AppKey, scope?: string): Promise<void> { /* ... */ }
+
+// Type a variable holding a pattern:
+const visibilityPattern: AppPattern = "docs.files.*";
+```
+
+## `includeAlfizInternal: true` — built-in admin permissions
+
+By default, `defineCatalog` merges the `alfiz_internal` project into the catalog. This adds the following permission keys, which gate Alfiz's own headless administration components:
+
+| Key | Description |
+|---|---|
+| `alfiz_internal.access.read` | View the access administration surface |
+| `alfiz_internal.access.manage_roles` | Create, edit, delete roles |
+| `alfiz_internal.access.manage_groups` | Create, edit, delete user groups and their parentage |
+| `alfiz_internal.access.manage_grants` | Create and delete grants |
+| `alfiz_internal.access.manage_revokes` | Create and delete personal revokes |
+| `alfiz_internal.access.manage_reporting` | Edit reporting (manager) edges |
+| `alfiz_internal.access.view_as` | Preview the product as a role or an individual |
+| `alfiz_internal.requests.read` | View the approvals inbox |
+| `alfiz_internal.requests.decide_request` | Approve or deny an access request |
+| `alfiz_internal.audit.read` | Read the audit log |
+| `alfiz_internal.catalog.read` | View the published catalog |
+| `alfiz_internal.catalog.publish_catalog` | Publish a verified catalog to the provider |
+
+<Note>
+  `alfiz_internal.*` keys are exempt from coverage linting in `alfiz-verify` — they are gated inside Alfiz's own admin surfaces, not your application code, so unreferenced warnings are suppressed for them automatically.
+</Note>
+
+## Complete example
+
+A document management application with two scope types, a multi-group project, navigation wiring, and template-literal types:
+
+```ts
+import { defineCatalog } from "@alfiz-auth/core";
+import type { KeyOf, PatternOf } from "@alfiz-auth/core";
+
+export const catalog = defineCatalog({
+  namespace: "docs",
+  projects: {
+    docs: {
+      label: "Documents",
+      description: "Document and folder access",
+      groups: {
+        files: {
+          label: "Files",
+          description: "Read and modify documents and folders",
+          scopes: ["docs.folder", "docs.doc"],
+          permissions: {
+            read: {
+              label: "View",
+              description: "View document contents and folder listings",
+              kind: "read",
+              impliedOnAncestors: true,
+            },
+            update_file: {
+              label: "Edit",
+              description: "Edit document content or rename a folder",
+            },
+            share: {
+              label: "Share",
+              description: "Invite collaborators and change sharing settings",
+            },
+            delete: {
+              label: "Delete",
+              description: "Permanently delete a document or folder",
+              destructive: true,
+            },
+          },
+        },
+        admin: {
+          label: "Administration",
+          description: "Workspace-level administrative actions",
+          permissions: {
+            read: {
+              label: "View admin panel",
+              kind: "read",
+            },
+            manage_members: {
+              label: "Manage members",
+              description: "Invite, remove, and manage workspace members",
+            },
+            manage_billing: {
+              label: "Manage billing",
+              description: "Update payment methods and subscription",
+            },
+          },
+        },
+      },
+    },
+  },
+
+  scopeTypes: {
+    "docs.folder": {
+      description: "A folder in the document hierarchy",
+      parent: null,                  // top-level: direct children of *
+      requestable: {
+        prompts: [
+          { id: "reason", label: "Why do you need access?", required: true },
+        ],
+        requireExpiry: true,
+        maxDurationMs: 7 * 24 * 60 * 60 * 1000, // 7 days max
+        policy: {
+          stages: [{ kind: "self" }],
+        },
+      },
+    },
+    "docs.doc": {
+      description: "An individual document",
+      parent: "docs.folder",         // documents live inside folders
+    },
+  },
+
+  navigation: [
+    {
+      label: "Documents",
+      href: "/docs",
+      permission: "docs.files.read",
+      children: [
+        {
+          label: "My Files",
+          href: "/docs/mine",
+          permission: "docs.files.read",
+        },
+        {
+          label: "Shared",
+          href: "/docs/shared",
+          permission: "docs.files.read",
+        },
+      ],
+    },
+    {
+      label: "Admin",
+      href: "/admin",
+      permission: "docs.admin.read",
+    },
+  ],
+});
+
+// Derived types — use these throughout your application:
+export type AppKey = KeyOf<typeof catalog>;
+export type AppPattern = PatternOf<typeof catalog>;
+```

@@ -1,0 +1,231 @@
+---
+title: "snapshot() — Batch Checks in a Single Round-Trip"
+sidebarTitle: "snapshot()"
+description: "snapshot(principal) fetches all closures and grants in one provider round-trip, returning an AlfizSnapshot with synchronous can() and canAny() methods."
+---
+
+`snapshot` is the pattern for server-rendered frameworks and any code path that performs multiple authorization checks for the same principal. Instead of making a separate async call for each check, you call `client.snapshot(principal)` once — a single provider round-trip — and then call `.can()`, `.canAny()`, `.require()`, and `.requireAny()` synchronously on the returned snapshot. Every check in the snapshot sees one consistent instant of the principal's access data, which is a stronger per-request guarantee than calling `can` repeatedly against a TTL cache that may tick over mid-render.
+
+## `client.snapshot(principal, options?)`
+
+```typescript
+async snapshot(
+  principal: PrincipalRef,
+  options?: SnapshotOptions,
+): Promise<AlfizSnapshot<K, P>>
+```
+
+<ParamField body="principal" type="PrincipalRef" required>
+  Identifies who the snapshot is for. Either `{ userId: string }` for a
+  human user or `{ serviceId: string }` for a machine principal.
+</ParamField>
+
+<ParamField body="options.scopes" type="readonly ScopeId[]">
+  Scope instances to pre-resolve for synchronous scoped checks. You only
+  need to list scopes for **hierarchical** scope types — those whose catalog
+  declaration has a non-null `parent`. Flat, top-level scope types (declared
+  with `parent: null`) are resolved synchronously from the catalog without
+  I/O, so you do not need to list them here. Scopes that appear in the
+  principal's own grant and revoke rows are always pre-resolved automatically.
+</ParamField>
+
+<ParamField body="options.fresh" type="boolean" default="false">
+  When `true`, bypasses both the subject-closure cache and the object
+  ancestor-chain cache, fetching fresh data from the provider. Equivalent to
+  calling `can.fresh` for every check in the snapshot.
+</ParamField>
+
+### Return value
+
+<ResponseField name="Promise<AlfizSnapshot<K, P>>" type="Promise<AlfizSnapshot>">
+  A snapshot containing the compiled closure data and grant rows for the
+  principal at the moment of the round-trip. Once resolved, all checks on
+  the snapshot are synchronous.
+
+  <Expandable title="AlfizSnapshot members">
+    <ResponseField name="can(key, scope?)" type="(key: K | readonly K[], scope?: ScopeId) => boolean">
+      Synchronous authorization gate. Agrees with `client.can` for every
+      pre-resolved scope. Throws for unresolved hierarchical scopes — call
+      `await snap.resolve([...scopes])` first.
+    </ResponseField>
+    <ResponseField name="canAny(pattern)" type="(pattern: P) => boolean">
+      Synchronous visibility affordance. Exact, not approximate: every
+      granted scope's chain was resolved at snapshot time.
+    </ResponseField>
+    <ResponseField name="require(key, scope?)" type="(key: K | readonly K[], scope?: ScopeId) => void">
+      Throwing form of `snap.can`. Throws `AccessDeniedError` on denial.
+    </ResponseField>
+    <ResponseField name="requireAny(pattern)" type="(pattern: P) => void">
+      Throwing form of `snap.canAny`.
+    </ResponseField>
+    <ResponseField name="holds(key)" type="(key: K) => boolean">
+      Returns `true` if the principal holds `key` at any scope. The
+      single-key form of `heldKeys`.
+    </ResponseField>
+    <ResponseField name="heldKeys" type="ReadonlySet<PermissionKey>">
+      Every concrete catalog key the principal holds somewhere. Computed
+      once per snapshot on first access — the per-request cache for
+      unscoped conditional UI.
+    </ResponseField>
+    <ResponseField name="grantedScopes(key)" type="(key: K) => { granted: Set<ScopeId>, revoked: Set<ScopeId> }">
+      Synchronous listing primitive — same result as `client.grantedScopes`
+      but without an async call.
+    </ResponseField>
+    <ResponseField name="explain(key, scope?)" type="(key: K, scope?) => CheckExplanation & { objectClosure, active, implied }">
+      Synchronous explain — same result as `client.explain`.
+    </ResponseField>
+    <ResponseField name="resolve(scopes)" type="(scopes: readonly ScopeId[]) => Promise<this>">
+      Extends the snapshot with additional pre-resolved chains, without
+      re-fetching subject data. The data instant and evaluation clock are
+      unchanged.
+    </ResponseField>
+    <ResponseField name="active" type="boolean">
+      Whether the principal is active. Inactive principals return `false`
+      for every check without a provider call.
+    </ResponseField>
+    <ResponseField name="at" type="number">
+      The evaluation instant (epoch ms) used for grant expiry across every
+      check in this snapshot.
+    </ResponseField>
+    <ResponseField name="principal" type="PrincipalRef">
+      The principal this snapshot was taken for.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+## When to use a snapshot
+
+Use `client.snapshot(principal)` whenever a single request or render performs more than one check for the same principal:
+
+- **RSC (React Server Component) renders** that check multiple permissions in a single pass — inside `.map()` callbacks, conditional sections, and layout components.
+- **List pages** that render per-item action buttons (edit, delete, share) for every row in a result set.
+- **Route loaders** that guard the page and then conditionally load additional data based on permissions.
+- **Any helper function** that needs to call `can` without being async — pass the snapshot down instead of the client.
+
+Use `client.can` / `client.can.fresh` directly when:
+- You need a single check and are not in a server render.
+- You are performing a destructive action and want `fresh` semantics for the entire snapshot (pass `{ fresh: true }` to get this with a snapshot too).
+
+---
+
+## Staleness and freshness
+
+A snapshot is a **point-in-time view** of a principal's access. It draws from the same caches as `client.can` — a snapshot is one consistent instant of those caches, which is a *stronger* per-request guarantee (every check sees the same data), not a weaker one.
+
+For destructive actions within a render, do not re-use the snapshot — use `client.can.fresh(...)` for the destructive gate, keeping the snapshot for read checks.
+
+<Warning>
+  A snapshot captures the subject-closure data once. Do not reuse a snapshot
+  across requests or background jobs. Take a fresh snapshot at the start of
+  each request.
+</Warning>
+
+---
+
+## Examples
+
+### RSC page with multiple checks
+
+```typescript
+// app/docs/[docId]/page.tsx (React Server Component)
+export default async function DocPage({
+  params,
+}: {
+  params: { docId: string };
+}) {
+  const { userId } = await getSession();
+  const scope = `docs.doc:${params.docId}`;
+
+  // One round-trip for all checks on this page.
+  const snap = await alfiz.snapshot({ userId });
+
+  // Gate the page.
+  snap.require("docs.files.read", scope);
+
+  const canEdit   = snap.can("docs.files.update_file", scope);
+  const canDelete = snap.can("docs.files.delete",      scope);
+
+  const doc = await db.docs.findById(params.docId);
+
+  return (
+    <DocView
+      doc={doc}
+      canEdit={canEdit}
+      canDelete={canDelete}
+    />
+  );
+}
+```
+
+### List page with per-item action buttons
+
+```typescript
+export default async function DocsListPage() {
+  const { userId } = await getSession();
+
+  // Snapshot pre-resolves all scopes in the principal's own grant rows.
+  const snap = await alfiz.snapshot({ userId });
+
+  snap.require("docs.files.read");
+
+  const docs = await db.docs.findMany();
+
+  // Pre-resolve the doc scopes for all rows in one call.
+  await snap.resolve(docs.map((d) => `docs.doc:${d.id}`));
+
+  return (
+    <ul>
+      {docs.map((doc) => {
+        const scope = `docs.doc:${doc.id}`;
+        return (
+          <li key={doc.id}>
+            {doc.title}
+            {snap.can("docs.files.update_file", scope) && (
+              <EditButton docId={doc.id} />
+            )}
+            {snap.can("docs.files.delete", scope) && (
+              <DeleteButton docId={doc.id} />
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+```
+
+<Note>
+  For large result sets (hundreds or thousands of rows), prefer pushing the
+  filter into the database using `client.grantedScopes` rather than resolving
+  a chain per row. `snap.resolve` is ideal for tens-of-rows cases or for
+  enriching a snapshot mid-request with a small number of additional scopes.
+</Note>
+
+### Passing a snapshot to synchronous helpers
+
+```typescript
+import type { SnapshotOf } from "@alfiz-auth/core";
+import { catalog } from "./catalog.js";
+
+// SnapshotOf<typeof catalog> is the typed snapshot — no hand-written params.
+function renderActions(
+  doc: Doc,
+  snap: SnapshotOf<typeof catalog>,
+): ActionItem[] {
+  const scope = `docs.doc:${doc.id}`;
+  const actions: ActionItem[] = [];
+  if (snap.can("docs.files.update_file", scope)) actions.push("edit");
+  if (snap.can("docs.files.delete",      scope)) actions.push("delete");
+  return actions;
+}
+```
+
+### Fresh snapshot for just-in-time elevation
+
+```typescript
+// Take a fresh snapshot when the user has just been granted temporary access.
+const snap = await alfiz.snapshot({ userId }, { fresh: true });
+snap.require("docs.files.read", `docs.doc:${docId}`);
+```

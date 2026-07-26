@@ -1,0 +1,182 @@
+---
+title: "Standalone Deployment: One App, One Database"
+sidebarTitle: Standalone
+description: "A standalone Alfiz deployment is the complete system for one application — the open-source Client and Application packages, no external dependencies, full feature set."
+---
+
+A standalone deployment is exactly what it sounds like: your application, your database, and two npm packages. No hosted service sits on your request path, no external dependency is required beyond the database you already run, and nothing is withheld. Every feature Alfiz ships — permission grammar, scoped grants, groups, roles, access requests, management-layer approvals, the headless admin kit — is fully available the moment you call `createApplication`.
+
+## What standalone means
+
+Standalone is the composition of two packages:
+
+<CardGroup cols={2}>
+  <Card title="@alfiz-auth/core" icon="cube">
+    The **Client**: the evaluator. Grammar, catalog, typed keys, check shapes, closure caches, static verification, and the headless admin kit. Every capability is a pure function over provider-supplied data — no storage, no I/O of its own.
+  </Card>
+  <Card title="@alfiz-auth/application" icon="database">
+    The **Application**: your local provider. Implements the provider contract against your own database through a storage seam. In standalone mode, it is the org root — the single authoritative home of all organizational data.
+  </Card>
+</CardGroup>
+
+Your database is the only infrastructure requirement. Swap in `@alfiz-auth/prisma` for a Postgres, MySQL, or SQLite-backed storage driver, or use `memoryDriver()` for tests.
+
+## What you get
+
+The full feature set, locally, with no external dependency:
+
+- **Permission grammar and catalog** — declare every permission in code; template-literal types verify every call site at compile time
+- **Four enforcement points** — page gate, navigation visibility, server action, conditional UI; `alfiz-verify` proves coverage in CI
+- **Scoped grants with expiry** — grant a role or a permission pattern at any scope, optionally time-bound, with provenance on every row
+- **Groups and nested groups** — user cohorts with union-only inheritance; cycle detection enforced on every parentage write
+- **Roles** — named bundles of permission patterns; forward-inclusive wildcards absorb future keys automatically
+- **Reporting hierarchy** — a `reports-to` edge per user drives implicit groups (`directs:<id>`, `orgof:<id>`) usable as grant subjects and approval predicates
+- **Access requests with management-layer approvals** — requestable roles and scope types; multi-stage workflows; management-chain routing resolved against your locally-stored hierarchy
+- **Headless admin kit** — unstyled, composable components rendering from your catalog and speaking only the provider contract; build your own admin UI from the same primitives as Alfiz Cloud's hosted dashboard
+- **Clerk adapter** — a provider-agnostic identity interface with a first-class Clerk implementation for session verification and directory ingestion
+
+## The Application is the org root
+
+In standalone mode, `orgRoot` defaults to `true`. That means your Application is the single authoritative writer of all organizational-domain data: user groups and their nesting, role definitions, the reporting hierarchy, global-scope grants and revokes, and approval policies attached to those entities.
+
+When you later [link to Alfiz Cloud](/growth/linked) or [federate](/growth/federated), the org root can move — but in standalone, it never needs to leave.
+
+## Runtime checks never leave your application
+
+Regardless of where you go from here, this guarantee holds in every topology: every `can()`, `canAny()`, and `can.fresh()` call runs in-process against your catalog, your grant rows, and your ancestry resolver. Nothing on your request path is ever counted, priced, or throttled.
+
+```ts
+// Checks are in-process. Nothing phones home.
+await alfiz.can({ userId }, "docs.files.read", "docs.doc:123");
+await alfiz.requirePermission({ userId }, "docs.files.update_file", "docs.doc:123");
+await alfiz.can.fresh({ userId }, "docs.files.delete", "docs.folder:9"); // bypass cache
+```
+
+## Setting up a standalone deployment
+
+<Steps>
+  <Step title="Install the packages">
+    <CodeGroup>
+      ```bash npm
+      npm install @alfiz-auth/core @alfiz-auth/application
+      ```
+      ```bash pnpm
+      pnpm add @alfiz-auth/core @alfiz-auth/application
+      ```
+      ```bash yarn
+      yarn add @alfiz-auth/core @alfiz-auth/application
+      ```
+    </CodeGroup>
+
+    For a Prisma-backed storage driver, also install `@alfiz-auth/prisma`.
+  </Step>
+
+  <Step title="Define your catalog">
+    The catalog is the single source of truth for your permission tree. It lives in code, not a dashboard.
+
+    ```ts src/authz/catalog.ts
+    import { defineCatalog } from "@alfiz-auth/core";
+
+    export const catalog = defineCatalog({
+      namespace: "docs",
+      projects: {
+        docs: {
+          groups: {
+            files: {
+              permissions: {
+                read:        { scopes: ["docs.folder", "docs.doc"] },
+                update_file: { scopes: ["docs.folder", "docs.doc"] },
+                delete:      { scopes: ["docs.folder"] }, // destructive: stands alone
+              },
+            },
+          },
+        },
+      },
+      scopeTypes: {
+        "docs.folder": { parent: null },
+        "docs.doc":    { parent: "docs.folder" },
+      },
+    });
+    ```
+  </Step>
+
+  <Step title="Create the Application">
+    Pass your catalog, a storage driver, and an ancestry resolver. `orgRoot` defaults to `true` — you do not need to set it explicitly in standalone mode.
+
+    ```ts src/authz/app.ts
+    import { parentPointerResolver } from "@alfiz-auth/core";
+    import { createApplication, memoryDriver } from "@alfiz-auth/application";
+    import { catalog } from "./catalog";
+    import { db } from "../db";
+
+    export const app = createApplication({
+      catalog,
+      storage: memoryDriver(),         // swap for @alfiz-auth/prisma in production
+      ancestry: parentPointerResolver((scope) => db.parentOf(scope)),
+      orgRoot: true,                   // default — shown here for clarity
+    });
+    ```
+
+    <Tip>
+      The `ancestry` resolver is the reason runtime checks stay local forever. It resolves a scope's ancestor chain against your own tables — no external service can substitute for it.
+    </Tip>
+  </Step>
+
+  <Step title="Create the client and start checking">
+    ```ts src/authz/index.ts
+    import { createAlfizClient } from "@alfiz-auth/core";
+    import { catalog } from "./catalog";
+    import { app } from "./app";
+
+    export const alfiz = createAlfizClient({ catalog, provider: app });
+    ```
+
+    For server-rendered pages, take one snapshot per request instead of scattering `await` through render helpers:
+
+    ```ts
+    const snap = await alfiz.snapshot({ userId }); // one provider round-trip
+    snap.can("docs.files.read");                    // sync — safe inside .map()
+    snap.canAny("docs.*");                          // visibility only, never a gate
+    snap.holds("docs.files.update_file");           // "should this button exist at all"
+    await snap.resolve(rowScopes);                  // extend after querying
+    ```
+  </Step>
+
+  <Step title="Wire deletion cleanup">
+    Grants key on subject and scope strings, not foreign keys. When you delete a user or a resource, call the corresponding cleanup so stranded rows do not resurface on id reuse.
+
+    ```ts
+    // When a user is deleted or offboarded:
+    await app.deleteSubject(`user:${userId}`, provenance);
+    // Reversible alternative — blocks all access until re-activated:
+    await app.setUserActive(userId, false, provenance);
+
+    // When a resource is deleted:
+    await app.deleteScope(`docs.doc:${docId}`, provenance);
+
+    // When a resource is moved:
+    app.notifyScopeMoved(`docs.doc:${docId}`); // busts cached ancestor chain immediately
+    ```
+  </Step>
+</Steps>
+
+## Who standalone is right for
+
+Standalone is the right starting point for any organization with a single application. It is also the right answer for engineering teams who need full authorization capabilities today but do not yet need a non-engineer to administer access from a hosted dashboard.
+
+<Note>
+  The standalone tier is **free, MIT-licensed, forever**. The full feature set — every capability listed above — is available at no cost and with no external service dependency. You can self-assemble an admin UI using the headless kit without ever upgrading.
+</Note>
+
+## The growth path
+
+Standalone is a complete system, not a limited tier. When your needs grow, the path forward is additive and reversible:
+
+<CardGroup cols={2}>
+  <Card title="Link to Alfiz Cloud" icon="link" href="/growth/linked">
+    When a non-engineer needs to administer access, link your Application to get the Diwan hosted dashboard and admin seats. Your Application stays the org root and sole writer — nothing architectural changes.
+  </Card>
+  <Card title="Federate" icon="share-nodes" href="/growth/federated">
+    When a second application arrives, or when you need provisioned third-party integrations, federation moves the org root to Alfiz Cloud and unlocks cross-application role composition.
+  </Card>
+</CardGroup>

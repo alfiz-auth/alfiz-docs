@@ -1,0 +1,209 @@
+---
+title: "can() and requirePermission() — Authorization Gates"
+sidebarTitle: "can()"
+description: "can(principal, key, scope?) returns a boolean authorization decision. requirePermission() is the throwing form. can.fresh() bypasses the closure cache."
+---
+
+`can` is the only gate shape in Alfiz. Every route handler, server action, and API endpoint that enforces access control calls `can` (or its throwing form `requirePermission`) on a concrete permission key at a concrete scope. The key is verified against your catalog before evaluation — a key the catalog does not declare raises `UnknownPermissionError`, which is a programming error, not a denial, and must never be mapped to a `403`.
+
+## `can(principal, key, scope?)`
+
+```typescript
+interface CanFn<K extends string> {
+  (
+    principal: PrincipalRef,
+    key: K | readonly K[],
+    scope?: ScopeId,
+  ): Promise<boolean>;
+
+  fresh(
+    principal: PrincipalRef,
+    key: K | readonly K[],
+    scope?: ScopeId,
+  ): Promise<boolean>;
+}
+```
+
+<ParamField body="principal" type="PrincipalRef" required>
+  Identifies who is being checked. Either `{ userId: string }` for a human
+  user or `{ serviceId: string }` for a machine principal. The client
+  resolves the full subject closure — groups, organizations, implicit
+  `directs:` and `orgof:` groups, and `everyone` — from the provider and
+  caches it for the duration of `subjectCacheTtlMs`.
+</ParamField>
+
+<ParamField body="key" type="K | readonly K[]" required>
+  A permission key (or array of keys) declared in your catalog. If you pass
+  an array, the check returns `true` when the principal holds **any** of the
+  listed keys at the given scope. The key is a typed string inferred from
+  your catalog — the TypeScript compiler rejects keys that are not in the
+  catalog at literal call sites, and the runtime rejects them everywhere
+  else.
+</ParamField>
+
+<ParamField body="scope" type="ScopeId">
+  Optional. A scope instance id of the form `<scopeType>:<instanceId>` — for
+  example `docs.doc:abc123` or `docs.folder:project-x`. Omit `scope` (or
+  pass `"*"`) for a global-scope check. When a scope is provided, the client
+  resolves its full ancestor chain and checks grants at the scope itself, at
+  every ancestor, and at `*`.
+</ParamField>
+
+### Return value
+
+<ResponseField name="Promise<boolean>" type="Promise<boolean>">
+  Resolves to `true` when the principal holds the key at the given scope
+  (directly or through a covering grant higher in the hierarchy), and `false`
+  in every other case including inactive principals, expired grants, and
+  suppressed grants. This method never throws for a denial — only
+  `requirePermission` throws.
+</ResponseField>
+
+---
+
+## `can.fresh(principal, key, scope?)`
+
+`can.fresh` has the same signature as `can` but bypasses both the subject closure cache and the object ancestor-chain cache, fetching fresh data from the provider on every call.
+
+```typescript
+can.fresh(
+  principal: PrincipalRef,
+  key: K | readonly K[],
+  scope?: ScopeId,
+): Promise<boolean>
+```
+
+Use `can.fresh` in place of `can` for:
+
+- **Destructive actions** (`delete`, `purge`, `destroy_*`) where acting on a stale "yes" is irreversible.
+- **Just-in-time elevations** — time-limited grants where the expiry boundary matters at the second level, not the minute level.
+- Any endpoint where a user has just had access revoked and you need to see that revocation immediately rather than waiting for the TTL to expire.
+
+<Tip>
+  Pair `can.fresh` with standalone destructive permission leaves. When your
+  catalog declares `delete` as its own leaf rather than bundling it with
+  `update`, the fresh check only pays the cost of a single destructive
+  surface — not every check on the page.
+</Tip>
+
+---
+
+## `requirePermission(principal, key, scope?)`
+
+```typescript
+async requirePermission(
+  principal: PrincipalRef,
+  key: K | readonly K[],
+  scope?: ScopeId,
+): Promise<void>
+```
+
+The throwing form of `can`. Identical semantics: it uses the cached path (not `fresh`), verifies the key against the catalog, and then throws `AccessDeniedError` if the principal does not hold the permission. Use this in server actions and route handlers where a thrown error is the right control-flow signal.
+
+`AccessDeniedError` carries a typed `reason` field:
+
+| `reason`          | Meaning                                                       |
+|-------------------|---------------------------------------------------------------|
+| `"forbidden"`     | The principal is active but does not hold the key at scope.   |
+| `"inactive"`      | The principal exists but has been deactivated.                |
+| `"unauthenticated"` | No principal at all — the identity layer produced nobody.   |
+
+<Warning>
+  Map `AccessDeniedError` to a `403` or a redirect. If you catch
+  `UnknownPermissionError` — thrown when the key is not in the catalog — map
+  it to a `500`. These are two distinct error classes: one is a runtime
+  denial, the other is a programming mistake.
+</Warning>
+
+---
+
+## Cache semantics
+
+Alfiz caches two things independently, both parameterized by provider invalidation events:
+
+- **Subject closure** — the principal's group memberships, org memberships, and implicit groups. Cached for `subjectCacheTtlMs` (default 30 s) and bust immediately when the provider emits a `user`, `subject`, `role`, or `all` invalidation event.
+- **Object ancestor chain** — the ancestry path from a scope instance up to `*`. Cached for `objectCacheTtlMs` (default 60 s) and bust immediately when the provider emits a `scope` event for any scope in the chain.
+
+Neither the grant evaluation result nor the final boolean is ever cached. Every `can` call re-evaluates the decision from freshly obtained (or cache-hit) closures.
+
+`can.fresh` bypasses both caches and always fetches from the provider, regardless of what is cached.
+
+---
+
+## Examples
+
+### Basic global-scope gate
+
+```typescript
+const principal = { userId: session.userId };
+
+if (await alfiz.can(principal, "docs.files.read")) {
+  return await db.docs.listAll();
+}
+return new Response("Forbidden", { status: 403 });
+```
+
+### Scoped gate — checking access to a specific document
+
+```typescript
+async function getDocument(userId: string, docId: string) {
+  const principal = { userId };
+  const scope = `docs.doc:${docId}`;
+
+  if (!await alfiz.can(principal, "docs.files.read", scope)) {
+    throw new AccessDeniedError({ reason: "forbidden", permission: "docs.files.read", scope });
+  }
+
+  return db.docs.findById(docId);
+}
+```
+
+### Using `requirePermission` in a server action
+
+```typescript
+export async function updateDocument(docId: string, patch: DocPatch) {
+  const { userId } = await getSession();
+
+  // Throws AccessDeniedError if not permitted — caught by the framework.
+  await alfiz.requirePermission(
+    { userId },
+    "docs.files.update_file",
+    `docs.doc:${docId}`,
+  );
+
+  return db.docs.update(docId, patch);
+}
+```
+
+### Fresh check for a destructive action
+
+```typescript
+export async function deleteDocument(docId: string) {
+  const { userId } = await getSession();
+
+  // Bypass the cache — deletion is irreversible.
+  const allowed = await alfiz.can.fresh(
+    { userId },
+    "docs.files.delete",
+    `docs.doc:${docId}`,
+  );
+
+  if (!allowed) {
+    return { error: "forbidden" };
+  }
+
+  await db.docs.delete(docId);
+  await app.notifyScopeMoved(`docs.doc:${docId}`); // clean up grants
+}
+```
+
+### Checking any of multiple keys
+
+```typescript
+// Returns true if the principal holds read OR update_file at this doc.
+const canInteract = await alfiz.can(
+  { userId },
+  ["docs.files.read", "docs.files.update_file"],
+  `docs.doc:${docId}`,
+);
+```

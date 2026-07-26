@@ -1,0 +1,190 @@
+---
+title: "Declaring Permissions: Keys, Kinds, and Wildcards"
+sidebarTitle: "Permissions"
+description: "Learn the three-level naming convention, how to declare read and action permissions, when to use destructive flags, and how forward-inclusive wildcards work."
+---
+
+Every permission your application enforces must be declared in the catalog before any check can reference it. Alfiz will not evaluate a key it has never seen — passing an unknown key to `can()` or `requirePermission()` raises `UnknownPermissionError` at runtime and a type error at compile time. This section explains how to declare permissions correctly, name them consistently, and use wildcards safely.
+
+## The three-level key convention
+
+Alfiz permission keys follow the shape `<project>.<tab>.<permission>`:
+
+```
+docs.files.read
+docs.files.update_file
+docs.files.delete
+
+billing.invoices.read
+billing.invoices.export
+
+admin.users.read
+admin.users.invite_user
+admin.users.delete
+```
+
+- **project** is the namespace your application owns (`docs`, `billing`, `admin`). It must match the catalog's `namespace` or one of its `additionalNamespaces`.
+- **tab** is a logical section or feature area — what your UI might call a page or a module. Tabs map to `groups` in the catalog input.
+- **permission** is the leaf — the concrete thing someone may or may not do.
+
+This three-level shape is the default enforced by `alfiz-verify`. Setting `allowArbitraryDepth: true` on your `CatalogInput` opts out for the whole catalog, enabling two-level integration keys (`zoom.host`) or deeper nesting when you genuinely need it.
+
+## Declaring permissions: `PermissionLeafInput`
+
+Each permission is a key in a group's `permissions` record. Its value is either the literal `true` (defaults for everything) or a `PermissionLeafInput` object:
+
+```ts
+export interface PermissionLeafInput {
+  label?:              string;
+  description?:        string;
+  kind?:               "read" | "action";
+  destructive?:        boolean;
+  scopes?:             readonly ScopeType[];
+  impliedOnAncestors?: boolean;
+}
+```
+
+<ParamField body="label" type="string">
+  Short human-facing name shown in permission pickers and role-editor checkboxes, for example `"Publish course"`. Keeping the label here prevents UI copy from drifting into a side table. Falls back to the key's leaf segment when omitted.
+</ParamField>
+
+<ParamField body="description" type="string">
+  Longer help text shown beside the permission in pickers and admin surfaces. Use this to explain the real-world consequence of the permission, not just restate the name.
+</ParamField>
+
+<ParamField body="kind" type='"read" | "action"'>
+  The read-versus-action taxonomy. **Inferred automatically when omitted**: a leaf named `read` or matching `read_*` is a `"read"`; everything else is an `"action"`. Set explicitly only when the inference would be wrong.
+</ParamField>
+
+<ParamField body="destructive" type="boolean">
+  Marks the permission as destructive. Destructive actions pair with `can.fresh()` at enforcement points to bypass caches — the last-chance check before an irreversible operation. **Inferred automatically** for leaf names matching `delete`, `delete_*`, `destroy`, `destroy_*`, `purge`, or `purge_*`. Destructive actions should stand alone in their group rather than being bundled with related actions.
+</ParamField>
+
+<ParamField body="scopes" type="readonly ScopeType[]">
+  The scope types this permission is grantable at, beyond the global scope `*`. Omitting this field inherits the default from the nearest enclosing group that declares `scopes`; if no enclosing group does, the permission is grantable at the global scope only. Pass an explicit empty array `[]` to override an inherited group default and make the permission global-only. See [Scope Types](/catalog/scope-types) for the full explanation.
+</ParamField>
+
+<ParamField body="impliedOnAncestors" type="boolean" default="false">
+  When `true`, holding any grant of this permission at a scope implies it on all ancestor scopes of that scope. Use this for the "shared doc shows its containing folder" pattern — a user who can read a specific document automatically sees the folder containing it. Off by default.
+</ParamField>
+
+## The naming floor
+
+Every group that declares permissions must meet the naming floor, enforced by `alfiz-verify`:
+
+1. **Every tab needs at least one `read` permission.** Name it `read` for general access to the section, or `read_<thing>` for a more specific read (e.g. `read_history`, `read_exports`).
+2. **Action permissions are named `<verb>_<noun>`** in `snake_case` — `invite_user`, `export_report`, `publish_course`. A short list of common standalone verbs (`create`, `update`, `delete`, `manage`, `approve`, `publish`, `archive`, `export`, `import`, `revoke`) are allowed without a noun.
+3. **Destructive actions stand alone.** Don't bundle `delete` with `update` in the same leaf — give them separate declarations so you can grant one without the other and so enforcement can apply `can.fresh()` selectively.
+
+```ts
+// ✅ Well-formed tab
+permissions: {
+  read:         { kind: "read", description: "View the courses list" },
+  read_roster:  { kind: "read", description: "View enrolled students" },
+  create:       { description: "Create a new course" },
+  publish:      { description: "Publish a draft course" },
+  archive:      { description: "Archive a course" },
+  delete:       { destructive: true, description: "Permanently delete a course" },
+}
+
+// ❌ Below the naming floor — no read permission
+permissions: {
+  create: { description: "Create a course" },
+  publish: { description: "Publish a course" },
+}
+```
+
+## Organizing permissions into groups: `GroupInput`
+
+Permissions are always declared inside a group. Groups map to the `<project>` and `<tab>` segments of the key, and they can nest arbitrarily deep when `allowArbitraryDepth` is set:
+
+```ts
+export interface GroupInput {
+  label?:        string;
+  description?:  string;
+  scopes?:       readonly ScopeType[];
+  permissions?:  Record<string, LeafInput>;
+  groups?:       Record<string, GroupInput>;
+}
+```
+
+<ParamField body="label" type="string">
+  Short human-facing name for the group shown in role editors and permission pickers. Falls back to the path segment when omitted.
+</ParamField>
+
+<ParamField body="description" type="string">
+  Longer description of what this group covers, shown in admin surfaces.
+</ParamField>
+
+<ParamField body="scopes" type="readonly ScopeType[]">
+  Default scope types inherited by every permission in this group and its descendant groups, unless overridden closer to the leaf. This saves repeating `scopes: ["docs.doc"]` on every sibling leaf when a whole tab is scoped to one resource type.
+</ParamField>
+
+<ParamField body="permissions" type="Record<string, LeafInput>">
+  The leaf permissions in this group, keyed by their leaf-segment name. Values are `true` or a `PermissionLeafInput` object.
+</ParamField>
+
+<ParamField body="groups" type="Record<string, GroupInput>">
+  Child groups, creating additional levels in the key hierarchy.
+</ParamField>
+
+A full example of a well-formed catalog section:
+
+```ts
+projects: {
+  lms: {
+    description: "Learning management",
+    groups: {
+      courses: {
+        label: "Courses",
+        description: "Course authoring and publication",
+        scopes: ["lms.course"],
+        permissions: {
+          read:           { kind: "read",  description: "View the courses list" },
+          read_roster:    { kind: "read",  description: "View enrolled students", scopes: ["lms.course"] },
+          create:         {                description: "Create a new course" },
+          publish:        {                description: "Publish a draft course", scopes: ["lms.course"] },
+          archive:        {                description: "Archive a course",        scopes: ["lms.course"] },
+          delete:         { destructive: true, description: "Permanently delete a course", scopes: ["lms.course"] },
+        },
+      },
+      enrollments: {
+        label: "Enrollments",
+        description: "Enroll and remove students",
+        scopes: ["lms.course"],
+        permissions: {
+          read:           { kind: "read", description: "View enrollment records" },
+          enroll_student: {               description: "Enroll a student in a course" },
+          remove_student: {               description: "Remove a student from a course" },
+        },
+      },
+    },
+  },
+},
+```
+
+## Wildcards and forward-inclusive semantics
+
+Alfiz supports three levels of wildcard pattern:
+
+| Pattern | Matches |
+|---|---|
+| `*` | Every permission in the catalog |
+| `lms.*` | Every permission under the `lms` project |
+| `lms.courses.*` | Every permission under the `lms.courses` tab |
+
+Wildcards are **forward-inclusive**: a stored grant of `lms.courses.*` will match any permission added under `lms.courses` in the future, including ones that did not exist when the grant was created. This is a deliberate semantic opinion — it is not configurable.
+
+<Warning>
+  Forward-inclusive wildcards mean that a role or grant covering `admin.*` will silently acquire every permission you add under `admin` later, including destructive ones. Grant broad wildcards to roles only when "everything under this group, including future capabilities" is the correct intent. Scope specific grants to narrower patterns like `admin.users.*` when you need to limit reach.
+</Warning>
+
+<Tip>
+  Wildcards select only leaf permissions — never group paths. Passing the group path `"lms.courses"` where a pattern is expected names nothing. The pattern selecting everything under a group is `"lms.courses.*"`. `alfiz-verify` catches this and suggests the corrected pattern.
+</Tip>
+
+For roles and admin grants, the wildcard semantics mean:
+
+- A role granted `lms.*` today will also cover `lms.analytics.read` the day you add the analytics tab.
+- A user revoked `lms.courses.delete` is revoked from that key even when a wildcard `lms.*` grant would otherwise cover it — personal revokes always win.
+- `alfiz-verify` warns when a wildcard pattern in a nav entry currently matches zero keys.

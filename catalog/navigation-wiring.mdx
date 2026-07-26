@@ -1,0 +1,203 @@
+---
+title: "Wiring Navigation Visibility to Permissions"
+sidebarTitle: "Navigation Wiring"
+description: "The Alfiz catalog carries navigation entries that control which menu items render for each user — based on their actual permissions, evaluated client-side."
+---
+
+The catalog is not just a list of permissions — it also carries the navigation structure your application renders. By declaring menu items alongside the permissions that govern them, you give `alfiz-verify` everything it needs to confirm that nav visibility and page-level gates are consistent, and you keep the permission-to-UI mapping in one place rather than scattered across layout files.
+
+## How navigation visibility works
+
+Navigation visibility is evaluated by `canAny()`. When a user loads your application, each nav item's `permission` field is tested against what the user actually holds. Items for which the user holds nothing under the declared pattern simply do not render.
+
+This evaluation happens client-side — it is a **display optimization**, not a security gate. The page the nav item points to must gate itself independently with `requirePermission` on a concrete key. Visibility and access are separate concerns, enforced separately.
+
+<Warning>
+  Navigation visibility is **not** a security gate. A user who knows a URL can navigate directly to a page regardless of whether the nav item rendered for them. Every page, server action, and route handler must gate itself with `requirePermission` on a concrete key. `alfiz-verify` errors when it finds `canAny()` used as a gate in a server action or route handler.
+</Warning>
+
+## `NavItemInput` fields
+
+```ts
+export interface NavItemInput {
+  label:       string;
+  href?:       string;
+  permission:  PermissionPattern | readonly PermissionKey[];
+  children?:   readonly NavItemInput[];
+}
+```
+
+<ParamField body="label" type="string" required>
+  The text shown in the navigation menu. Also used as the path identifier in lint error messages, so keep it unique and descriptive.
+</ParamField>
+
+<ParamField body="href" type="string">
+  The URL this nav item links to. Optional on parent items that are purely containers for children.
+</ParamField>
+
+<ParamField body="permission" type="PermissionPattern | readonly PermissionKey[]">
+  The visibility condition. Accepts three forms:
+
+  - **A concrete key** — `"docs.files.read"`. The item renders when the user holds exactly this permission.
+  - **An array of keys** — `["docs.files.read", "docs.files.update_file"]`. The item renders when the user holds *any* key in the list.
+  - **A wildcard pattern** — `"docs.*"` or `"docs.files.*"`. The item renders when the user holds *any* permission under the pattern. This is the most common form for top-level nav sections.
+
+  `alfiz-verify` checks that every value here resolves against the catalog — unknown keys and patterns that match nothing are lint errors.
+</ParamField>
+
+<ParamField body="children" type="readonly NavItemInput[]">
+  Nested nav items. Child visibility is evaluated independently — a child can render even when its parent pattern would not match, though in practice parent items are almost always broader patterns that cover their children.
+</ParamField>
+
+## `canAny` vs. `can`
+
+<Accordion title="Why two methods?">
+  `can` is a gate. It returns a yes/no decision about a **concrete, enumerated permission** at a specific scope. Use it at every enforcement point: page guards, server actions, and route handlers.
+
+  `canAny` is a visibility affordance. It returns true when the user holds *anything* under a pattern — it does not name what they can do, only whether there is something. Use it exclusively for rendering decisions: show this nav section, show this sidebar category, show this menu group.
+
+  The rule is architectural: `can` is provable at a specific path in your codebase; `canAny` is not. `alfiz-verify` enforces this distinction by erroring when `canAny` appears in a server action or route handler.
+</Accordion>
+
+```ts
+// ✅ Correct: canAny decides whether the nav section renders
+const showAdminSection = await alfiz.canAny(actor, "admin.*");
+
+// ✅ Correct: can (or requirePermission) is the gate at the doorway
+export default async function AdminPage() {
+  await alfiz.requirePermission(actor, "admin.users.read");
+  // ...
+}
+
+// ❌ Wrong: canAny is not a gate
+export async function deleteUser(id: string) {
+  if (!await alfiz.canAny(actor, "admin.*")) throw new Error("Forbidden");
+  // alfiz-verify will error on this file
+}
+```
+
+## Expressing "show if the user holds anything under a group"
+
+The most common pattern for sidebar sections is a wildcard over the project or tab:
+
+```ts
+navigation: [
+  {
+    label: "Files",
+    href: "/files",
+    permission: "docs.files.*",          // show if user holds anything under docs.files
+    children: [
+      {
+        label: "All Files",
+        href: "/files",
+        permission: "docs.files.read",   // concrete key for the specific page
+      },
+      {
+        label: "Shared with me",
+        href: "/files/shared",
+        permission: "docs.files.read",
+      },
+    ],
+  },
+  {
+    label: "Admin",
+    href: "/admin",
+    permission: "admin.*",               // show if user holds anything admin-related
+    children: [
+      {
+        label: "Users",
+        href: "/admin/users",
+        permission: "admin.users.read",
+      },
+      {
+        label: "Roles",
+        href: "/admin/roles",
+        permission: "alfiz_internal.access.read",
+      },
+    ],
+  },
+]
+```
+
+## A complete multi-section navigation example
+
+<CodeGroup>
+```ts catalog.ts
+import { defineCatalog } from "@alfiz-auth/core";
+
+export const catalog = defineCatalog({
+  namespace: "lms",
+
+  projects: {
+    lms: {
+      groups: {
+        courses:     { permissions: { read: true, create: true, publish: true, delete: { destructive: true } } },
+        enrollments: { permissions: { read: true, enroll_student: true, remove_student: true } },
+        reports:     { permissions: { read: true, export: true } },
+      },
+    },
+  },
+
+  navigation: [
+    {
+      label: "Courses",
+      href:  "/courses",
+      permission: "lms.courses.*",         // renders for anyone with any course permission
+      children: [
+        {
+          label: "All Courses",
+          href:  "/courses",
+          permission: "lms.courses.read",
+        },
+        {
+          label: "New Course",
+          href:  "/courses/new",
+          permission: "lms.courses.create",  // only authors see this link
+        },
+      ],
+    },
+    {
+      label: "Enrollments",
+      href:  "/enrollments",
+      permission: "lms.enrollments.*",
+    },
+    {
+      label: "Reports",
+      href:  "/reports",
+      // Array form: renders if the user holds either of these two keys
+      permission: ["lms.reports.read", "lms.reports.export"],
+    },
+    {
+      label: "Access",
+      href:  "/access",
+      // Show the Alfiz admin section only when the user holds something under alfiz_internal.access
+      permission: "alfiz_internal.access.*",
+    },
+  ],
+});
+```
+
+```ts page.tsx (gate example)
+// app/(portal)/courses/page.tsx
+// The nav item rendered because canAny("lms.courses.*") was true.
+// The page still gates independently — visibility is not access.
+export default async function CoursesPage() {
+  await alfiz.requirePermission(actor, "lms.courses.read");
+  // ...
+}
+```
+</CodeGroup>
+
+<Tip>
+  Keep parent nav items' `permission` patterns broad enough to cover all their children. If a user holds `lms.courses.create` but not `lms.courses.read`, a parent item gated on `lms.courses.*` will still render — and the children will show only the items the user actually holds. This is the intended behavior.
+</Tip>
+
+## What `alfiz-verify` checks
+
+When you run `alfiz-verify`, it lints every `permission` value in your navigation:
+
+- **Unknown key or pattern** — a nav permission that doesn't appear in the catalog is an error. This catches typos and references to permissions you renamed.
+- **Pattern matching no keys** — a wildcard that currently matches nothing is a warning (the catalog may be growing and the pattern is intentional, but you should confirm).
+- **`canAny` used as a gate** — any file where `canAny` guards a server action or exported handler is an error.
+
+These checks mean you can refactor permissions confidently: rename a tab, and the verifier immediately surfaces every nav entry that still references the old name.
