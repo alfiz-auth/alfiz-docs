@@ -1,5 +1,5 @@
 ---
-title: "Configuring Approval Policies for Access Requests"
+title: "Configuring Access Request Approval Policies in Alfiz"
 sidebarTitle: "Approval Policies"
 description: "Approval policies define who approves access requests via auto-approval predicates, named approver roles, or management-layer routing, and in what order."
 ---
@@ -26,7 +26,7 @@ You supply an `ApprovalPolicyInput` wherever a requestability declaration expect
 
 ### Auto-approval predicates
 
-An `auto` stage evaluates a condition against the requester's subject closure — the same `can()` machinery that powers every check in Alfiz. There is no separate rules engine. If the predicate passes, the stage is recorded as auto-approved and the workflow immediately advances to the next stage. If it fails, the stage is skipped and the next stage becomes active.
+An `auto` stage evaluates a condition against the requester's subject closure — the same `can()` machinery that powers every check in Alfiz. There is no separate rules engine. If the predicate passes, the stage is recorded as auto-approved and the workflow immediately advances to the next stage. If it fails, the stage abstains — no decision is recorded — and the workflow still advances to the next stage. Auto stages accelerate workflows; they never block them.
 
 ```typescript
 type AutoApprovalPredicate =
@@ -215,7 +215,7 @@ await app.createRole({
 ```
 
 In this flow:
-1. **Stage 0** — runs immediately at submission. If the requester's effective access already includes `projects.admin.*`, the stage auto-approves and the workflow falls through to stage 1.
+1. **Stage 0** — runs immediately at submission. If the requester's effective access already includes `projects.admin.*`, the stage auto-approves and the workflow advances to stage 1. If it does not, the stage abstains and the workflow still advances to stage 1 — the auto stage never blocks.
 2. **Stage 1** — any user holding the `project-owner` role sees this request in their approver queue and may approve or deny it.
 3. **Stage 2** — only after stage 1 approves does the skip-level manager receive the request. Their approval writes the grant row.
 

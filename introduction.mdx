@@ -1,7 +1,7 @@
 ---
-title: "Alfiz — Authorization Framed in Your Code"
+title: "Alfiz: TypeScript Authorization Library — Introduction"
 sidebarTitle: "Introduction"
-description: "Alfiz is a TypeScript authorization library: declare permissions in code, check them in-process, and grow from one app to a federated org without changing the model."
+description: "Alfiz is a TypeScript authorization library: declare permissions in code, check them in-process, and grow from one app to a federated org."
 ---
 
 Alfiz is an authorization layer for TypeScript applications. It is not in the business of authentication — identity stays with your identity provider, and resource data stays in your database. Alfiz owns everything in between: **who may do what, where, and why**. You declare your permission catalog once in code, and every runtime check runs in-process against your own database. Nothing Alfiz operates ever sits on your request path.
@@ -14,7 +14,7 @@ Alfiz is organized into three layers. The first two are open-source packages you
 |---|---|---|
 | **Client** | `@alfiz-auth/core` | The evaluator: grammar, catalog, closures, check shapes, caches, graph integrity, and request evaluation. Every capability is a pure function over provider-supplied data — no storage, no I/O. |
 | **Application** | `@alfiz-auth/application` | The local provider: the same contract implemented against *your* database through a storage seam. Standalone, it is the org root — the complete system for one organization, with no external dependency. |
-| **Service** | Alfiz Cloud | A managed provider speaking the same contract: hosted administration via the Diwan dashboard, and federation (catalog registry, cross-application composition, the centralized org root). Nothing in the OSS packages depends on it. |
+| **Service** | Alfiz Cloud | A managed provider speaking the same contract: hosted administration and federation (catalog registry, cross-application composition, the centralized org root). Nothing in the OSS packages depends on it. |
 
 <Note>
 Runtime checks never leave your application in any topology. Every `can()` runs in-process against your catalog, your rows, and your resolver — so nothing Alfiz operates can break your app.
@@ -63,7 +63,7 @@ When a non-engineer needs to administer access, or when your second application 
 
 <CardGroup cols={2}>
   <Card title="Hosted Administration" icon="gauge">
-    Add admin seats and your team gets the **Diwan dashboard** — a hosted, styled, maintained UI for managing grants, approvals, and audit history. Your Application stays the org root and the only writer; Diwan operates by relay. Fully replaceable by assembling the same surface from the headless kit.
+    Add admin seats and your team gets a hosted, styled, maintained UI for managing grants, approvals, and audit history. Your Application stays the org root and the only writer. Fully replaceable by assembling the same surface from the headless kit.
   </Card>
   <Card title="Federation" icon="diagram-project">
     When you need cross-application authorization, federation adds a central **catalog registry** (namespace ownership, versioning, tombstones), cross-namespace role composition, cross-application request aggregation, and service-principal credential management.

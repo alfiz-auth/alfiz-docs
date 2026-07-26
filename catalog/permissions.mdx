@@ -1,7 +1,7 @@
 ---
-title: "Declaring Permissions: Keys, Kinds, and Wildcards"
+title: "Declaring Alfiz Permissions: Keys, Kinds, and Wildcards"
 sidebarTitle: "Permissions"
-description: "Learn the three-level naming convention, how to declare read and action permissions, when to use destructive flags, and how forward-inclusive wildcards work."
+description: "Learn Alfiz permission declarations: the three-level key convention, read vs. action kinds, destructive flags, and forward-inclusive wildcards."
 ---
 
 Every permission your application enforces must be declared in the catalog before any check can reference it. Alfiz will not evaluate a key it has never seen — passing an unknown key to `can()` or `requirePermission()` raises `UnknownPermissionError` at runtime and a type error at compile time. This section explains how to declare permissions correctly, name them consistently, and use wildcards safely.
@@ -73,7 +73,7 @@ export interface PermissionLeafInput {
 Every group that declares permissions must meet the naming floor, enforced by `alfiz-verify`:
 
 1. **Every tab needs at least one `read` permission.** Name it `read` for general access to the section, or `read_<thing>` for a more specific read (e.g. `read_history`, `read_exports`).
-2. **Action permissions are named `<verb>_<noun>`** in `snake_case` — `invite_user`, `export_report`, `publish_course`. A short list of common standalone verbs (`create`, `update`, `delete`, `manage`, `approve`, `publish`, `archive`, `export`, `import`, `revoke`) are allowed without a noun.
+2. **Action permissions are named `<verb>_<noun>`** in `snake_case` — `invite_user`, `export_report`, `publish_course`. A short list of common standalone verbs (`create`, `update`, `delete`, `manage`, `approve`, `publish`, `archive`, `export`, `import`, `issue`, `revoke`, `view_as`) are allowed without a noun.
 3. **Destructive actions stand alone.** Don't bundle `delete` with `update` in the same leaf — give them separate declarations so you can grant one without the other and so enforcement can apply `can.fresh()` selectively.
 
 ```ts

@@ -1,5 +1,5 @@
 ---
-title: "Grants, Revokes, and Effective Access in Alfiz"
+title: "Grants, Revokes, and Effective Access in Alfiz Auth"
 sidebarTitle: "Grants & Revokes"
 description: "Learn the grant tuple that powers every access decision in Alfiz — subject, pattern, scope, expiry — and how personal revokes override group grants."
 ---
@@ -125,7 +125,7 @@ interface RevokeInput {
 
 ```ts
 await app.createRevoke({
-  userId: "user:alice",
+  userId: "alice",
   pattern: "docs.files.delete",
   scope: "docs.folder:9",
   provenance: { kind: "admin", actorUserId: "root" },
@@ -156,7 +156,7 @@ Alfiz evaluates a check by combining three things:
 
 The check passes when at least one unexpired grant row connects a member of the subject closure to a member of the object closure with a matching pattern, **and** no personal revoke at any scope in the object closure suppresses it.
 
-The internal function that makes this decision is:
+The `checkKey` function that makes this decision is:
 
 ```ts
 function checkKey(

@@ -1,7 +1,7 @@
 ---
-title: "alfiz-verify.config.json Configuration Reference"
+title: "alfiz-verify.config.json — Configuration Reference"
 sidebarTitle: "Verify Config"
-description: "Configure alfiz-verify with a JSON file to specify your catalog path, source directories, custom gate function names, and client-reach guards."
+description: "alfiz-verify.config.json reference: catalog path, scan directories, additive gate names, visibility names, server patterns, and client-reach guards."
 ---
 
 `alfiz-verify` reads its configuration from `alfiz-verify.config.json` in the current working directory, or from the path passed via `--config <path>`. The file is plain JSON — no JavaScript, no comments.
@@ -57,7 +57,7 @@ description: "Configure alfiz-verify with a JSON file to specify your catalog pa
 </ParamField>
 
 <ParamField body="serverFilePatterns" type="string[]" optional>
-  Additional RegExp source strings matched against file paths to identify server enforcement points, **added to** the built-in patterns (`app/**/route.(t|j)sx?`, `pages/api/`). Files matching these patterns are treated as server files even without a `"use server"` directive — exported async functions in them must contain a gate.
+  Additional RegExp source strings matched against file paths to identify server enforcement points, **added to** the built-in patterns (`app/.*route.(t|j)sx?`, `pages/api/`). Files matching these patterns are treated as server files even without a `"use server"` directive — exported async functions in them must contain a gate.
 
   ```json
   { "serverFilePatterns": ["app/actions/", "server/handlers/"] }
@@ -66,7 +66,7 @@ description: "Configure alfiz-verify with a JSON file to specify your catalog pa
   Each string is compiled into a `RegExp`. If any entry is not a valid regular expression, `alfiz-verify` exits with code `2`.
 
   <Note>
-    This is additive. The built-in patterns (`app/**/route.(t|j)sx?` and `pages/api/`) are always applied.
+    This is additive. The built-in patterns (`app/.*route.(t|j)sx?` and `pages/api/`) are always applied.
   </Note>
 </ParamField>
 

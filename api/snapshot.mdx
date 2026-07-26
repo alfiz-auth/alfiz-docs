@@ -50,7 +50,8 @@ async snapshot(
     </ResponseField>
     <ResponseField name="canAny(pattern)" type="(pattern: P) => boolean">
       Synchronous visibility affordance. Exact, not approximate: every
-      granted scope's chain was resolved at snapshot time.
+      granted scope's chain was resolved at snapshot time. Never a gate —
+      same rule as `client.canAny`.
     </ResponseField>
     <ResponseField name="require(key, scope?)" type="(key: K | readonly K[], scope?: ScopeId) => void">
       Throwing form of `snap.can`. Throws `AccessDeniedError` on denial.
@@ -58,7 +59,7 @@ async snapshot(
     <ResponseField name="requireAny(pattern)" type="(pattern: P) => void">
       Throwing form of `snap.canAny`.
     </ResponseField>
-    <ResponseField name="holds(key)" type="(key: K) => boolean">
+    <ResponseField name="holds(key)" type="(key: LooseKey<K>) => boolean">
       Returns `true` if the principal holds `key` at any scope. The
       single-key form of `heldKeys`.
     </ResponseField>
@@ -67,11 +68,11 @@ async snapshot(
       once per snapshot on first access — the per-request cache for
       unscoped conditional UI.
     </ResponseField>
-    <ResponseField name="grantedScopes(key)" type="(key: K) => { granted: Set<ScopeId>, revoked: Set<ScopeId> }">
+    <ResponseField name="grantedScopes(key)" type="(key: LooseKey<K>) => { granted: Set<ScopeId>, revoked: Set<ScopeId> }">
       Synchronous listing primitive — same result as `client.grantedScopes`
       but without an async call.
     </ResponseField>
-    <ResponseField name="explain(key, scope?)" type="(key: K, scope?) => CheckExplanation & { objectClosure, active, implied }">
+    <ResponseField name="explain(key, scope?)" type="(key: LooseKey<K>, scope?) => CheckExplanation & { objectClosure, active, implied }">
       Synchronous explain — same result as `client.explain`.
     </ResponseField>
     <ResponseField name="resolve(scopes)" type="(scopes: readonly ScopeId[]) => Promise<this>">

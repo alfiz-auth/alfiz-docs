@@ -1,7 +1,7 @@
 ---
-title: "defineCatalog() — Declare Your Permission Tree"
+title: "defineCatalog() — Build Your Alfiz Permission Tree"
 sidebarTitle: "defineCatalog()"
-description: "defineCatalog(input) creates the Alfiz catalog object for your application — the source of truth for permission keys, scope types, navigation, and derived types."
+description: "defineCatalog(input) builds a typed catalog — source of truth for permission keys, scope types, navigation, and compile-time KeyOf/PatternOf unions."
 ---
 
 `defineCatalog` is where your authorization model lives. It takes a structured declaration of your permission tree and produces a `Catalog` object that the Application validates writes against, the client checks keys against, and the build-time verifier consumes. The catalog is declared in code — not configured in a dashboard and not inferred from call sites — so it is always the ground truth.

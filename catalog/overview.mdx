@@ -1,7 +1,7 @@
 ---
-title: "Define Your Permission Catalog in TypeScript"
+title: "Alfiz Catalog: Permissions, Scopes, and Navigation"
 sidebarTitle: "Overview"
-description: "The Alfiz catalog declares every permission, scope type, and navigation entry for your application — in code, verified at build time, never in a dashboard."
+description: "The Alfiz catalog declares every permission, scope type, and navigation entry — verified at compile time in code, never configured in a dashboard."
 ---
 
 The catalog is the single source of truth for everything Alfiz knows about your application's permission model. You declare it once in TypeScript, call `defineCatalog()`, and from that moment every permission key in your codebase is verified at compile time against the shape you described — no dashboard to drift, no runtime surprises from a misspelled key.
@@ -13,7 +13,7 @@ The catalog is not an enum of strings. It is a structured description of four th
 - **Permissions** — every leaf action and read your application exposes, organized into named groups.
 - **Scope types** — the resource hierarchy your permissions apply to (folders, documents, projects, or nothing at all for flat apps).
 - **Navigation entries** — the menu structure your UI renders, wired to permission patterns so items hide automatically for users who hold nothing under them.
-- **Namespaces** — the ownership prefixes that keep your keys from colliding with a future federated neighbor.
+- **Namespaces** — the ownership prefixes that scope every key to your application, preventing collisions when multiple permission catalogs are composed together.
 
 None of this is inferred from call sites. Nothing is configured in a dashboard. Every structural fact is in code, at the top of your authorization module, readable by any engineer and provable by CI.
 
@@ -100,7 +100,7 @@ Semantic-convention violations — the naming floor, action naming style, nav re
 
 ## Derived template-literal types
 
-When you pass a literal object to `defineCatalog`, TypeScript derives a union of every valid key from your input shape. Those unions flow into the phantom fields `catalog.$key` and `catalog.$pattern`, and Alfiz's check methods are typed against them:
+When you pass a literal object to `defineCatalog`, TypeScript derives a union of every valid key from your input shape. Those unions flow into the typed properties `catalog.$key` and `catalog.$pattern`, and Alfiz's check methods are typed against them:
 
 ```ts
 // Resolves to "docs.files.read" | "docs.files.update_file" | "docs.files.delete"
@@ -134,10 +134,10 @@ node --experimental-strip-types -e \
   > alfiz-catalog.json
 ```
 
-`toDocument()` returns a `CatalogDocument` — the stable wire shape of a catalog publish — which `alfiz-verify` reads to check coverage, gate shapes, and naming conventions. Add this step to your CI pipeline before running the verifier.
+`toDocument()` returns a `CatalogDocument` — a serializable snapshot of the catalog — which `alfiz-verify` reads to check coverage, gate shapes, and naming conventions. Add this step to your CI pipeline before running the verifier.
 
 <Note>
-  The `alfiz_internal.*` permissions (role management, access requests, audit log) are included in every catalog by default. Set `includeAlfizInternal: false` in your `CatalogInput` only when your application renders no Alfiz administration surface.
+  The `alfiz_internal.*` permissions (access administration, access requests, audit log, and catalog management) are included in every catalog by default. Set `includeAlfizInternal: false` in your `CatalogInput` only when your application renders no Alfiz administration surface.
 </Note>
 
 ## What's next

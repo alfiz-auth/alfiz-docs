@@ -1,7 +1,7 @@
 ---
-title: "alfiz-verify CLI Reference"
+title: "alfiz-verify CLI — Static Permission Verification"
 sidebarTitle: "alfiz-verify"
-description: "alfiz-verify is the static verification CLI for Alfiz. It checks typed keys, coverage, gate shapes, and catalog validity — run it in CI to catch ungated surfaces."
+description: "alfiz-verify checks typed permission keys, gate coverage, gate shapes, and catalog conventions. Run in CI to make ungated server actions a build failure."
 ---
 
 `alfiz-verify` is a static analysis tool that enforces Alfiz's four-point wiring checklist at build time. It parses your TypeScript source files (no type-checker invocation needed) and scans for permission check and gate call sites, coverage gaps, and catalog convention violations. Running it in CI means a new server action with no gate, a typo'd permission key, or a visibility affordance used as a gate becomes a build failure, not a production bug.
@@ -168,7 +168,7 @@ jobs:
 
 **Default visibility names:** `canAny`, `requireAny`
 
-**Default server file patterns:** `app/**/route.(t|j)sx?`, `pages/api/`
+**Default server file patterns:** `app/.*route.(t|j)sx?`, `pages/api/`
 
 <Tip>
   Property access is matched on the final name only. `session.require`, `client.can`, and `can.fresh` all count as gates — you do not need to add them separately.

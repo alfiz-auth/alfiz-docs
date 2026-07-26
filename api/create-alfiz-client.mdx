@@ -1,5 +1,5 @@
 ---
-title: "createAlfizClient — Initialize the Alfiz Client"
+title: "createAlfizClient — Initialize the Alfiz Client Instance"
 sidebarTitle: "createAlfizClient"
 description: "createAlfizClient(options) creates a typed AlfizClient bound to a catalog and provider. All check methods are typed against the catalog's permission keys."
 ---
@@ -81,7 +81,7 @@ import { type ClientOf } from "@alfiz-auth/core";
       The visibility affordance. Tests whether the principal holds any
       permission matching a pattern. Never use as a gate.
     </ResponseField>
-    <ResponseField name="requirePermission" type="(principal, key: K, scope?) => Promise<void>">
+    <ResponseField name="requirePermission" type="(principal, key: K | readonly K[], scope?) => Promise<void>">
       Throwing form of `can`. Throws `AccessDeniedError` on denial.
     </ResponseField>
     <ResponseField name="requireAny" type="(principal, pattern: P) => Promise<void>">

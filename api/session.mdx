@@ -1,7 +1,7 @@
 ---
-title: "Sessions and the Identity Adapter"
+title: "Alfiz Sessions — createSession and View-As Preview"
 sidebarTitle: "Sessions"
-description: "The Alfiz Application verifies identity-provider tokens and constructs sessions for use in can() checks — the bridge between your auth system and Alfiz."
+description: "createSession() makes a typed per-request session from a verified user ID. Covers view-as admin preview, service principals, and cookie serialization."
 ---
 
 A session is the typed, per-request object your server code calls `can()` on. It carries an authenticated `actorUserId` and, optionally, a view-as state for admin preview. Sessions are the bridge between your identity provider (Clerk, Auth.js, or any other) and Alfiz's permission evaluation — Alfiz does not issue or validate tokens; you verify the token through your provider and pass the resulting user ID to `createSession`.

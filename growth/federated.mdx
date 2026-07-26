@@ -8,21 +8,21 @@ Federation is the step for organizations with more than one application, or for 
 
 ## What federation means
 
-When you federate, your Application acquires the Service as an **upstream**. That relationship has a precise shape:
+When you federate, your Application connects to Alfiz Cloud as its org-root authority. That relationship has a precise shape:
 
 - Your Application **publishes its catalog** to the Alfiz Cloud registry, where it becomes a versioned, namespaced contract.
-- Your Application **syncs the org-root read model down** — groups, roles, global grants, the reporting hierarchy — and evaluates it locally exactly as it did when standalone.
-- Your Application **keeps instance-scoped grants, ancestry resolution, and runtime checks strictly local**. The Service never receives resource-shaped data, never evaluates scoped checks, and never needs to.
+- Your Application **syncs organizational data down** — groups, roles, global grants, the reporting hierarchy — and evaluates it locally exactly as it did when standalone.
+- Your Application **keeps instance-scoped grants, ancestry resolution, and runtime checks strictly local**. Alfiz Cloud never receives resource-shaped data, never evaluates scoped checks, and never needs to.
 
 <Note>
   Your `alfiz` client continues to attach to your local `Application`. Nothing about client construction or check call sites changes when you federate. The Application absorbs the upstream relationship and surfaces it through the same provider contract the Client has always used.
 </Note>
 
-## The no-dual-write property
+## One authoritative writer per data domain
 
-Federation does not create two writers. The Service becomes the org root and the authoritative home for organizational-domain data. Each Application holds that data as a **synced read model** and rejects local org-domain writes. There is no reconciliation problem, no conflict resolution, and no clock skew between writers, because there is only one writer for any given piece of data.
+Federation does not create two writers. Alfiz Cloud becomes the org root and the authoritative home for organizational-domain data. Each Application syncs that data down and evaluates it locally, exactly as it did when standalone, and rejects local org-domain writes. There is no reconciliation problem and no conflict resolution, because there is only one writer for any given piece of data.
 
-For instance-scoped grants — `docs.doc:123`, `billing.invoice:456` — the opposite is true: they live in the owning Application and never replicate to the Service. The Service cannot evaluate scoped checks because it cannot see the application's resource tables. That is a design invariant, not a limitation: it is what keeps enforcement local and the check path unmeterable.
+For instance-scoped grants — `docs.doc:123`, `billing.invoice:456` — the opposite is true: they live in the owning Application and never leave it. Alfiz Cloud cannot evaluate scoped checks because it cannot see your application's resource tables. That is a design guarantee, not a limitation: it is what keeps enforcement local and the check path unmeterable.
 
 ## What federation unlocks
 
@@ -59,9 +59,9 @@ When an integration publishes a new contract version, the adapter tombstones the
 
 ## Promoting from linked to federated
 
-If your Application is already linked to Alfiz Cloud, promotion to federation is the typical path — the relay machinery is already in place, and promotion adds only the authority transfer.
+If your Application is already linked to Alfiz Cloud, promotion to federation is the typical path — the connection is already established, and promotion adds only the authority transfer.
 
-During promotion, your Application's organizational-domain data — groups, roles, global grants, the reporting hierarchy — imports into the Service through the same validation paths that already exist for external input. Authority transfers **atomically**: after the transfer completes, your Application receives the dataset back as a synced read model and rejects local org-domain writes.
+During promotion, your Application's organizational-domain data — groups, roles, global grants, the reporting hierarchy — is imported into Alfiz Cloud and validated before the transfer completes. Authority transfers **atomically**: after the transfer completes, your Application syncs that data back down and rejects local org-domain writes.
 
 <Tip>
   Pending access requests with management-layer approval stages survive promotion untouched. Stages reference "2 layers up in the reporting hierarchy," not resolved approver identities, so they resolve correctly against the promoted hierarchy.
@@ -74,7 +74,7 @@ If you are federating a second application that also carries local org-domain da
 Nothing on any application's request path is ever counted, priced, or throttled. That guarantee holds across the entire federation:
 
 - Runtime checks run in-process in each Application against local data.
-- The Service cannot observe checks, by construction.
+- Alfiz Cloud cannot observe checks, by construction.
 - Hard spending caps are configurable per dimension; crossing one degrades hosted polish (relay cadence, retention ingest, reconciler frequency) and never any locally-running capability.
 
 ## Pricing
@@ -116,6 +116,6 @@ Federation is the right step when:
     Not ready to federate? The full feature set is available standalone, free, with no external dependency.
   </Card>
   <Card title="Link first" icon="link" href="/growth/linked">
-    Linking is the typical first step — it adds the hosted dashboard and the relay, which promotion to federation builds on.
+    Linking is the typical first step — it adds the hosted dashboard and establishes the Alfiz Cloud connection that promotion to federation builds on.
   </Card>
 </CardGroup>

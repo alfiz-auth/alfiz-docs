@@ -1,7 +1,7 @@
 ---
-title: "Storage Drivers: Memory and Prisma"
+title: "Alfiz Storage Drivers — Memory and Prisma Reference"
 sidebarTitle: "Storage Drivers"
-description: "Alfiz ships a memory driver for testing and development, and a Prisma driver for production. Both implement the same StorageDriver interface."
+description: "memoryDriver() for tests, prismaDriver() for production. Both satisfy the StorageDriver interface — swap without changing any application logic."
 ---
 
 The storage seam is the single interface a database must satisfy to host an Alfiz Application. All application semantics — graph integrity, request workflows, org-root gating, the audit log — live above the seam in the Application layer and are identical regardless of which driver you use. Drivers store and retrieve; they never interpret. All IDs are assigned by the Application.

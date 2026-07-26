@@ -1,7 +1,7 @@
 ---
-title: "createApplication — Set Up the Local Provider"
+title: "createApplication — Alfiz Local Provider Setup Guide"
 sidebarTitle: "createApplication"
-description: "createApplication(options) creates the Alfiz Application — the local provider that serves permission checks against your own database with no external dependency."
+description: "createApplication wires catalog, storage, and ancestry into the Alfiz Application — a fully local authorization engine with no external dependency."
 ---
 
 `createApplication` wires together your catalog, your storage driver, and your object-hierarchy resolver into the Alfiz Application — a library-embedded authorization engine that runs entirely in-process. The Application implements the full provider contract (grants, revokes, roles, groups, access requests, directory ingestion, the audit log) against your own database. No external service is involved at runtime: every `can()` check resolves locally.
@@ -104,13 +104,15 @@ The returned `AlfizApplication` exposes the full provider surface. Key method gr
 | **Grants** | `createGrant`, `createGrants`, `deleteGrant`, `listGrants`, `countGrants` |
 | **Revokes** | `createRevoke`, `deleteRevoke`, `listRevokes` |
 | **Roles** | `createRole`, `updateRole`, `deleteRole`, `listRoles` |
-| **Groups** | `createGroup`, `updateGroup`, `deleteGroup`, `setGroupMembership`, `getGroupMembers` |
-| **Users** | `setUserActive`, `setReportingEdge`, `getReportingEdges`, `deleteSubject` |
-| **Requests** | `submitRequest`, `decideRequest`, `listRequests`, `getRequest` |
+| **Groups** | `createGroup`, `updateGroup`, `deleteGroup`, `setGroupParents`, `setGroupMembership`, `getGroupMembers`, `dissolveVirtualParent` |
+| **Users** | `setUserActive`, `setReportingEdge`, `getReportingEdges` |
+| **Requests** | `submitRequest`, `decideRequest`, `cancelRequest`, `listRequests`, `listApproverQueue` |
 | **Directory** | `importDirectory` |
 | **Cleanup** | `deleteSubject`, `deleteScope` |
+| **Catalog** | `publishCatalog`, `getPublishedCatalog` |
 | **Audit** | `listAuditEvents` |
 | **Events** | `onInvalidate`, `notifyScopeMoved` |
+
 
 <Note>
   Call `deleteSubject(subject, provenance)` from the same code path that deletes a user or service account. Call `deleteScope(scope, provenance)` from the same code path that deletes a resource. These remove stranded grant and revoke rows; skipping them means a reused id inherits the previous principal's access.

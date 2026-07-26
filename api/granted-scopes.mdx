@@ -31,7 +31,7 @@ async grantedScopes(
 
 <ResponseField name="granted" type="Set<ScopeId>">
   The set of scope instance IDs at which the principal holds an unexpired,
-  non-expired grant for `key`. This includes scopes granted via role
+  non-revoked grant for `key`. This includes scopes granted via role
   membership and via wildcard patterns that match `key`. For an inactive
   principal, this set is always empty.
 </ResponseField>

@@ -1,5 +1,5 @@
 ---
-title: "Check Shapes: can, canAny, and can.fresh"
+title: "Check Shapes: can, canAny, can.fresh, and requirePermission"
 sidebarTitle: "Check Shapes"
 description: "Alfiz exposes two check shapes: can() for gates and canAny() for visibility affordances, plus can.fresh() to bypass caches on destructive actions."
 ---
@@ -130,7 +130,7 @@ Use `requirePermission` at the top of server actions and route handlers where yo
 
 ---
 
-## `snapshot(principal)` — one round-trip, synchronous checks
+## `snapshot(principal, options?)` — one round-trip, synchronous checks
 
 Server-rendered frameworks make hundreds of conditional-UI checks inside `.map()` callbacks and pure helpers that cannot be async. `snapshot` solves this: one provider round-trip, then every subsequent check is synchronous.
 
@@ -180,7 +180,7 @@ Flat scope types (declared with `parent: null`) are always synchronously resolva
 
 | Cache layer | Default TTL | Bust mechanism |
 |---|---|---|
-| Subject closures | 30 s | Provider `user`, `subject`, `role`, or `all` invalidation event |
+| Subject closures | 30 s | Provider `user`, `subject`, `role`, `catalog`, or `all` invalidation event |
 | Object ancestor chains | 60 s | Provider `scope` event; or `app.notifyScopeMoved(scope)` from your code |
 
 `can.fresh` bypasses both layers. For moves your application makes in its own tables, call `app.notifyScopeMoved(scope)` from the same code path that changes the parent pointer — the TTL is the backstop, not the primary mechanism.

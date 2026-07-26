@@ -1,5 +1,5 @@
 ---
-title: "Core Concepts: How Alfiz Models Authorization"
+title: "Core Concepts: How Alfiz Models Authorization in TypeScript"
 sidebarTitle: Core Concepts
 description: Learn Alfiz's five semantic building blocks — catalog, grants, scopes, subjects, and checks — and how they compose to model any access control policy.
 ---
@@ -97,7 +97,7 @@ A scope identifies *where* a grant applies. Alfiz uses three levels:
 
 - **Global (`*`)** — the grant applies everywhere. A global `docs.files.read` grant lets the subject read any file in the system.
 - **Scope instance** — a specific resource, identified by a string like `docs.doc:123` or `docs.folder:42`. The format is `<scope-type>:<id>`.
-- **Scope type** — declared in the catalog (e.g. `docs.folder` with `parent: "docs.doc"`). The parent relationship defines the hierarchy.
+- **Scope type** — declared in the catalog (e.g. `docs.doc` with `parent: "docs.folder"`). The parent relationship defines the hierarchy.
 
 When a check arrives for `docs.doc:123`, Alfiz builds the **object closure**: the ancestor chain from that document up to `*`. For a document nested inside a folder, the chain is `["docs.doc:123", "docs.folder:42", "*"]`. A grant on any node in that chain satisfies the check.
 

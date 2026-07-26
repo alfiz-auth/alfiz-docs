@@ -1,7 +1,7 @@
 ---
 title: "Alfiz: Permissions Framed in Your Code, Enforced in Place"
 sidebarTitle: "Home"
-description: "Alfiz is a TypeScript authorization library. Declare your permission catalog in code, run every check in-process, and scale from one app to a federated org."
+description: "Alfiz brings authorization into TypeScript code: declare your permission catalog, run every check in-process, and grow from one app to a federated org."
 ---
 
 Alfiz is authorization for TypeScript applications. You declare a permission catalog — every permission key, every scope type — directly in your codebase. Every `can()` check runs in-process against your own database. Nothing on your request path ever calls out to an external service.
@@ -31,7 +31,7 @@ Alfiz is authorization for TypeScript applications. You declare a permission cat
     `can()` runs in-process against your own database. Nothing Alfiz operates is on your request path, and Alfiz can never break your app.
   </Card>
   <Card title="Openings nest" icon="layer-group">
-    Grants are stored once at the node where they are made. Ancestor chains are walked at check time — grant broad, query narrow.
+    Grants are stored once at the node where they are made. Checks walk up ancestor chains at check time — grant at any enclosing scope and it covers everything within.
   </Card>
   <Card title="Growth adds bays" icon="arrows-left-right">
     The same grant tuple and check shape work across one app or twenty, standalone, linked, or federated. Growth never changes the module.
@@ -66,11 +66,11 @@ Alfiz is authorization for TypeScript applications. You declare a permission cat
 
 | Package | Purpose |
 |---|---|
-| `@alfiz-auth/core` | Client: grammar, catalog, check shapes, caches, headless components |
+| `@alfiz-auth/core` | Client: grammar, catalog, check shapes, caches, headless tree logic |
 | `@alfiz-auth/application` | Application: local provider against your database |
 | `@alfiz-auth/prisma` | Prisma storage driver for the Application |
 | `@alfiz-auth/verify` | `alfiz-verify` CLI for static call-site verification |
 
 <Note>
-  Runtime checks are **never metered**. Alfiz Cloud meters only work the Service performs — admin seats, hosted connectors, retained audit volume. An idle deployment accrues nothing.
+  Runtime checks are **never metered**. Alfiz Cloud meters only the work the Service performs — admin seats, hosted connectors, retained audit volume. An idle deployment accrues nothing.
 </Note>
