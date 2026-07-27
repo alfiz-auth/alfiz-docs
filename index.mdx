@@ -1,10 +1,10 @@
 ---
-title: "Alfiz: Permissions Framed in Your Code, Enforced in Place"
+title: "Alfiz: Scoped Permissions for TypeScript Applications"
 sidebarTitle: "Home"
-description: "Alfiz brings authorization into TypeScript code: declare your permission catalog, run every check in-process, and grow from one app to a federated org."
+description: "Scoped permissions for TypeScript applications: declare your catalog in code, verify it in CI, and check it in your own process against your own database."
 ---
 
-Alfiz is authorization for TypeScript applications. You declare a permission catalog — every permission key, every scope type — directly in your codebase. Every `can()` check runs in-process against your own database. Nothing on your request path ever calls out to an external service.
+Alfiz is scoped permissions for TypeScript applications. You declare a permission catalog — every permission key, every scope type — in the codebase that enforces it. Every `can()` check runs in-process against your own database. Nothing Alfiz operates is on your request path.
 
 <CardGroup cols={2}>
   <Card title="Quickstart" icon="rocket" href="/quickstart">
@@ -21,22 +21,40 @@ Alfiz is authorization for TypeScript applications. You declare a permission cat
   </Card>
 </CardGroup>
 
+## Is Alfiz for you?
+
+Alfiz is selected by the shape of the problem, not the size of the company. It fits if you recognize one of these:
+
+| If this is your situation | What answers it |
+|---|---|
+| Your `isAdmin` boolean isn't enough anymore. | [Scoped grants and scope types](/access/grants-revokes) |
+| You need folder-level or per-document permissions and you're about to write it yourself. | [Object closures and the ancestry resolver](/access/scopes-hierarchy) |
+| You have permission strings scattered across 40 files and no idea if they're all gated. | [`alfiz-verify` coverage linting](/enforcement/static-verification) |
+| You don't want an authorization service on your request path. | [In-process checks against your own database](/enforcement/check-shapes) |
+| You want a typo in a permission key to be a build error. | [Catalog-derived template-literal types](/api/catalog-types) |
+
+If a single role column is genuinely enough for your application, it will stay enough — and Alfiz is more machinery than you need.
+
 ## Four commitments
 
 <CardGroup cols={2}>
-  <Card title="Frame drawn in code" icon="file-code">
-    Your permission catalog is TypeScript. Template-literal types verify every key at compile time — no dashboard configuration, no drift.
+  <Card title="Declared in code" icon="file-code">
+    Your permission catalog is TypeScript, declared in the codebase that enforces it. There is no second list in a dashboard to drift out of sync with it.
   </Card>
-  <Card title="Checks at the doorway" icon="door-open">
-    `can()` runs in-process against your own database. Nothing Alfiz operates is on your request path, and Alfiz can never break your app.
+  <Card title="Checked in your own process" icon="door-open">
+    `can()` runs in-process against your own database. Nothing Alfiz operates is on your request path, so nothing it does can slow or stop a check.
   </Card>
-  <Card title="Openings nest" icon="layer-group">
-    Grants are stored once at the node where they are made. Checks walk up ancestor chains at check time — grant at any enclosing scope and it covers everything within.
+  <Card title="Typed end to end" icon="brackets-curly">
+    Keys and patterns are template-literal types derived from your catalog. An unknown permission key is a compile error, not a silent `false`.
   </Card>
-  <Card title="Growth adds bays" icon="arrows-left-right">
-    The same grant tuple and check shape work across one app or twenty, standalone, linked, or federated. Growth never changes the module.
+  <Card title="Verified in CI" icon="circle-check">
+    `alfiz-verify` proves the two directions match: nothing is enforced that isn't declared, and the build warns on anything declared that no gate references.
   </Card>
 </CardGroup>
+
+<Note>
+  Grants nest rather than fan out: a grant made at an enclosing scope covers everything within it, resolved by walking up ancestors at check time. See [Scopes and hierarchy](/access/scopes-hierarchy).
+</Note>
 
 ## Get started
 
@@ -71,6 +89,8 @@ Alfiz is authorization for TypeScript applications. You declare a permission cat
 | `@alfiz-auth/prisma` | Prisma storage driver for the Application |
 | `@alfiz-auth/verify` | `alfiz-verify` CLI for static call-site verification |
 
+The packages above are MIT-licensed and complete on their own — groups, roles, reporting hierarchy, access requests, and approvals all run against your own database with no external dependency. [Alfiz Cloud](/cloud/overview) adds hosted administration and cross-application federation when you want them, and is never required.
+
 <Note>
-  Runtime checks are **never metered**. Alfiz Cloud meters only the work it performs — admin seats, hosted connectors, retained audit volume. An idle deployment accrues nothing.
+  Check volume is not a billing dimension and will not become one. Alfiz Cloud bills for the work it performs — admin seats, federated applications, connectors, retained audit volume. See [Metering and caps](/cloud/metering).
 </Note>

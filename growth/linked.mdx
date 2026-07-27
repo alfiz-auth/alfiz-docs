@@ -4,7 +4,9 @@ sidebarTitle: Linked
 description: "Link your standalone Application to Alfiz Cloud to unlock the Dashboard and admin seats — without federating or moving any authority."
 ---
 
-Linking is the step you take the day a non-engineer needs to manage access. It adds the Dashboard — Alfiz Cloud's hosted admin UI — and an approvals inbox without touching anything about how your application runs. Your Application remains the org root, the sole writer, and the only thing on your request path. The only thing that changes is that Alfiz Cloud can now authenticate dashboard sessions and relay administrative operations back to your Application for enforcement.
+Linking is triggered by an event, not by a size: the day someone who shouldn't have to open a pull request needs to grant access. That can happen at fifteen people with a first ops hire, or not until eighty, or never. Like standalone, linked is a place deployments stay — federation answers a different question, covered on the [next page](/growth/federated).
+
+It adds the Dashboard — Alfiz Cloud's hosted admin UI — and an approvals inbox without touching anything about how your application runs. Your Application remains the org root, the sole writer, and the only thing on your request path. The only thing that changes is that Alfiz Cloud can now authenticate dashboard sessions and relay administrative operations back to your Application for enforcement.
 
 ## What linking means
 
@@ -54,7 +56,7 @@ await alfiz.can({ userId }, "docs.files.read", "docs.doc:123");
 await alfiz.can({ userId }, "docs.files.read", "docs.doc:123");
 ```
 
-Alfiz Cloud cannot observe your runtime checks in any topology. Per-check pricing is impossible by construction, and that is a guarantee, not a policy.
+Linking does not make Alfiz Cloud a dependency of your application. It cannot add latency to a check, cannot throttle one, and cannot fail in a way that stops one — and check volume is not a billing dimension in any topology. See [Metering and caps](/cloud/metering).
 
 ## Pricing
 

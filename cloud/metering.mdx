@@ -1,10 +1,10 @@
 ---
-title: "Alfiz Cloud Metering and Caps: What Is Counted and What Never Can Be"
+title: "Alfiz Cloud Metering and Caps: What Is Billed and What Never Is"
 sidebarTitle: "Metering"
-description: "The metered dimensions, hard caps per dimension, and the structural guarantee that nothing on the request path can ever be priced."
+description: "The billed dimensions, hard caps per dimension, and why check volume is not among them and will not become one."
 ---
 
-Alfiz Cloud meters only the work it performs. The dimensions are few, they are all visible over the API, and every one of them carries a hard cap you control. What is not on the list matters more than what is — nothing on your request path appears here, because nothing on your request path is observable to Alfiz Cloud at all.
+Alfiz Cloud bills for the work it performs. The dimensions are few, they are all visible over the API, and every one of them carries a hard cap you control. What is not on the list matters more than what is: your request path does not appear here, because Alfiz Cloud is not on it.
 
 ## The dimensions
 
@@ -19,9 +19,15 @@ Alfiz Cloud meters only the work it performs. The dimensions are few, they are a
 
 **Standing** dimensions bill for what exists — a seat, an application — at a monthly rate. **Counted** dimensions bill for what happened — events ingested. **Guardrail** dimensions are metered but carry generous included volumes; they exist to keep pathological automation visible, not to price ordinary use.
 
-## The guarantee
+## Alfiz is never in your request path
 
-Nothing on the request path is observable to Alfiz Cloud, so nothing on it can be priced. Every `can()` runs in-process against your own database; the relay carries administrative traffic only; the audit stream is opt-in and never evaluated. Per-check pricing is not a plan Alfiz Cloud has declined to adopt — it is impossible by construction. That is a guarantee, not a policy.
+Every `can()` runs in-process against your own database. Alfiz Cloud is not a dependency of your application: it cannot add latency to a check, cannot throttle one, and cannot fail in a way that stops one. That holds in every topology, including full federation — the relay carries administrative traffic only, and the audit stream is opt-in and never sits between a request and its answer.
+
+Pricing follows from it. Alfiz Cloud bills for the work it performs — the dimensions above — and **check volume is not a billing dimension and will not become one.**
+
+<Note>
+  If you enable usage metrics, aggregate check telemetry flows up as observability *for you*: opt-in, yours to read over the API, and never an input to your bill. Turning it off changes what you can see about your own deployment and changes nothing about what you pay.
+</Note>
 
 ## Reading your meters
 

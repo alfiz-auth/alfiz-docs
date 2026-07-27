@@ -22,7 +22,7 @@ When you federate, your Application connects to Alfiz Cloud as its org-root auth
 
 Federation does not create two writers. Alfiz Cloud becomes the org root and the authoritative home for organizational-domain data. Each Application syncs that data down and evaluates it locally, exactly as it did when standalone, and rejects local org-domain writes. There is no reconciliation problem and no conflict resolution, because there is only one writer for any given piece of data.
 
-For instance-scoped grants — `docs.doc:123`, `billing.invoice:456` — the opposite is true: they live in the owning Application and never leave it. Alfiz Cloud cannot evaluate scoped checks because it cannot see your application's resource tables. That is a design guarantee, not a limitation: it is what keeps enforcement local and the check path unmeterable.
+For instance-scoped grants — `docs.doc:123`, `billing.invoice:456` — the opposite is true: they live in the owning Application and never leave it. Alfiz Cloud cannot evaluate scoped checks because it cannot see your application's resource tables. That is a design guarantee, not a limitation: it is what keeps enforcement local and keeps the check path off Alfiz Cloud entirely.
 
 ## What federation unlocks
 
@@ -69,12 +69,13 @@ During promotion, your Application's organizational-domain data — groups, role
 
 If you are federating a second application that also carries local org-domain data, Alfiz Cloud surfaces any conflicts for human resolution before the merge completes. Positive access data (groups, role definitions, global grants) unions safely — union-only inheritance means unioning only widens. Reporting hierarchies do not auto-merge, because a user cannot have two managers; conflicting trees are surfaced explicitly.
 
-## Metering guarantee
+## Alfiz Cloud is not a dependency of your request path
 
-Nothing on any application's request path is ever counted, priced, or throttled. That guarantee holds across the entire federation:
+Federation moves the org root. It does not move enforcement, and it does not put Alfiz Cloud between your application and a check:
 
-- Runtime checks run in-process in each Application against local data.
-- Alfiz Cloud cannot observe checks, by construction.
+- Runtime checks run in-process in each Application against local data — the same call sites, the same tuple, the same latency as standalone.
+- Alfiz Cloud cannot add latency to a check, throttle one, or fail in a way that stops one. A federation-wide outage leaves every member application still enforcing.
+- Check volume is not a billing dimension and will not become one.
 - Hard spending caps are configurable per dimension; crossing one degrades hosted polish (relay cadence, retention ingest, reconciler frequency) and never any locally-running capability.
 
 ## Pricing

@@ -1,10 +1,14 @@
 ---
-title: "Alfiz: TypeScript Authorization Library — Introduction"
+title: "Alfiz: Scoped Permissions for TypeScript — Introduction"
 sidebarTitle: "Introduction"
-description: "Alfiz is a TypeScript authorization library: declare permissions in code, check them in-process, and grow from one app to a federated org."
+description: "Alfiz is scoped permissions for TypeScript applications: declared in code, verified in CI, and checked in your own process against your own database."
 ---
 
-Alfiz is an authorization layer for TypeScript applications. It is not in the business of authentication — identity stays with your identity provider, and resource data stays in your database. Alfiz owns everything in between: **who may do what, where, and why**. You declare your permission catalog once in code, and every runtime check runs in-process against your own database. Nothing Alfiz operates ever sits on your request path.
+Alfiz is scoped permissions for TypeScript applications: **declared in code, verified in CI, checked in your own process.**
+
+It is not in the business of authentication — identity stays with your identity provider, and resource data stays in your database. Alfiz owns everything in between: **who may do what, where, and why**. You declare your permission catalog once in the codebase that enforces it, and every runtime check runs in-process against your own database. Nothing Alfiz operates ever sits on your request path.
+
+The word *scoped* is the qualifier that matters. If a role column is enough for your application — admin and user, nothing more — Alfiz is more machinery than you need. It earns its place when access is per-folder, per-document, per-tenant, or otherwise attached to specific objects rather than to the whole application.
 
 ## The three layers
 
@@ -17,27 +21,31 @@ Alfiz is organized into three layers. The first two are open-source packages you
 | **Alfiz Cloud** | — | The managed provider speaking the same contract: the Dashboard (hosted administration by relay) and Federation (registry, cross-application composition, the hosted org root). Nothing in the OSS packages depends on it. |
 
 <Note>
-Runtime checks never leave your application in any topology. Every `can()` runs in-process against your catalog, your rows, and your resolver — so nothing Alfiz operates can break your app.
+Runtime checks never leave your application in any topology. Every `can()` runs in-process against your catalog, your rows, and your resolver — so nothing Alfiz operates can slow or break your app.
 </Note>
 
 ## Four commitments
 
-These are the semantic opinions that make up the product. They are stated as decisions, and none of them is configurable.
+These are the decisions that make up the product. None of them is configurable.
 
 <CardGroup cols={2}>
-  <Card title="The frame is drawn in code" icon="code">
-    The catalog declares every permission and every scope type. Nothing is inferred from call sites and nothing is dashboard-configured. Your CI can prove every surface is gated.
+  <Card title="Declared in code" icon="code">
+    The catalog declares every permission and every scope type, in the codebase that enforces them. Nothing is inferred from call sites and nothing is dashboard-configured — there is no second list anywhere that can drift out of sync with this one.
   </Card>
-  <Card title="Checks happen at the doorway" icon="shield-check">
-    Every `can()` runs in-process against your own database. Nothing Alfiz operates is on your request path, so nothing it does can slow or break your application.
+  <Card title="Checked in your own process" icon="shield-check">
+    Every `can()` runs in-process against your own database. Nothing Alfiz operates is on your request path, so nothing it does can slow, throttle, or stop a check.
   </Card>
-  <Card title="Openings nest" icon="layer-group">
-    A grant at any enclosing scope covers everything within it, resolved by walking outward from where you stand. Grants are stored once, never fanned out to descendants.
+  <Card title="Typed end to end" icon="brackets-curly">
+    Keys and patterns are template-literal types derived from your catalog. A typo in a permission key is a compile error rather than a silent `false` you discover in production.
   </Card>
-  <Card title="Growth adds bays" icon="building">
-    One app or twenty — standalone, linked, or federated — it is the same grant tuple, the same check, the same frame. Nothing is rebuilt when you scale.
+  <Card title="Verified in CI" icon="circle-check">
+    `alfiz-verify` proves both directions match: nothing is enforced that the catalog does not declare, and the build warns on anything declared that no gate references.
   </Card>
 </CardGroup>
+
+<Note>
+Two further semantics are worth knowing early, because they shape how you model access. Grants **nest**: one made at an enclosing scope covers everything within it, resolved by walking up ancestors at check time rather than fanning rows out to descendants. And the grant tuple and check shape are **identical in every topology** — standalone, linked, or federated — so growing your deployment never rewrites your call sites.
+</Note>
 
 ## What's included in the open-source packages
 
@@ -71,7 +79,9 @@ When a non-engineer needs to administer access, or when your second application 
 </CardGroup>
 
 <Note>
-Runtime checks are never metered — in any topology. Per-check pricing is impossible by construction because checks never touch Alfiz infrastructure. The hosted tier meters only the work Alfiz performs: admin seats, federated applications, provisioned connectors, and retained audit volume.
+**Alfiz is never in your request path.** Every `can()` runs in-process against your own database, so Alfiz Cloud is not a dependency of your application: it cannot add latency to a check, cannot throttle one, and cannot fail in a way that stops one. That holds in every topology, including full federation.
+
+Pricing follows from it. Alfiz Cloud bills for the work it performs — admin seats, federated applications, provisioned connectors, retained audit volume. Check volume is not a billing dimension and will not become one. See [Metering and caps](/cloud/metering).
 </Note>
 
 ## Next steps

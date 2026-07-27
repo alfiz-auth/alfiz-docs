@@ -6,6 +6,10 @@ description: "Two npm packages and your own database — the complete Alfiz feat
 
 A standalone deployment is exactly what it sounds like: your application, your database, and two npm packages. No hosted service sits on your request path, no external dependency is required beyond the database you already run, and nothing is withheld. Every feature Alfiz ships — permission grammar, scoped grants, groups, roles, access requests, management-layer approvals, the headless admin kit — is fully available the moment you call `createApplication`.
 
+<Note>
+  Standalone is a finished place to stand, not a trial. Most deployments stay here permanently, and nothing about staying is a compromise: the packages are MIT, the feature set is complete, and the pages that follow describe answers to *organizational* problems — a non-engineer who needs to administer access, a second application — not to missing capability.
+</Note>
+
 ## What standalone means
 
 Standalone is the composition of two packages:
@@ -43,7 +47,7 @@ When you later [link to Alfiz Cloud](/growth/linked) or [federate](/growth/feder
 
 ## Runtime checks never leave your application
 
-Regardless of where you go from here, this guarantee holds in every topology: every `can()`, `canAny()`, and `can.fresh()` call runs in-process against your catalog, your grant rows, and your ancestry resolver. Nothing on your request path is ever counted, priced, or throttled.
+Regardless of where you go from here, this holds in every topology: every `can()`, `canAny()`, and `can.fresh()` call runs in-process against your catalog, your grant rows, and your ancestry resolver. Alfiz is never a dependency of your request path, and check volume is never a billing dimension.
 
 ```ts
 // Checks are in-process. Nothing phones home.

@@ -28,7 +28,7 @@ Alfiz Cloud serves three audiences, and its surfaces divide cleanly along that l
 - **Employees** use the portal — view their own access, request more, and approve what falls to them.
 
 <Note>
-  Runtime checks never touch Alfiz Cloud in any topology. Every `can()` runs in-process against your catalog, your rows, and your resolver — Alfiz Cloud cannot observe them, so per-check pricing is impossible by construction. That is a guarantee, not a policy.
+  Alfiz Cloud is never in your request path. Every `can()` runs in-process against your catalog, your rows, and your resolver, in every topology — so Alfiz Cloud cannot add latency to a check, cannot throttle one, and cannot fail in a way that stops one. Check volume is not a billing dimension and will not become one.
 </Note>
 
 ## The uniform authorization rule
@@ -39,4 +39,4 @@ Alfiz Cloud gates its own surfaces with the same machinery it hosts, and the rul
 - **Account surfaces** — an application's own page: credentials, publishes, relay health — gate on admin seats plus grants scoped to `cloud.app:<id>`.
 - **The portal** needs only a seat.
 
-Setup starts with the relay — see [Relay setup](/cloud/relay). What is metered, and what structurally cannot be, is covered in [Metering and caps](/cloud/metering).
+Setup starts with the relay — see [Relay setup](/cloud/relay). What is billed, and what never is, is covered in [Metering and caps](/cloud/metering).
