@@ -87,7 +87,7 @@ A subject identifies *who* is being granted access. Alfiz recognizes several sub
 
 When Alfiz evaluates a check for a user, it first computes the **subject closure**: the complete set of subject strings that apply to that user at that moment. A user who is a member of `group:eng`, which is itself a child of `group:staff`, has a closure that includes `user:<id>`, `group:eng`, `group:staff`, `everyone`, and any relevant `org:` and manager-chain subjects.
 
-Subject closures are cached (default 30-second TTL) and busted immediately by invalidation events — so adding a user to a group or revoking a role takes effect within the TTL without requiring a restart or a manual cache flush.
+Subject closures are cached (default 30-second TTL) and busted immediately by invalidation events — so adding a user to a group or revoking a role takes effect within the TTL without requiring a restart or a manual cache flush. In multi-node or serverless deployments, opt into cross-process revalidation to tighten that bound to a configurable window regardless of TTL — see [createAlfizClient](/api/create-alfiz-client) for `revalidateAfterMs` and `cacheStore`.
 
 ---
 

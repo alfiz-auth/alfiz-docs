@@ -53,9 +53,59 @@ import { type ClientOf } from "@alfiz-auth/core";
 
 <ParamField body="maxSubjectCacheEntries" type="number" default="10000">
   The maximum number of principals kept in the subject cache. When this limit
-  is exceeded, the oldest entries are evicted (the cache is insertion-ordered).
-  Tune this to match your active-user count — eviction causes a re-fetch on
-  the next check for the evicted principal.
+  is exceeded, the least-recently-used entries are evicted. Tune this to
+  match your active-user count — eviction causes a re-fetch on the next
+  check for the evicted principal.
+</ParamField>
+
+<ParamField body="maxObjectCacheEntries" type="number" default="10000">
+  The maximum number of scope chains kept in the object cache. When this
+  limit is exceeded, the least-recently-used entries are evicted. Tune this
+  to match your active-scope working set.
+</ParamField>
+
+<ParamField body="revalidateAfterMs" type="number">
+  Cross-process revalidation window in milliseconds. When set against a
+  provider that persists its invalidation log (see the Application's
+  `events.persist` option), the client validates its caches with one
+  constant-cost read of the log head per window — shared across every
+  concurrent check. An unchanged head renews TTLs; a changed head replays
+  only the missed events through the same busting logic the live stream
+  feeds. Effective cross-process staleness becomes this window rather than
+  the blind TTL. Fail-closed: an unreachable epoch degrades to the pre-epoch
+  TTL contract, never below it. Off by default. `5000` is a good starting
+  point for most deployments.
+</ParamField>
+
+<ParamField body="cacheStore" type="CacheStore">
+  Optional shared cache tier (L2) between the in-process caches and the
+  provider. Read order is L1 → L2 → provider. The win is cold processes
+  (serverless invocations, fresh deploys) finding a warm closure instead of
+  paying the full fan-out. Entries are served only when provably fresh —
+  under the current event-log head with `revalidateAfterMs` on, or within
+  `cacheStoreTtlMs` without — and every L2 failure is a miss, never an
+  answer. Writes are fire-and-forget. The store holds closure data inside
+  the server trust boundary: point it only at authenticated, private cache
+  infrastructure. Use `respCacheStore(client)` to adapt any RESP-family
+  client (node-redis or ioredis call shape — Redis, Valkey, KeyDB,
+  Dragonfly, ElastiCache, Upstash) with no added dependency.
+</ParamField>
+
+<ParamField body="cacheKeyPrefix" type="string" default="alfiz:v1:">
+  Key prefix for L2 entries. Change this only if a single cache instance is
+  shared across incompatible Alfiz deployments.
+</ParamField>
+
+<ParamField body="cacheStoreTtlMs" type="number">
+  Storage TTL for L2 entries. With `revalidateAfterMs` set, this only
+  bounds storage growth (freshness comes from the sequence check) — defaults
+  to 10 minutes. Without an epoch, this is the freshness bound and defaults
+  to the corresponding L1 TTL.
+</ParamField>
+
+<ParamField body="onCacheStoreError" type="(error: unknown) => void">
+  Observes swallowed L2 errors for metrics and logging. Failures are misses
+  either way.
 </ParamField>
 
 <ParamField body="clock" type="() => number">
@@ -191,3 +241,39 @@ process.on("SIGTERM", () => {
   a grant, membership, or scope move is written through the provider — you do
   not need to manage cache invalidation manually.
 </Note>
+
+## Cross-process caching (multi-node and serverless)
+
+The in-process invalidation stream only reaches the process that wrote the event, so in a multi-node or serverless deployment the TTLs alone bound how quickly a revocation on one instance takes effect on another. `revalidateAfterMs` tightens that bound to a configurable window by validating the caches against a durable event log the Application maintains (`events: { persist: true }`).
+
+Turn on the log on the Application, then set a revalidation window on the client:
+
+```typescript
+import { createApplication } from "@alfiz-auth/application";
+import { createAlfizClient, respCacheStore } from "@alfiz-auth/core";
+import { createClient } from "redis";
+
+const app = createApplication({
+  catalog,
+  storage: prismaDriver(prisma),
+  ancestry,
+  events: { persist: true }, // durable invalidation log
+});
+
+const redis = createClient({ url: process.env.REDIS_URL });
+await redis.connect();
+
+export const alfiz = createAlfizClient({
+  catalog,
+  provider: app,
+  revalidateAfterMs: 5_000,        // cross-process staleness bound
+  cacheStore: respCacheStore(redis), // shared L2 for cold starts
+});
+```
+
+With this configured:
+
+- **Long-lived nodes** validate caches once per window with a single-row read whose cost is independent of organization size. Quiet systems stop refetching entirely (TTLs are renewed); a write anywhere propagates within one window.
+- **Serverless invocations** find warm closures in the shared L2 instead of paying the full closure fan-out on every cold start. Entries are only served when the L2 stamp matches the current log head.
+
+Both features are opt-in and independent. See the Application's `events.persist` option for the write-side setup.
