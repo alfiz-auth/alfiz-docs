@@ -1,0 +1,55 @@
+---
+title: "Alfiz Cloud Metering and Caps: What Is Counted and What Never Can Be"
+sidebarTitle: "Metering"
+description: "The metered dimensions, hard caps per dimension, and the structural guarantee that nothing on the request path can ever be priced."
+---
+
+Alfiz Cloud meters only the work it performs. The dimensions are few, they are all visible over the API, and every one of them carries a hard cap you control. What is not on the list matters more than what is — nothing on your request path appears here, because nothing on your request path is observable to Alfiz Cloud at all.
+
+## The dimensions
+
+| Dimension | Kind | What moves it |
+|---|---|---|
+| Admin seats | Standing | Authenticated Dashboard sessions — billing starts at first sign-in, not at invite. |
+| Linked applications | Standing | Applications registered and linked. Included at no cost — the seat, not the link, is the product. |
+| Federated applications | Standing | Member applications under the hosted org root. |
+| Retained audit events | Counted | Events ingested into opt-in hosted retention. |
+| Catalog publishes | Guardrail | Publishes to the registry. |
+| Relay operations | Guardrail | Administrative operations forwarded over the relay. |
+
+**Standing** dimensions bill for what exists — a seat, an application — at a monthly rate. **Counted** dimensions bill for what happened — events ingested. **Guardrail** dimensions are metered but carry generous included volumes; they exist to keep pathological automation visible, not to price ordinary use.
+
+## The guarantee
+
+Nothing on the request path is observable to Alfiz Cloud, so nothing on it can be priced. Every `can()` runs in-process against your own database; the relay carries administrative traffic only; the audit stream is opt-in and never evaluated. Per-check pricing is not a plan Alfiz Cloud has declined to adopt — it is impossible by construction. That is a guarantee, not a policy.
+
+## Reading your meters
+
+Every meter is readable over the API, exactly as the Dashboard renders it — same numbers, same server function:
+
+```text
+GET /api/v1/orgs/{org}/billing/usage
+```
+
+## Hard caps
+
+Every dimension carries a hard cap, settable per dimension:
+
+```text
+PUT /api/v1/orgs/{org}/billing/caps/{dimension}
+```
+
+Crossing a cap degrades hosted convenience and nothing else — retention ingest pauses, relay cadence slows. It never degrades any locally-running capability: checks, grants, enforcement, and your own admin surfaces continue untouched, because none of them run on Alfiz Cloud in the first place.
+
+## Prices
+
+The numbers live with the tiers they belong to:
+
+<CardGroup cols={2}>
+  <Card title="Linked pricing" icon="link" href="/growth/linked#pricing">
+    Admin seats and opt-in audit retention — the linked application itself is free.
+  </Card>
+  <Card title="Federation pricing" icon="share-nodes" href="/growth/federated#pricing">
+    The federation base, member applications, provisioned connectors, and carried-over seats.
+  </Card>
+</CardGroup>

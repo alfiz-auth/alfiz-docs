@@ -1,0 +1,58 @@
+---
+title: "Promotion, Merges, and Demotion: Moving the Alfiz Org Root"
+sidebarTitle: "Promotion & demotion"
+description: "The runbook for moving the org root to Alfiz Cloud — validation, the atomic authority flip, second-application merges, and the way back down."
+---
+
+**Promotion** is the operation that turns a linked Application into a federated one: the org root moves from your Application to Alfiz Cloud, and organizational-domain data becomes centrally authoritative. It is a deliberate, validated, atomic operation — and it has a documented way back.
+
+## Prerequisites
+
+Two things must be true before promotion can begin:
+
+- The Application is **linked** — the relay is mounted, the secret is configured, and the health probe passes.
+- The Application's catalog is **published** to the registry. The org root cannot hold roles and grants against vocabulary it cannot see.
+
+## What promotion does
+
+<Steps>
+  <Step title="Export over the relay">
+    Alfiz Cloud pulls the Application's organizational-domain data — groups, roles, global grants and revokes, the reporting hierarchy — through the same relay that carries everyday administrative traffic.
+  </Step>
+
+  <Step title="Validate through the standard import paths">
+    The exported data passes through the same import paths as any external directory — nothing about promotion is a special case. Group-parent cycles condense to **virtual parents** with warnings, exactly as they do during directory ingestion; nothing is silently dropped.
+  </Step>
+
+  <Step title="Flip authority atomically">
+    Authority transfers in one atomic step. There is no window in which both sides accept org-domain writes, and no window in which neither does. After the flip, your Application rejects local org-domain writes with `ProviderWriteRejectedError` (`not_org_root`).
+  </Step>
+
+  <Step title="Push the read model down">
+    Alfiz Cloud syncs the org-domain read model back down to the Application, which evaluates it locally — exactly as it did when it owned the data. Runtime checks never notice the move.
+  </Step>
+</Steps>
+
+<Note>
+  Pending access requests survive promotion untouched. Approval stages reference layers and roles — "2 layers up", a named role id — never resolved people, so they re-resolve correctly against the promoted hierarchy at decision time.
+</Note>
+
+## Merging a second application
+
+When a second application federates and carries its own org-domain data, the merge follows three rules:
+
+- **Positive data unions.** Groups, role definitions, and global grants union safely — union-only inheritance means unioning only ever widens, so a merged row can never take access away.
+- **Id collisions with different definitions are surfaced for rename.** Two roles both named `editor` with different patterns are not averaged or overwritten — the conflict is returned, and you rename one before the merge completes.
+- **Reporting trees never auto-merge.** A user cannot have two managers, so conflicting edges return per-user — and you resolve each one explicitly, through the `resolutions` body on the federate call or from the Dashboard.
+
+## Demotion
+
+**Demotion** is promotion's inverse, available when one member application remains:
+
+- The org-domain dataset snapshots down into the Application.
+- The Application resumes authority — `orgRoot` behavior returns to standalone semantics, and local org-domain writes are accepted again.
+- **Cloud-only vocabulary stays behind.** Roles and grants living entirely in `cloud.*` — vocabulary that exists only in the hosted domain — do not travel down; there is nothing local for them to bind to. The parallel to virtual-parent dissolution is exact: structure that existed only to make the hosted composition coherent dissolves when the composition ends, and everything that was yours comes home intact.
+
+<Card title="The catalog registry" icon="book-open" href="/cloud/registry">
+  Publishing is a promotion prerequisite — versions, tombstones, and the drift report are covered in the registry guide.
+</Card>

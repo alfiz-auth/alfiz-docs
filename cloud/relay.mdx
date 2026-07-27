@@ -1,0 +1,60 @@
+---
+title: "Connecting Your Application to Alfiz Cloud: The Relay"
+sidebarTitle: "Relay setup"
+description: "Mount the relay handler from @alfiz-auth/application, register your Application in the Dashboard, and verify the connection — administrative traffic only, never on the check path."
+---
+
+The **relay** is how Alfiz Cloud talks to your Application: the provider contract, carried over HTTPS, terminating at a route you mount inside your own deployment. It carries administrative traffic only — dashboard operations, approval decisions, org-domain reads. It is never on the check path. A Dashboard session produces a relayed operation; your Application enforces that operation exactly as it would a local admin call, and answers over the same route.
+
+Because the relay speaks the provider contract your Application already implements, there is nothing to translate and nothing to keep in sync. Alfiz Cloud is a caller, not a copy.
+
+## Mount the handler
+
+The handler ships in `@alfiz-auth/application`. Mount it as a POST route wherever your Application runs:
+
+```ts src/app/api/alfiz-relay/route.ts
+import { createRelayHandler } from "@alfiz-auth/application";
+import { app, storage } from "@/authz/app";
+
+export const POST = createRelayHandler({
+  application: app,
+  storage,
+  secret: process.env.ALFIZ_RELAY_SECRET!,
+  applicationId: "docs",
+});
+```
+
+<Note>
+  Event persistence (`events: { persist: true }` on `createApplication`) is required for the relay. The relay's cache freshness rides the Application's epoch — without the durable event log, Alfiz Cloud has no signal for when its cached org reads have gone stale. See [cross-process invalidation](/api/create-application#cross-process-invalidation).
+</Note>
+
+<Warning>
+  Mount the route inside your network perimeter as appropriate. The secret authenticates Alfiz Cloud to your Application — and every relayed write still passes your Application's own enforcement, so possession of the secret never confers access your authorization model would refuse.
+</Warning>
+
+## Set up the connection
+
+<Steps>
+  <Step title="Register the application">
+    From the application page in the Dashboard, create the application entry — or call `POST /api/v1/orgs/{org}/applications` with an admin key. Either path runs the same server function; the API is not a second implementation.
+  </Step>
+
+  <Step title="Configure the relay URL and copy the secret">
+    Point the entry at your mounted route and link it. The relay secret is shown **once, at link time** — copy it into your deployment's environment as `ALFIZ_RELAY_SECRET`. Losing it means re-linking, not recovering.
+  </Step>
+
+  <Step title="Verify with the health probe">
+    Run the connection health probe from the application page — or read `GET /api/v1/orgs/{org}/applications/{app}`, which includes relay health and registry status. A healthy probe confirms the route is reachable, the secret matches, and the Application's epoch is flowing.
+  </Step>
+</Steps>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="What linking means" icon="link" href="/growth/linked">
+    What changes when you link — and the longer list of what does not. Authority stays with your Application; the relay only carries administrative traffic to it.
+  </Card>
+  <Card title="API endpoints" icon="code" href="/api/cloud-endpoints">
+    The full REST surface behind the Dashboard, including application registration, linking, and the health probe.
+  </Card>
+</CardGroup>

@@ -1,0 +1,57 @@
+---
+title: "The Alfiz Cloud Catalog Registry: Namespaces, Versions, and Tombstones"
+sidebarTitle: "Registry"
+description: "The registry holds each application's published catalog as a versioned, namespaced contract — additions need no coordination, removals are tombstones, and drift is reported by name."
+---
+
+The **catalog registry** is where each application's permission catalog becomes an organizational contract. An application publishes its namespace; the registry versions it, enforces ownership — no application can define another's keys — and makes the published tree consumable by roles, grants, and requests across the organization. The registry stores what your code declared; it never invents vocabulary of its own.
+
+## Publishing a namespace
+
+Publish from CI with a **publisher key** — a namespace-scoped credential that can call the publish endpoint and nothing else. The payload is the `CatalogDocument` produced by `catalog.toDocument()`:
+
+```ts scripts/publish-catalog.ts
+import { catalog } from "../src/authz/catalog";
+
+await fetch("https://alfiz.dev/api/v1/registry/publish", {
+  method: "POST",
+  headers: {
+    authorization: `Bearer ${process.env.ALFIZ_PUBLISHER_KEY}`,
+    "content-type": "application/json",
+  },
+  body: JSON.stringify({ document: catalog.toDocument() }),
+});
+```
+
+The body accepts an optional `expectedVersion` for compare-and-set publishes. The same publish is available from the application page in the Dashboard — both paths call the same server function.
+
+## Versions are monotonic
+
+Versions increase monotonically per namespace, and out-of-order publishes are rejected. A rollback deploy that republishes an older document does not — cannot — un-publish newer keys: the registry refuses the stale version, and the newer contract stands. Roles and grants referencing recently-added keys never dangle because a deploy went backwards.
+
+## Additions need no coordination
+
+Adding a permission to your catalog requires no registry-side ceremony beyond the publish itself. Forward-inclusive wildcards absorb new keys the moment they are published — a role granting `docs.files.*` covers a `docs.files.archive` permission added a year later, with no role edit and no re-grant.
+
+## Removals are tombstones
+
+Removal is never deletion. A key that disappears from a published document is **tombstoned**: it stops matching checks immediately, but it remains visible in the registry as deprecated — with its history intact. Grant rows referencing it are not silently rewritten.
+
+The **drift report** closes the loop: it names every role and every grant still referencing keys no longer published by any application. You review and migrate them deliberately — the registry surfaces the debt; it does not pay it down behind your back.
+
+```text
+GET /api/v1/orgs/{org}/registry/drift
+→ "Role 'Teacher' references 3 permissions no longer published: zoom.breakout.manage, ..."
+```
+
+## Typed consumption across the boundary
+
+A consuming application can hold typed keys for a namespace it does not own. Export the published document and run codegen against it:
+
+```bash
+curl -H "authorization: Bearer $ALFIZ_ADMIN_KEY" \
+  "https://alfiz.dev/api/v1/orgs/acme/registry/zoom/document" > zoom.catalog.json
+npx alfiz-verify codegen zoom.catalog.json
+```
+
+The generated types make cross-namespace references — a role bundling `mathaniyy.students.*` with `zoom.host` — compile-checked in the consuming codebase, exactly as local keys are.

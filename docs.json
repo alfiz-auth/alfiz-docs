@@ -78,6 +78,16 @@
               "growth/linked",
               "growth/federated"
             ]
+          },
+          {
+            "group": "Alfiz Cloud",
+            "pages": [
+              "cloud/overview",
+              "cloud/relay",
+              "cloud/registry",
+              "cloud/promotion",
+              "cloud/metering"
+            ]
           }
         ]
       },
@@ -115,6 +125,13 @@
             "pages": [
               "api/alfiz-verify-cli",
               "api/verify-config"
+            ]
+          },
+          {
+            "group": "Alfiz Cloud API",
+            "pages": [
+              "api/cloud-overview",
+              "api/cloud-endpoints"
             ]
           }
         ]

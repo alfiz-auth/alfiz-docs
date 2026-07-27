@@ -30,7 +30,7 @@ For instance-scoped grants — `docs.doc:123`, `billing.invoice:456` — the opp
   <Card title="Cross-namespace role composition" icon="arrows-merge">
     Define a role like "Teacher" that grants both `mathaniyy.students.*` and `zoom.host` in a single assignment. Cross-namespace composition requires the central catalog registry; it is not possible with independent applications.
   </Card>
-  <Card title="Catalog registry" icon="book-open">
+  <Card title="Catalog registry" icon="book-open" href="/cloud/registry">
     Each application's namespace is published as a versioned contract. The registry enforces namespace ownership (no application can define another's keys), tracks additions and tombstones, and makes published permission trees consumable across your organization.
   </Card>
   <Card title="Cross-application request aggregation" icon="inbox-stack">
@@ -59,7 +59,7 @@ When an integration publishes a new contract version, the adapter tombstones the
 
 ## Promoting from linked to federated
 
-If your Application is already linked to Alfiz Cloud, promotion to federation is the typical path — the connection is already established, and promotion adds only the authority transfer.
+If your Application is already linked to Alfiz Cloud, promotion to federation is the typical path — the connection is already established, and promotion adds only the authority transfer. The [promotion runbook](/cloud/promotion) walks the full sequence, including merges and demotion.
 
 During promotion, your Application's organizational-domain data — groups, roles, global grants, the reporting hierarchy — is imported into Alfiz Cloud and validated before the transfer completes. Authority transfers **atomically**: after the transfer completes, your Application syncs that data back down and rejects local org-domain writes.
 
