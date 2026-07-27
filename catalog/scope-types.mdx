@@ -80,42 +80,34 @@ export interface ScopeTypeInput {
 
 <CodeGroup>
 ```ts Catalog definition
-import { defineCatalog } from "@alfiz-auth/core";
+import { defineCatalog, group } from "@alfiz-auth/core";
 
 export const catalog = defineCatalog({
-  namespace: "docs",
+  namespaces: ["docs"],
 
-  projects: {
-    docs: {
-      groups: {
-        files: {
-          label: "Files",
-          scopes: ["docs.folder", "docs.doc"],
-          permissions: {
-            read: {
-              kind: "read",
-              description: "View files and folders",
-              scopes: ["docs.folder", "docs.doc"],
-              impliedOnAncestors: true, // seeing a doc implies seeing its folder
-            },
-            update_file: {
-              description: "Edit file contents",
-              scopes: ["docs.doc"],
-            },
-            share_doc: {
-              description: "Share a document with others",
-              scopes: ["docs.doc"],
-            },
-            delete: {
-              destructive: true,
-              description: "Delete a folder and everything inside it",
-              scopes: ["docs.folder"],
-            },
-          },
-        },
-      },
+  permissions: group("docs.files", {
+    label: "Files",
+    scopes: ["docs.folder", "docs.doc"], // the group-wide default
+  }, {
+    "docs.files.read": {
+      kind: "read",
+      description: "View files and folders",
+      impliedOnAncestors: true, // seeing a doc implies seeing its folder
     },
-  },
+    "docs.files.update_file": {
+      description: "Edit file contents",
+      scopes: ["docs.doc"], // narrower than the group default
+    },
+    "docs.files.share_doc": {
+      description: "Share a document with others",
+      scopes: ["docs.doc"],
+    },
+    "docs.files.delete": {
+      destructive: true,
+      description: "Delete a folder and everything inside it",
+      scopes: ["docs.folder"],
+    },
+  }),
 
   scopeTypes: {
     "docs.folder": {
@@ -201,5 +193,5 @@ Wildcard patterns follow the same rule at a coarser granularity: a wildcard gran
 </Tabs>
 
 <Note>
-  Scope type keys must fall within a declared namespace. `docs.folder` is valid when `docs` is in `namespace` or `additionalNamespaces`. A scope type referencing an undeclared namespace is a boot-time error from `defineCatalog`.
+  Scope type keys must fall within a declared namespace. `docs.folder` is valid when `docs` appears in `namespaces`. A scope type referencing an undeclared namespace is a boot-time error from `defineCatalog`.
 </Note>

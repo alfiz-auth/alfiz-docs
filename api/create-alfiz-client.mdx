@@ -188,26 +188,17 @@ Unsubscribes from the provider's invalidation stream and clears the subject and 
 ## Complete initialization example
 
 ```typescript
-import { defineCatalog, createAlfizClient } from "@alfiz-auth/core";
+import { defineCatalog, group, createAlfizClient } from "@alfiz-auth/core";
 import { AlfizApplication } from "@alfiz-auth/application";
 
 // 1. Define the catalog (once, at the module level).
 export const catalog = defineCatalog({
-  namespace: "docs",
-  projects: {
-    docs: {
-      groups: {
-        files: {
-          scopes: ["docs.doc"],
-          permissions: {
-            read:        true,
-            update_file: true,
-            delete:      { destructive: true },
-          },
-        },
-      },
-    },
-  },
+  namespaces: ["docs"],
+  permissions: group("docs.files", { scopes: ["docs.doc"] }, {
+    "docs.files.read":        true,
+    "docs.files.update_file": true,
+    "docs.files.delete":      { destructive: true },
+  }),
   scopeTypes: {
     "docs.doc": { parent: "docs.folder" },
     "docs.folder": { parent: null },

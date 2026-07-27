@@ -171,19 +171,11 @@ import { defineCatalog, createAlfizClient, parentPointerResolver } from "@alfiz-
 import { createApplication, memoryDriver } from "@alfiz-auth/application";
 
 export const catalog = defineCatalog({
-  namespace: "docs",
-  projects: {
-    docs: {
-      groups: {
-        files: {
-          permissions: {
-            read: { scopes: ["docs.folder", "docs.doc"] },
-            update_file: { scopes: ["docs.folder", "docs.doc"] },
-            delete: { scopes: ["docs.folder"] },
-          },
-        },
-      },
-    },
+  namespaces: ["docs"],
+  permissions: {
+    "docs.files.read": { scopes: ["docs.folder", "docs.doc"] },
+    "docs.files.update_file": { scopes: ["docs.folder", "docs.doc"] },
+    "docs.files.delete": { scopes: ["docs.folder"] },
   },
   scopeTypes: {
     "docs.folder": { parent: null },
@@ -210,19 +202,11 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 export const catalog = defineCatalog({
-  namespace: "docs",
-  projects: {
-    docs: {
-      groups: {
-        files: {
-          permissions: {
-            read: { scopes: ["docs.folder", "docs.doc"] },
-            update_file: { scopes: ["docs.folder", "docs.doc"] },
-            delete: { scopes: ["docs.folder"] },
-          },
-        },
-      },
-    },
+  namespaces: ["docs"],
+  permissions: {
+    "docs.files.read": { scopes: ["docs.folder", "docs.doc"] },
+    "docs.files.update_file": { scopes: ["docs.folder", "docs.doc"] },
+    "docs.files.delete": { scopes: ["docs.folder"] },
   },
   scopeTypes: {
     "docs.folder": { parent: null },
@@ -233,15 +217,22 @@ export const catalog = defineCatalog({
 const app = createApplication({
   catalog,
   storage: prismaDriver(prisma),
-  ancestry: parentPointerResolver(async (scope) => {
-    // Your table owns the hierarchy — look up parent pointers here.
-    const row = await prisma.resource.findUnique({
-      where: { id: scope.split(":")[1] },
-      select: { parentId: true, parentType: true },
-    });
-    if (!row?.parentId) return null;
-    return `${row.parentType}:${row.parentId}`;
-  }),
+  // `parentPointerResolver` wraps a SYNCHRONOUS lookup; an async database read
+  // implements `AncestryResolver` directly, which may return a promise.
+  ancestry: async (scope) => {
+    const ancestors: string[] = [];
+    let current: string | null = scope;
+    while (current) {
+      const row = await prisma.resource.findUnique({
+        where: { id: current.split(":")[1] },
+        select: { parentId: true, parentType: true },
+      });
+      if (!row?.parentId) break;
+      current = `${row.parentType}:${row.parentId}`;
+      ancestors.push(current);
+    }
+    return ancestors;
+  },
   orgRoot: true,
 });
 

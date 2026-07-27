@@ -6,7 +6,9 @@ description: "defineCatalog(input) builds a typed catalog — source of truth fo
 
 `defineCatalog` is where your authorization model lives. It takes a structured declaration of your permission tree and produces a `Catalog` object that the Application validates writes against, the client checks keys against, and the build-time verifier consumes. The catalog is declared in code — not configured in a dashboard and not inferred from call sites — so it is always the ground truth.
 
-`defineCatalog` throws `CatalogError` immediately on structural invalidity (bad segments, undeclared namespaces, missing scope types). Semantic convention violations — the naming floor, nav wiring — are reported by `alfiz-verify` at build time, not at runtime.
+Permissions are declared by their **full dotted key** — the same notation every check, grant, role pattern, and nav entry uses — and group levels are inferred from those keys. A small catalog is one flat map; a large one composes from [`group()` blocks](/catalog/permissions#organizing-a-large-catalog).
+
+`defineCatalog` throws `CatalogError` immediately on structural invalidity (bad segments, undeclared namespaces, missing scope types, a key that is also a group path). Convention violations — key depth, the naming floor, nav wiring — are reported by `alfiz-verify` at build time, not at runtime.
 
 ## Signature
 
@@ -18,20 +20,31 @@ function defineCatalog<const C extends CatalogInput>(input: C): Catalog<C>
 
 ## Parameters
 
-<ParamField body="namespace" type="string" required>
-  Your application's primary namespace — the first segment of every permission key your application declares. Must be a single valid segment (`[a-zA-Z][a-zA-Z0-9_]*`). `alfiz_internal` is reserved.
+<ParamField body="namespaces" type="readonly string[]" required>
+  The namespaces your application owns — the first segment of every permission key it declares. The first entry is the primary namespace. Each must be a single valid segment (`[a-zA-Z][a-zA-Z0-9_]*`); `alfiz_internal` is reserved.
 
-  Example: `"docs"` produces keys like `docs.files.read`.
+  Catalogs are federation-shaped from the first commit, so this is required even standalone, where it is locally redundant. Example: `["docs"]` produces keys like `docs.files.read`; a multi-project portal declares `["docs", "billing", "admin"]`.
 </ParamField>
 
-<ParamField body="additionalNamespaces" type="string[]" optional>
-  Additional namespaces this application owns. In a multi-project portal where you declare more than one top-level project, every project name must appear in either `namespace` or `additionalNamespaces`. Catalogs are federation-shaped from the first commit — declaring namespaces explicitly means the shape is portable to a federated deployment without refactoring.
+<ParamField body="permissions" type="PermissionsInput" required>
+  The permissions, keyed by their **full dotted key**. Accepts a flat map, a single `group()` block, or an array mixing both:
+
+  ```ts
+  // A small catalog: one flat map, no groups needed.
+  permissions: {
+    "docs.files.read": { kind: "read" },
+    "docs.files.delete": { destructive: true },
+  }
+
+  // A larger one: named blocks, composable across files.
+  permissions: [files, folders, { "docs.reports.read": { kind: "read" } }]
+  ```
+
+  Group levels are inferred from the keys — every dotted prefix of a key is a group. Values are `true` (all defaults) or a `PermissionLeafInput`. See [Catalog Types](/api/catalog-types) for the full field reference.
 </ParamField>
 
-<ParamField body="projects" type="Record<string, GroupInput>" required>
-  Top-level permission groups, one per project (namespace). The blessed structure is `project → tab → permission` — three levels. Each project key must match a declared namespace.
-
-  See [Catalog Types](/api/catalog-types) for the full `GroupInput` field reference.
+<ParamField body="groups" type="Record<string, GroupInput>" optional>
+  Metadata (`label`, `description`, `scopes`) for group paths you did not declare a `group()` block for — typically the project level, e.g. `{ docs: { label: "Documents" } }`. Purely optional: an undecorated group falls back to its path segment.
 </ParamField>
 
 <ParamField body="scopeTypes" type="Record<string, ScopeTypeInput>" optional>
@@ -46,8 +59,10 @@ function defineCatalog<const C extends CatalogInput>(input: C): Catalog<C>
   See [Catalog Types](/api/catalog-types) for the full `NavItemInput` field reference.
 </ParamField>
 
-<ParamField body="allowArbitraryDepth" type="boolean" default="false" optional>
-  The blessed convention is exactly three levels (`project.tab.permission`). Set this to `true` to permit two-level integration catalogs (`zoom.host`) or deeper nesting. This is an explicit opt-out, not a default, so the linter does not treat it as an error on opted-in catalogs.
+<ParamField body="conventions" type="{ depth?: number | \"any\" }" optional>
+  House conventions the linter enforces. `depth` is the blessed key depth, defaulting to `3` (`project.tab.permission`); set `2` for a thin integration catalog (`zoom.host`), another number for a deeper tree, or `"any"` to opt out.
+
+  This is a **convention, not a structural rule**: a key at the wrong depth is a `lintCatalog` error failed by `alfiz-verify` in CI, never a boot-time throw.
 </ParamField>
 
 <ParamField body="includeAlfizInternal" type="boolean" default="true" optional>
@@ -128,63 +143,59 @@ By default, `defineCatalog` merges the `alfiz_internal` project into the catalog
 A document management application with two scope types, a multi-group project, navigation wiring, and template-literal types:
 
 ```ts
-import { defineCatalog } from "@alfiz-auth/core";
+import { defineCatalog, group } from "@alfiz-auth/core";
 import type { KeyOf, PatternOf } from "@alfiz-auth/core";
 
-export const catalog = defineCatalog({
-  namespace: "docs",
-  projects: {
-    docs: {
-      label: "Documents",
-      description: "Document and folder access",
-      groups: {
-        files: {
-          label: "Files",
-          description: "Read and modify documents and folders",
-          scopes: ["docs.folder", "docs.doc"],
-          permissions: {
-            read: {
-              label: "View",
-              description: "View document contents and folder listings",
-              kind: "read",
-              impliedOnAncestors: true,
-            },
-            update_file: {
-              label: "Edit",
-              description: "Edit document content or rename a folder",
-            },
-            share: {
-              label: "Share",
-              description: "Invite collaborators and change sharing settings",
-            },
-            delete: {
-              label: "Delete",
-              description: "Permanently delete a document or folder",
-              destructive: true,
-            },
-          },
-        },
-        admin: {
-          label: "Administration",
-          description: "Workspace-level administrative actions",
-          permissions: {
-            read: {
-              label: "View admin panel",
-              kind: "read",
-            },
-            manage_members: {
-              label: "Manage members",
-              description: "Invite, remove, and manage workspace members",
-            },
-            manage_billing: {
-              label: "Manage billing",
-              description: "Update payment methods and subscription",
-            },
-          },
-        },
-      },
-    },
+// Each block is a named, foldable unit — in a real app these typically live
+// in their own files, next to the code they gate, and are imported here.
+const files = group("docs.files", {
+  label: "Files",
+  description: "Read and modify documents and folders",
+  scopes: ["docs.folder", "docs.doc"],
+}, {
+  "docs.files.read": {
+    label: "View",
+    description: "View document contents and folder listings",
+    kind: "read",
+    impliedOnAncestors: true,
   },
+  "docs.files.update_file": {
+    label: "Edit",
+    description: "Edit document content or rename a folder",
+  },
+  "docs.files.share": {
+    label: "Share",
+    description: "Invite collaborators and change sharing settings",
+  },
+  "docs.files.delete": {
+    label: "Delete",
+    description: "Permanently delete a document or folder",
+    destructive: true,
+  },
+});
+
+const admin = group("docs.admin", {
+  label: "Administration",
+  description: "Workspace-level administrative actions",
+}, {
+  "docs.admin.read": {
+    label: "View admin panel",
+    kind: "read",
+  },
+  "docs.admin.manage_members": {
+    label: "Manage members",
+    description: "Invite, remove, and manage workspace members",
+  },
+  "docs.admin.manage_billing": {
+    label: "Manage billing",
+    description: "Update payment methods and subscription",
+  },
+});
+
+export const catalog = defineCatalog({
+  namespaces: ["docs"],
+  groups: { docs: { label: "Documents", description: "Document and folder access" } },
+  permissions: [files, admin],
 
   scopeTypes: {
     "docs.folder": {
@@ -197,7 +208,7 @@ export const catalog = defineCatalog({
         requireExpiry: true,
         maxDurationMs: 7 * 24 * 60 * 60 * 1000, // 7 days max
         policy: {
-          stages: [{ kind: "self" }],
+          stages: [{ kind: "management", layers: 1 }],
         },
       },
     },

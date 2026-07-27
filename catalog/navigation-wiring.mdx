@@ -126,16 +126,18 @@ navigation: [
 import { defineCatalog } from "@alfiz-auth/core";
 
 export const catalog = defineCatalog({
-  namespace: "lms",
+  namespaces: ["lms"],
 
-  projects: {
-    lms: {
-      groups: {
-        courses:     { permissions: { read: true, create: true, publish: true, delete: { destructive: true } } },
-        enrollments: { permissions: { read: true, enroll_student: true, remove_student: true } },
-        reports:     { permissions: { read: true, export: true } },
-      },
-    },
+  permissions: {
+    "lms.courses.read": true,
+    "lms.courses.create": true,
+    "lms.courses.publish": true,
+    "lms.courses.delete": { destructive: true },
+    "lms.enrollments.read": true,
+    "lms.enrollments.enroll_student": true,
+    "lms.enrollments.remove_student": true,
+    "lms.reports.read": true,
+    "lms.reports.export": true,
   },
 
   navigation: [

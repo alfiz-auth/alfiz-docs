@@ -133,8 +133,8 @@ Because stages reference a layer count rather than a resolved person, they survi
 
     ```typescript
     defineCatalog({
-      namespace: "docs",
-      projects: { /* ... */ },
+      namespaces: ["docs"],
+      permissions: { /* ... */ },
       scopeTypes: {
         "docs.folder": {
           parent: null,

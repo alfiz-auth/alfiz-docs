@@ -62,8 +62,8 @@ await app.createRole({
 
 ```typescript Requestable scope type (catalog)
 defineCatalog({
-  namespace: "docs",
-  projects: { /* ... */ },
+  namespaces: ["docs"],
+  permissions: { /* ... */ },
   scopeTypes: {
     "docs.folder": {
       parent: null,

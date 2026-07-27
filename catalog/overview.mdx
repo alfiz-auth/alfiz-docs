@@ -21,7 +21,7 @@ None of this is inferred from call sites. Nothing is configured in a dashboard. 
 
 Every permission key follows the convention `<project>.<tab>.<permission>`:
 
-- **project** — the top-level namespace your application owns, declared in `namespace` or `additionalNamespaces`.
+- **project** — the top-level namespace your application owns, declared in `namespaces`.
 - **tab** — the logical section or feature area (a "group" in the catalog's data model).
 - **permission** — the leaf action or read.
 
@@ -35,7 +35,9 @@ billing.invoices.export
 billing.subscriptions.manage
 ```
 
-This three-level shape is the default and `alfiz-verify` enforces it. If you need two levels (for a thin integration catalog) or four (for a deeper feature tree), set `allowArbitraryDepth: true` in your `CatalogInput` to opt out explicitly.
+You declare permissions using exactly these strings — the catalog is written in the same notation as every check, grant, role pattern, and nav entry. The group levels (`docs`, `docs.files`) are **inferred** from the keys: every dotted prefix of a declared key is a group, so nothing declares them and depth costs nothing.
+
+Three levels is the default **convention**, checked by `alfiz-verify` rather than by `defineCatalog`. A thin integration catalog (`zoom.host`) or a deeper feature tree declares its own house style with `conventions: { depth: 2 }` — or `{ depth: "any" }` — and builds.
 
 ## `defineCatalog()` — function signature and minimal example
 
@@ -45,32 +47,15 @@ This three-level shape is the default and `alfiz-verify` enforces it. If you nee
 import { defineCatalog } from "@alfiz-auth/core";
 
 export const catalog = defineCatalog({
-  namespace: "docs",
+  namespaces: ["docs"],
 
-  projects: {
-    docs: {
-      description: "Document management",
-      groups: {
-        files: {
-          label: "Files",
-          description: "File and folder operations",
-          scopes: ["docs.folder", "docs.doc"],
-          permissions: {
-            read: {
-              description: "View files and folders",
-              kind: "read",
-            },
-            update_file: {
-              description: "Edit file contents",
-            },
-            delete: {
-              description: "Delete a folder and its contents",
-              scopes: ["docs.folder"], // narrower than the group default
-              destructive: true,
-            },
-          },
-        },
-      },
+  permissions: {
+    "docs.files.read":        { description: "View files and folders", kind: "read" },
+    "docs.files.update_file": { description: "Edit file contents" },
+    "docs.files.delete":      {
+      description: "Delete a folder and its contents",
+      scopes: ["docs.folder"],
+      destructive: true,
     },
   },
 
@@ -91,12 +76,13 @@ export const catalog = defineCatalog({
 
 `defineCatalog` throws on:
 - Invalid key segments (segments must match `/^[a-zA-Z][a-zA-Z0-9_]*$/`)
-- Keys at the wrong depth when `allowArbitraryDepth` is not set
+- Single-segment keys (the first segment is the namespace, and a namespace is a group)
+- A key that is also a group path — `docs.files` declared alongside `docs.files.read` would be both a folder and a leaf
 - Duplicate permission keys
-- Projects not covered by a declared namespace
+- Keys outside the declared namespaces
 - References to undeclared scope types
 
-Semantic-convention violations — the naming floor, action naming style, nav reference validity — are reported by `lintCatalog` and enforced at build time by `alfiz-verify`, not at boot.
+Convention violations — key depth, the naming floor, action naming style, nav reference validity — are reported by `lintCatalog` and enforced at build time by `alfiz-verify`, not at boot. The split is deliberate: what is structurally broken fails at boot, what is merely off-convention fails in CI.
 
 ## Derived template-literal types
 

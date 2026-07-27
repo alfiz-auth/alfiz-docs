@@ -78,19 +78,11 @@ await alfiz.can.fresh({ userId }, "docs.files.delete", "docs.folder:9"); // bypa
     import { defineCatalog } from "@alfiz-auth/core";
 
     export const catalog = defineCatalog({
-      namespace: "docs",
-      projects: {
-        docs: {
-          groups: {
-            files: {
-              permissions: {
-                read:        { scopes: ["docs.folder", "docs.doc"] },
-                update_file: { scopes: ["docs.folder", "docs.doc"] },
-                delete:      { scopes: ["docs.folder"] }, // destructive: stands alone
-              },
-            },
-          },
-        },
+      namespaces: ["docs"],
+      permissions: {
+        "docs.files.read":        { scopes: ["docs.folder", "docs.doc"] },
+        "docs.files.update_file": { scopes: ["docs.folder", "docs.doc"] },
+        "docs.files.delete":      { scopes: ["docs.folder"] }, // destructive: stands alone
       },
       scopeTypes: {
         "docs.folder": { parent: null },

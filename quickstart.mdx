@@ -30,25 +30,17 @@ npm install @alfiz-auth/core @alfiz-auth/application @alfiz-auth/prisma
 
 ### Define the catalog
 
-The catalog is your single source of truth for every permission and scope type in the system. Call `defineCatalog` with your `namespace`, a `projects` tree, and the `scopeTypes` your resources belong to. The tree follows the shape `project → tab → permission`; `defineCatalog` throws at boot if anything is structurally invalid.
+The catalog is your single source of truth for every permission and scope type in the system. Call `defineCatalog` with your `namespaces`, your `permissions`, and the `scopeTypes` your resources belong to. Permissions are declared by their full dotted key — the same string you check with — and `defineCatalog` throws at boot if anything is structurally invalid.
 
 ```ts catalog.ts
 import { defineCatalog } from "@alfiz-auth/core";
 
 export const catalog = defineCatalog({
-  namespace: "docs",
-  projects: {
-    docs: {
-      groups: {
-        files: {
-          permissions: {
-            read:        { scopes: ["docs.folder", "docs.doc"] },
-            update_file: { scopes: ["docs.folder", "docs.doc"] },
-            delete:      { scopes: ["docs.folder"] }, // destructive: stands alone
-          },
-        },
-      },
-    },
+  namespaces: ["docs"],
+  permissions: {
+    "docs.files.read":        { scopes: ["docs.folder", "docs.doc"] },
+    "docs.files.update_file": { scopes: ["docs.folder", "docs.doc"] },
+    "docs.files.delete":      { scopes: ["docs.folder"] }, // destructive: stands alone
   },
   scopeTypes: {
     "docs.folder": { parent: null },          // top-level; no parent
@@ -56,6 +48,8 @@ export const catalog = defineCatalog({
   },
 });
 ```
+
+The group levels (`docs`, `docs.files`) are inferred from the keys — you never declare them. Once your catalog outgrows a single flat map, [`group()` blocks](/catalog/permissions#organizing-a-large-catalog) let you fold it into named units without changing a single key.
 
 Every key in the catalog — `docs.files.read`, `docs.files.update_file`, `docs.files.delete` — becomes a compile-time–verified string. Pass the wrong key to `can()` and TypeScript catches it before your tests run.
 

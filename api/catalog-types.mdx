@@ -9,7 +9,9 @@ This page covers every TypeScript type used when declaring a catalog with `defin
 ```ts
 import type {
   CatalogInput,
+  PermissionsInput,
   PermissionLeafInput,
+  PermissionBlock,
   GroupInput,
   ScopeTypeInput,
   NavItemInput,
@@ -20,16 +22,18 @@ import type {
 
 The top-level object passed to `defineCatalog`.
 
-<ParamField body="namespace" type="string" required>
-  Your application's primary namespace. Must be a single valid segment matching `/^[a-zA-Z][a-zA-Z0-9_]*$/`. Every top-level project key must match a declared namespace. `alfiz_internal` is reserved.
+<ParamField body="namespaces" type="readonly string[]" required>
+  The namespaces your application owns; the first is the primary. Each must be a single valid segment matching `/^[a-zA-Z][a-zA-Z0-9_]*$/`, and every permission key must begin with one of them. `alfiz_internal` is reserved.
+
+  Catalogs are federation-shaped from the first commit: declaring namespaces explicitly means the shape is portable to a federated deployment without a later refactor.
 </ParamField>
 
-<ParamField body="additionalNamespaces" type="readonly string[]" optional>
-  Additional namespaces this application owns. Each project key that does not match `namespace` must appear here. Catalogs are federation-shaped from the first commit: declaring namespaces explicitly means the shape is portable to a federated deployment without a later refactor.
+<ParamField body="permissions" type="PermissionsInput" required>
+  The permissions, keyed by their full dotted key. Accepts a flat map, a single `group()` block, or an array mixing both — see [`PermissionsInput`](#permissionsinput) below. Group levels are inferred from the keys; nothing declares them.
 </ParamField>
 
-<ParamField body="projects" type="Record<string, GroupInput>" required>
-  Top-level permission groups, one per project. The blessed convention is `project → tab → permission` (three levels). Each project key must be a declared namespace.
+<ParamField body="groups" type="Record<string, GroupInput>" optional>
+  Metadata for group paths not covered by a `group()` block — typically the project level. Purely optional decoration; it cannot bring a group into existence, since groups come from the keys.
 </ParamField>
 
 <ParamField body="scopeTypes" type="Record<string, ScopeTypeInput>" optional>
@@ -40,8 +44,10 @@ The top-level object passed to `defineCatalog`.
   The sidebar navigation tree. Each item's `permission` controls its visibility. References are validated by `alfiz-verify` — nav items that reference unknown permissions produce errors.
 </ParamField>
 
-<ParamField body="allowArbitraryDepth" type="boolean" default="false" optional>
-  By default, `defineCatalog` requires exactly three levels (`project.tab.permission`). Set to `true` to permit two-level integration catalogs (`zoom.host`) or deeper nesting. This is an explicit opt-out; the linter does not flag it on opted-in catalogs.
+<ParamField body="conventions" type='{ depth?: number | "any" }' optional>
+  House conventions enforced by `lintCatalog` and `alfiz-verify`. `depth` is the blessed key depth, defaulting to `3` (`project.tab.permission`); set another number for a different house style, or `"any"` to opt out.
+
+  Deviations are **lint errors, not boot errors** — a two-level integration catalog builds and CI reports it.
 </ParamField>
 
 <ParamField body="includeAlfizInternal" type="boolean" default="true" optional>
@@ -50,9 +56,52 @@ The top-level object passed to `defineCatalog`.
 
 ---
 
+## `PermissionsInput`
+
+What the `permissions` field accepts.
+
+```ts
+type LeafMap = Record<string, LeafInput>;
+
+type PermissionsInput =
+  | LeafMap
+  | PermissionBlock
+  | readonly (LeafMap | PermissionBlock)[];
+```
+
+A **`LeafMap`** maps full dotted keys to their leaf declarations — the whole catalog for a small app:
+
+```ts
+permissions: {
+  "docs.files.read": { kind: "read" },
+  "docs.files.delete": { destructive: true },
+}
+```
+
+A **`PermissionBlock`** is what `group()` returns: one group's metadata plus the keys under it. Use blocks to organize a large catalog into named, foldable units; they are never required.
+
+```ts
+function group<P extends string, L extends LeafMap>(
+  path: P,
+  meta: GroupInput,
+  leaves: L,          // every key must start with `${P}.` — a compile error otherwise
+): PermissionBlock<P, L>;
+
+// The metadata argument is optional:
+function group<P extends string, L extends LeafMap>(path: P, leaves: L): PermissionBlock<P, L>;
+```
+
+An **array** mixes both, which is how a catalog composed from per-feature files is assembled:
+
+```ts
+permissions: [courses, enrollments, { "lms.reports.read": { kind: "read" } }]
+```
+
+---
+
 ## `PermissionLeafInput`
 
-A permission leaf is a concrete, grantable and checkable permission. Assign it to a key in `GroupInput.permissions`. The shorthand `true` is equivalent to an empty `PermissionLeafInput {}` and lets `defineCatalog` infer all fields.
+A permission leaf is a concrete, grantable and checkable permission — the value assigned to a full dotted key in a `LeafMap`. The shorthand `true` is equivalent to an empty `PermissionLeafInput {}` and lets `defineCatalog` infer all fields.
 
 ```ts
 type LeafInput = true | PermissionLeafInput;
@@ -75,7 +124,7 @@ type LeafInput = true | PermissionLeafInput;
 </ParamField>
 
 <ParamField body="scopes" type="readonly ScopeType[]" optional>
-  Scope types at which this permission is grantable, **in addition to the global scope `"*"`**. When omitted, inherits from the nearest enclosing `GroupInput` that declares `scopes`; falls back to `[]` (global-only) when no ancestor group declares scopes. Declare explicitly (including `[]` for global-only) to override the inherited default. Granting at an undeclared scope type is a validation error at write time.
+  Scope types at which this permission is grantable, **in addition to the global scope `"*"`**. When omitted, inherits from the nearest enclosing group that declares `scopes` (a `group()` block or a `groups` entry); falls back to `[]` (global-only) when no ancestor declares scopes. Declare explicitly (including `[]` for global-only) to override the inherited default. Granting at an undeclared scope type is a validation error at write time.
 </ParamField>
 
 <ParamField body="impliedOnAncestors" type="boolean" default="false" optional>
@@ -86,7 +135,15 @@ type LeafInput = true | PermissionLeafInput;
 
 ## `GroupInput`
 
-Groups are folders in the permission tree. They never carry keys themselves — only their leaves do. The blessed shape is `project → tab → permission`; the `groups` field inside `GroupInput` allows further nesting.
+The metadata a group path carries. Groups are folders in the permission tree and never carry keys themselves — only their leaves do. Crucially, `GroupInput` does **not** create a group: every dotted prefix of a declared key is already one. This only decorates it, via a `group()` block or the catalog's `groups` map.
+
+```ts
+export interface GroupInput {
+  label?:       string;
+  description?: string;
+  scopes?:      readonly ScopeType[];
+}
+```
 
 <ParamField body="label" type="string" optional>
   Short human-facing name for the group in admin UIs. Falls back to the group's path segment when absent.
@@ -98,14 +155,6 @@ Groups are folders in the permission tree. They never carry keys themselves — 
 
 <ParamField body="scopes" type="readonly ScopeType[]" optional>
   Default scope types for every leaf under this group (including leaves in descendant groups), overridable per leaf or by a nearer enclosing group. Saves declaring an identical `scopes: [...]` on dozens of sibling leaves when a whole tab is scoped to one resource type.
-</ParamField>
-
-<ParamField body="permissions" type="Record<string, LeafInput>" optional>
-  The leaves directly under this group. Keys are single segments (e.g., `"read"`, `"update_file"`) and become the final segment of the full permission key.
-</ParamField>
-
-<ParamField body="groups" type="Record<string, GroupInput>" optional>
-  Nested child groups. Supports recursive nesting. When `allowArbitraryDepth` is `false` (the default), `defineCatalog` errors if any resulting key is not exactly three segments deep.
 </ParamField>
 
 ---

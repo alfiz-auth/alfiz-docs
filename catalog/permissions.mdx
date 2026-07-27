@@ -23,15 +23,34 @@ admin.users.invite_user
 admin.users.delete
 ```
 
-- **project** is the namespace your application owns (`docs`, `billing`, `admin`). It must match the catalog's `namespace` or one of its `additionalNamespaces`.
-- **tab** is a logical section or feature area — what your UI might call a page or a module. Tabs map to `groups` in the catalog input.
+- **project** is the namespace your application owns (`docs`, `billing`, `admin`). It must appear in the catalog's `namespaces`.
+- **tab** is a logical section or feature area — what your UI might call a page or a module.
 - **permission** is the leaf — the concrete thing someone may or may not do.
 
-This three-level shape is the default enforced by `alfiz-verify`. Setting `allowArbitraryDepth: true` on your `CatalogInput` opts out for the whole catalog, enabling two-level integration keys (`zoom.host`) or deeper nesting when you genuinely need it.
+The group levels (`admin`, `admin.users`) are **inferred**: every dotted prefix of a declared key is a group. You never declare them into existence, which is why depth costs nothing. Because a group is a folder and a permission is a leaf, one key can never be both — declaring `admin.users` alongside `admin.users.read` is a boot-time error.
+
+This three-level shape is the default **convention**, enforced by `alfiz-verify` rather than by `defineCatalog`. A catalog with a different house style declares it and builds:
+
+```ts
+conventions: { depth: 3 }      // the default
+conventions: { depth: 2 }      // a thin integration catalog: zoom.host
+conventions: { depth: "any" }  // mixed depths, no check
+```
 
 ## Declaring permissions: `PermissionLeafInput`
 
-Each permission is a key in a group's `permissions` record. Its value is either the literal `true` (defaults for everything) or a `PermissionLeafInput` object:
+Permissions are declared by their **full dotted key** — the same string you check with, so a key at a call site greps straight back to its declaration. The value is either the literal `true` (defaults for everything) or a `PermissionLeafInput` object:
+
+```ts
+defineCatalog({
+  namespaces: ["admin"],
+  permissions: {
+    "admin.users.read": { kind: "read" },
+    "admin.users.invite_user": true,
+    "admin.users.delete": { destructive: true },
+  },
+});
+```
 
 ```ts
 export interface PermissionLeafInput {
@@ -94,17 +113,67 @@ permissions: {
 }
 ```
 
-## Organizing permissions into groups: `GroupInput`
+## Organizing a large catalog: `group()`
 
-Permissions are always declared inside a group. Groups map to the `<project>` and `<tab>` segments of the key, and they can nest arbitrarily deep when `allowArbitraryDepth` is set:
+A flat map is the right shape for a small catalog — ten permissions in one object is complete and idiomatic, and groups are never required. Past a few dozen keys it becomes a wall of strings, and that is what `group()` is for: a named, foldable block carrying one group's metadata and the keys under it.
+
+```ts
+import { defineCatalog, group } from "@alfiz-auth/core";
+
+export const courses = group("lms.courses", {
+  label: "Courses",
+  description: "Course authoring and publication",
+  scopes: ["lms.course"],           // the group-wide default
+}, {
+  "lms.courses.read":        { kind: "read", description: "View the courses list" },
+  "lms.courses.read_roster": { kind: "read", description: "View enrolled students" },
+  "lms.courses.create":      { description: "Create a new course", scopes: [] },
+  "lms.courses.publish":     { description: "Publish a draft course" },
+  "lms.courses.archive":     { description: "Archive a course" },
+  "lms.courses.delete":      { destructive: true, description: "Permanently delete a course" },
+});
+
+export const enrollments = group("lms.enrollments", {
+  label: "Enrollments",
+  scopes: ["lms.course"],
+}, {
+  "lms.enrollments.read":           { kind: "read", description: "View enrollment records" },
+  "lms.enrollments.enroll_student": { description: "Enroll a student in a course" },
+  "lms.enrollments.remove_student": { description: "Remove a student from a course" },
+});
+```
+
+`permissions` accepts a single map, a single block, or an array mixing both:
+
+```ts
+defineCatalog({
+  namespaces: ["lms"],
+  permissions: [courses, enrollments, { "lms.reports.read": { kind: "read" } }],
+  scopeTypes: { "lms.course": { parent: null } },
+});
+```
+
+Keys stay absolute inside a block, so nothing about grepping changes. Every key **must** start with the block's path — a key that does not is a compile error naming the fix:
+
+```ts
+group("lms.courses", {
+  "lms.enrollments.read": true,  // ❌ Type error: this key must start with "lms.courses."
+});
+```
+
+<Tip>
+  Because keys are absolute, blocks compose by concatenation rather than by merging trees. That makes one file per feature a supported layout: put `export const courses = group("lms.courses", …)` next to the code it gates, and have your root catalog import and list them. Adding a surface then touches one small file, and the diff is exactly the permissions you added.
+</Tip>
+
+### `GroupInput`
+
+The metadata a block (or a `groups` entry) carries. Groups themselves are never declared — this only decorates a path that keys already imply.
 
 ```ts
 export interface GroupInput {
-  label?:        string;
-  description?:  string;
-  scopes?:       readonly ScopeType[];
-  permissions?:  Record<string, LeafInput>;
-  groups?:       Record<string, GroupInput>;
+  label?:       string;
+  description?: string;
+  scopes?:      readonly ScopeType[];
 }
 ```
 
@@ -117,50 +186,19 @@ export interface GroupInput {
 </ParamField>
 
 <ParamField body="scopes" type="readonly ScopeType[]">
-  Default scope types inherited by every permission in this group and its descendant groups, unless overridden closer to the leaf. This saves repeating `scopes: ["docs.doc"]` on every sibling leaf when a whole tab is scoped to one resource type.
+  Default scope types inherited by every permission under this group, including descendant groups, unless overridden closer to the leaf. This saves repeating `scopes: ["docs.doc"]` on every sibling leaf when a whole tab is scoped to one resource type. The **nearest** enclosing declaration wins, and a leaf's own `scopes` (including an explicit `[]` for global-only) overrides it.
 </ParamField>
 
-<ParamField body="permissions" type="Record<string, LeafInput>">
-  The leaf permissions in this group, keyed by their leaf-segment name. Values are `true` or a `PermissionLeafInput` object.
-</ParamField>
+### Labelling a group without a block
 
-<ParamField body="groups" type="Record<string, GroupInput>">
-  Child groups, creating additional levels in the key hierarchy.
-</ParamField>
-
-A full example of a well-formed catalog section:
+For paths you did not write a block for — typically the project level — use the optional top-level `groups` map:
 
 ```ts
-projects: {
-  lms: {
-    description: "Learning management",
-    groups: {
-      courses: {
-        label: "Courses",
-        description: "Course authoring and publication",
-        scopes: ["lms.course"],
-        permissions: {
-          read:           { kind: "read",  description: "View the courses list" },
-          read_roster:    { kind: "read",  description: "View enrolled students", scopes: ["lms.course"] },
-          create:         {                description: "Create a new course" },
-          publish:        {                description: "Publish a draft course", scopes: ["lms.course"] },
-          archive:        {                description: "Archive a course",        scopes: ["lms.course"] },
-          delete:         { destructive: true, description: "Permanently delete a course", scopes: ["lms.course"] },
-        },
-      },
-      enrollments: {
-        label: "Enrollments",
-        description: "Enroll and remove students",
-        scopes: ["lms.course"],
-        permissions: {
-          read:           { kind: "read", description: "View enrollment records" },
-          enroll_student: {               description: "Enroll a student in a course" },
-          remove_student: {               description: "Remove a student from a course" },
-        },
-      },
-    },
-  },
-},
+defineCatalog({
+  namespaces: ["lms"],
+  groups: { lms: { label: "Learning", description: "Learning management" } },
+  permissions: [courses, enrollments],
+});
 ```
 
 ## Wildcards and forward-inclusive semantics
