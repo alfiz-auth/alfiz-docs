@@ -27,6 +27,17 @@ A `StorageDriver` is a flat bundle of async methods organized into eight areas:
 
 One additional method, `runExclusive(key, fn)`, serializes graph writes per key to prevent concurrent insertions from jointly forming a group or reporting cycle. Implement it with a SQL advisory lock in multi-node deployments (see [Multi-node note](#multi-node-deployments)).
 
+### Optional methods
+
+The following methods are optional. Custom drivers can omit them and keep compiling — the Application either falls back to a slower path or fails loudly at construction if the feature depending on them is turned on.
+
+| Method | Enables | Falls back to |
+|---|---|---|
+| `getRoles(ids)` | Batched role fetch on the closure-supply path — one call per miss instead of one per referenced role | Parallel `getRole` per id |
+| `appendEvents`, `headSeq`, `eventsSince`, `pruneEvents` | The Application's `events: { persist: true }` option — a persisted invalidation log for cross-process cache revalidation | Construction throws when `events.persist` is on without them |
+
+Both bundled drivers (`memoryDriver` and `prismaDriver`) implement every optional method.
+
 ## `memoryDriver()`
 
 The in-memory driver is the reference implementation of the storage seam. It is complete and correct — every Application feature works with it — making it the natural choice for unit tests, local development, and ephemeral deployments.
