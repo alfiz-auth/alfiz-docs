@@ -126,48 +126,48 @@ navigation: [
 import { defineCatalog } from "@alfiz-auth/core";
 
 export const catalog = defineCatalog({
-  namespaces: ["lms"],
+  namespaces: ["docs"],
 
   permissions: {
-    "lms.courses.read": true,
-    "lms.courses.create": true,
-    "lms.courses.publish": true,
-    "lms.courses.delete": { destructive: true },
-    "lms.enrollments.read": true,
-    "lms.enrollments.enroll_student": true,
-    "lms.enrollments.remove_student": true,
-    "lms.reports.read": true,
-    "lms.reports.export": true,
+    "docs.files.read": true,
+    "docs.files.create": true,
+    "docs.files.publish": true,
+    "docs.files.delete": { destructive: true },
+    "docs.sharing.read": true,
+    "docs.sharing.add_collaborator": true,
+    "docs.sharing.remove_collaborator": true,
+    "docs.reports.read": true,
+    "docs.reports.export": true,
   },
 
   navigation: [
     {
-      label: "Courses",
-      href:  "/courses",
-      permission: "lms.courses.*",         // renders for anyone with any course permission
+      label: "Files",
+      href:  "/files",
+      permission: "docs.files.*",         // renders for anyone with any file permission
       children: [
         {
-          label: "All Courses",
-          href:  "/courses",
-          permission: "lms.courses.read",
+          label: "All Files",
+          href:  "/files",
+          permission: "docs.files.read",
         },
         {
-          label: "New Course",
-          href:  "/courses/new",
-          permission: "lms.courses.create",  // only authors see this link
+          label: "New File",
+          href:  "/files/new",
+          permission: "docs.files.create",  // only authors see this link
         },
       ],
     },
     {
-      label: "Enrollments",
-      href:  "/enrollments",
-      permission: "lms.enrollments.*",
+      label: "Sharing",
+      href:  "/sharing",
+      permission: "docs.sharing.*",
     },
     {
       label: "Reports",
       href:  "/reports",
       // Array form: renders if the user holds either of these two keys
-      permission: ["lms.reports.read", "lms.reports.export"],
+      permission: ["docs.reports.read", "docs.reports.export"],
     },
     {
       label: "Access",
@@ -180,18 +180,18 @@ export const catalog = defineCatalog({
 ```
 
 ```ts page.tsx (gate example)
-// app/(portal)/courses/page.tsx
-// The nav item rendered because canAny("lms.courses.*") was true.
+// app/(portal)/files/page.tsx
+// The nav item rendered because canAny("docs.files.*") was true.
 // The page still gates independently — visibility is not access.
-export default async function CoursesPage() {
-  await alfiz.requirePermission(actor, "lms.courses.read");
+export default async function FilesPage() {
+  await alfiz.requirePermission(actor, "docs.files.read");
   // ...
 }
 ```
 </CodeGroup>
 
 <Tip>
-  Keep parent nav items' `permission` patterns broad enough to cover all their children. If a user holds `lms.courses.create` but not `lms.courses.read`, a parent item gated on `lms.courses.*` will still render — and the children will show only the items the user actually holds. This is the intended behavior.
+  Keep parent nav items' `permission` patterns broad enough to cover all their children. If a user holds `docs.files.create` but not `docs.files.read`, a parent item gated on `docs.files.*` will still render — and the children will show only the items the user actually holds. This is the intended behavior.
 </Tip>
 
 ## What `alfiz-verify` checks

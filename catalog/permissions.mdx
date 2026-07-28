@@ -64,7 +64,7 @@ export interface PermissionLeafInput {
 ```
 
 <ParamField body="label" type="string">
-  Short human-facing name shown in permission pickers and role-editor checkboxes, for example `"Publish course"`. Keeping the label here prevents UI copy from drifting into a side table. Falls back to the key's leaf segment when omitted.
+  Short human-facing name shown in permission pickers and role-editor checkboxes, for example `"Publish file"`. Keeping the label here prevents UI copy from drifting into a side table. Falls back to the key's leaf segment when omitted.
 </ParamField>
 
 <ParamField body="description" type="string">
@@ -92,24 +92,24 @@ export interface PermissionLeafInput {
 Every group that declares permissions must meet the naming floor, enforced by `alfiz-verify`:
 
 1. **Every tab needs at least one `read` permission.** Name it `read` for general access to the section, or `read_<thing>` for a more specific read (e.g. `read_history`, `read_exports`).
-2. **Action permissions are named `<verb>_<noun>`** in `snake_case` — `invite_user`, `export_report`, `publish_course`. A short list of common standalone verbs (`create`, `update`, `delete`, `manage`, `approve`, `publish`, `archive`, `export`, `import`, `issue`, `revoke`, `view_as`) are allowed without a noun.
+2. **Action permissions are named `<verb>_<noun>`** in `snake_case` — `invite_user`, `export_report`, `publish_file`. A short list of common standalone verbs (`create`, `update`, `delete`, `manage`, `approve`, `publish`, `archive`, `export`, `import`, `issue`, `revoke`, `view_as`) are allowed without a noun.
 3. **Destructive actions stand alone.** Don't bundle `delete` with `update` in the same leaf — give them separate declarations so you can grant one without the other and so enforcement can apply `can.fresh()` selectively.
 
 ```ts
 // ✅ Well-formed tab
 permissions: {
-  read:         { kind: "read", description: "View the courses list" },
-  read_roster:  { kind: "read", description: "View enrolled students" },
-  create:       { description: "Create a new course" },
-  publish:      { description: "Publish a draft course" },
-  archive:      { description: "Archive a course" },
-  delete:       { destructive: true, description: "Permanently delete a course" },
+  read:               { kind: "read", description: "View the file list" },
+  read_collaborators: { kind: "read", description: "View who a file is shared with" },
+  create:             { description: "Create a new file" },
+  publish:            { description: "Publish a draft file" },
+  archive:            { description: "Archive a file" },
+  delete:             { destructive: true, description: "Permanently delete a file" },
 }
 
 // ❌ Below the naming floor — no read permission
 permissions: {
-  create: { description: "Create a course" },
-  publish: { description: "Publish a course" },
+  create: { description: "Create a file" },
+  publish: { description: "Publish a file" },
 }
 ```
 
@@ -120,26 +120,26 @@ A flat map is the right shape for a small catalog — ten permissions in one obj
 ```ts
 import { defineCatalog, group } from "@alfiz-auth/core";
 
-export const courses = group("lms.courses", {
-  label: "Courses",
-  description: "Course authoring and publication",
-  scopes: ["lms.course"],           // the group-wide default
+export const files = group("docs.files", {
+  label: "Files",
+  description: "File authoring and publication",
+  scopes: ["docs.folder"],           // the group-wide default
 }, {
-  "lms.courses.read":        { kind: "read", description: "View the courses list" },
-  "lms.courses.read_roster": { kind: "read", description: "View enrolled students" },
-  "lms.courses.create":      { description: "Create a new course", scopes: [] },
-  "lms.courses.publish":     { description: "Publish a draft course" },
-  "lms.courses.archive":     { description: "Archive a course" },
-  "lms.courses.delete":      { destructive: true, description: "Permanently delete a course" },
+  "docs.files.read":               { kind: "read", description: "View the file list" },
+  "docs.files.read_collaborators": { kind: "read", description: "View who a file is shared with" },
+  "docs.files.create":             { description: "Create a new file", scopes: [] },
+  "docs.files.publish":            { description: "Publish a draft file" },
+  "docs.files.archive":            { description: "Archive a file" },
+  "docs.files.delete":             { destructive: true, description: "Permanently delete a file" },
 });
 
-export const enrollments = group("lms.enrollments", {
-  label: "Enrollments",
-  scopes: ["lms.course"],
+export const sharing = group("docs.sharing", {
+  label: "Sharing",
+  scopes: ["docs.folder"],
 }, {
-  "lms.enrollments.read":           { kind: "read", description: "View enrollment records" },
-  "lms.enrollments.enroll_student": { description: "Enroll a student in a course" },
-  "lms.enrollments.remove_student": { description: "Remove a student from a course" },
+  "docs.sharing.read":                { kind: "read", description: "View sharing records" },
+  "docs.sharing.add_collaborator":    { description: "Add a collaborator to a file" },
+  "docs.sharing.remove_collaborator": { description: "Remove a collaborator from a file" },
 });
 ```
 
@@ -147,22 +147,22 @@ export const enrollments = group("lms.enrollments", {
 
 ```ts
 defineCatalog({
-  namespaces: ["lms"],
-  permissions: [courses, enrollments, { "lms.reports.read": { kind: "read" } }],
-  scopeTypes: { "lms.course": { parent: null } },
+  namespaces: ["docs"],
+  permissions: [files, sharing, { "docs.reports.read": { kind: "read" } }],
+  scopeTypes: { "docs.folder": { parent: null } },
 });
 ```
 
 Keys stay absolute inside a block, so nothing about grepping changes. Every key **must** start with the block's path — a key that does not is a compile error naming the fix:
 
 ```ts
-group("lms.courses", {
-  "lms.enrollments.read": true,  // ❌ Type error: this key must start with "lms.courses."
+group("docs.files", {
+  "docs.sharing.read": true,  // ❌ Type error: this key must start with "docs.files."
 });
 ```
 
 <Tip>
-  Because keys are absolute, blocks compose by concatenation rather than by merging trees. That makes one file per feature a supported layout: put `export const courses = group("lms.courses", …)` next to the code it gates, and have your root catalog import and list them. Adding a surface then touches one small file, and the diff is exactly the permissions you added.
+  Because keys are absolute, blocks compose by concatenation rather than by merging trees. That makes one file per feature a supported layout: put `export const files = group("docs.files", …)` next to the code it gates, and have your root catalog import and list them. Adding a surface then touches one small file, and the diff is exactly the permissions you added.
 </Tip>
 
 ### `GroupInput`
@@ -195,9 +195,9 @@ For paths you did not write a block for — typically the project level — use 
 
 ```ts
 defineCatalog({
-  namespaces: ["lms"],
-  groups: { lms: { label: "Learning", description: "Learning management" } },
-  permissions: [courses, enrollments],
+  namespaces: ["docs"],
+  groups: { docs: { label: "Documents", description: "The shared document workspace" } },
+  permissions: [files, sharing],
 });
 ```
 
@@ -208,21 +208,21 @@ Alfiz supports three levels of wildcard pattern:
 | Pattern | Matches |
 |---|---|
 | `*` | Every permission in the catalog |
-| `lms.*` | Every permission under the `lms` project |
-| `lms.courses.*` | Every permission under the `lms.courses` tab |
+| `docs.*` | Every permission under the `docs` project |
+| `docs.files.*` | Every permission under the `docs.files` tab |
 
-Wildcards are **forward-inclusive**: a stored grant of `lms.courses.*` will match any permission added under `lms.courses` in the future, including ones that did not exist when the grant was created. This is a deliberate semantic opinion — it is not configurable.
+Wildcards are **forward-inclusive**: a stored grant of `docs.files.*` will match any permission added under `docs.files` in the future, including ones that did not exist when the grant was created. This is a deliberate semantic opinion — it is not configurable.
 
 <Warning>
   Forward-inclusive wildcards mean that a role or grant covering `admin.*` will silently acquire every permission you add under `admin` later, including destructive ones. Grant broad wildcards to roles only when "everything under this group, including future capabilities" is the correct intent. Scope specific grants to narrower patterns like `admin.users.*` when you need to limit reach.
 </Warning>
 
 <Tip>
-  Wildcards select only leaf permissions — never group paths. Passing the group path `"lms.courses"` where a pattern is expected names nothing. The pattern selecting everything under a group is `"lms.courses.*"`. `alfiz-verify` catches this and suggests the corrected pattern.
+  Wildcards select only leaf permissions — never group paths. Passing the group path `"docs.files"` where a pattern is expected names nothing. The pattern selecting everything under a group is `"docs.files.*"`. `alfiz-verify` catches this and suggests the corrected pattern.
 </Tip>
 
 For roles and admin grants, the wildcard semantics mean:
 
-- A role granted `lms.*` today will also cover `lms.analytics.read` the day you add the analytics tab.
-- A user revoked `lms.courses.delete` is revoked from that key even when a wildcard `lms.*` grant would otherwise cover it — personal revokes always win.
+- A role granted `docs.*` today will also cover `docs.analytics.read` the day you add the analytics tab.
+- A user revoked `docs.files.delete` is revoked from that key even when a wildcard `docs.*` grant would otherwise cover it — personal revokes always win.
 - `alfiz-verify` warns when a wildcard pattern in a nav entry currently matches zero keys.

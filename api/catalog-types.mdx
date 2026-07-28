@@ -94,7 +94,7 @@ function group<P extends string, L extends LeafMap>(path: P, leaves: L): Permiss
 An **array** mixes both, which is how a catalog composed from per-feature files is assembled:
 
 ```ts
-permissions: [courses, enrollments, { "lms.reports.read": { kind: "read" } }]
+permissions: [files, sharing, { "docs.reports.read": { kind: "read" } }]
 ```
 
 ---
@@ -108,7 +108,7 @@ type LeafInput = true | PermissionLeafInput;
 ```
 
 <ParamField body="label" type="string" optional>
-  Short human-facing name for pickers and checkboxes, e.g. `"Publish course"`. Falls back to the permission name when absent. Keep it brief — the `description` field carries longer help text.
+  Short human-facing name for pickers and checkboxes, e.g. `"Publish file"`. Falls back to the permission name when absent. Keep it brief — the `description` field carries longer help text.
 </ParamField>
 
 <ParamField body="description" type="string" optional>

@@ -35,6 +35,27 @@ not converge. Its commercial pillars — "the org chart is part of the system",
 - Each growth tier — standalone, linked, federated — is a **terminal state**. Never write
   copy implying that stopping at one is stopping short.
 
+## Examples
+
+One running example across every page, and it is deliberately industry-neutral: a shared
+**document workspace**. An example that implies a vertical — a school, a clinic, a bank —
+reads as a product built for that vertical and quietly excludes everyone else. These docs
+previously ran on a learning-management example and it had to be unwound; don't reintroduce
+one.
+
+| Thing | Use |
+|---|---|
+| Namespace | `docs`, with groups `docs.files`, `docs.sharing`, `docs.reports` |
+| Scope types | `docs.folder` (nests), `docs.doc` (leaf) |
+| Keys | `docs.files.read`, `docs.files.update_file`, `docs.files.share`, `docs.files.delete` |
+| Scope instances | `docs.folder:42`, `docs.doc:123` |
+| Groups | `group:editors` nested under `group:staff`; `group:senior_editors` under editors |
+| Role | `Project Lead` |
+| Second application | `billing` — e.g. `billing.invoices.read` |
+| External connector | `zoom` — `zoom.host`. Universal SaaS, safe to keep. |
+
+People in examples are Jane Okafor (requester) and M. Reyes (approver).
+
 ## Style preferences
 
 {/* Add any project-specific style rules below */}

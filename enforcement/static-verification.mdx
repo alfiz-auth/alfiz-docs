@@ -99,7 +99,7 @@ Catalog structural rules are checked alongside code coverage — one command cov
   "catalog": "alfiz-catalog.json",
   "include": ["src", "app"],
   "exclude": ["node_modules", "dist"],
-  "gateNames": ["assertTeaches", "gateDestructiveAction"],
+  "gateNames": ["assertCanEditFile", "gateDestructiveAction"],
   "visibilityNames": ["showIfAny"],
   "serverFilePatterns": ["app/actions/"],
   "forbidClientIdentifiers": ["ALFIZ_SERVICE_KEYS"]
@@ -150,14 +150,14 @@ export async function gateDestructiveAction(userId: string, key: KeyOf<typeof ca
   return alfiz.can.fresh({ userId }, key, scope);
 }
 
-export async function assertTeaches(userId: string, courseId: string) {
-  await alfiz.requirePermission({ userId }, "courses.content.edit", `courses.course:${courseId}`);
+export async function assertCanEditFile(userId: string, folderId: string) {
+  await alfiz.requirePermission({ userId }, "docs.files.update_file", `docs.folder:${folderId}`);
 }
 ```
 
 ```json
 {
-  "gateNames": ["gateDestructiveAction", "assertTeaches"]
+  "gateNames": ["gateDestructiveAction", "assertCanEditFile"]
 }
 ```
 

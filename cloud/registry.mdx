@@ -41,7 +41,7 @@ The **drift report** closes the loop: it names every role and every grant still 
 
 ```text
 GET /api/v1/orgs/{org}/registry/drift
-→ "Role 'Teacher' references 3 permissions no longer published: zoom.breakout.manage, ..."
+→ "Role 'Project Lead' references 3 permissions no longer published: zoom.breakout.manage, ..."
 ```
 
 ## Typed consumption across the boundary
@@ -54,4 +54,4 @@ curl -H "authorization: Bearer $ALFIZ_ADMIN_KEY" \
 npx alfiz-verify codegen zoom.catalog.json
 ```
 
-The generated types make cross-namespace references — a role bundling `mathaniyy.students.*` with `zoom.host` — compile-checked in the consuming codebase, exactly as local keys are.
+The generated types make cross-namespace references — a role bundling `docs.files.*` with `zoom.host` — compile-checked in the consuming codebase, exactly as local keys are.

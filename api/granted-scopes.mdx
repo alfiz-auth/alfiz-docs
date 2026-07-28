@@ -162,7 +162,7 @@ async holdsAnywhere(
 ): Promise<boolean>
 ```
 
-Returns `true` if the principal holds `key` at **any** scope — the single-key "does this button exist at all?" probe. Use `holdsAnywhere` for unscoped conditional UI where the concrete scope is not yet known: an instructor who holds `publish_course` at only the courses they teach should still see the publish button surface. The button's server action still gates with `can` at its concrete scope.
+Returns `true` if the principal holds `key` at **any** scope — the single-key "does this button exist at all?" probe. Use `holdsAnywhere` for unscoped conditional UI where the concrete scope is not yet known: someone who holds `publish_file` on only a handful of folders should still see the publish button surface. The button's server action still gates with `can` at its concrete scope.
 
 <ParamField body="principal" type="PrincipalRef" required>
   The principal to check.
@@ -217,7 +217,7 @@ Returns every concrete catalog key the principal holds somewhere — granted by 
 ### `holdsAnywhere` for unscoped conditional UI
 
 ```typescript
-// Show the "Publish" button only if the user holds publish_course anywhere.
+// Show the "Publish" button only if the user holds publish_file anywhere.
 const canPublishSomewhere = await alfiz.holdsAnywhere(
   { userId },
   "docs.files.update_file",

@@ -34,7 +34,7 @@ import {
 } from "@alfiz-auth/core";
 
 userSubject("alice")        // "user:alice"
-groupSubject("teachers")    // "group:teachers"
+groupSubject("editors")     // "group:editors"
 orgSubject("org_acme")      // "org:org_acme"
 serviceSubject("ci-runner") // "service:ci-runner"
 directsSubject("mgr_jane")  // "directs:mgr_jane"
@@ -75,11 +75,11 @@ The result is deterministic and includes, in this order:
 5. Every organization they belong to (`org:<id>`)
 6. `everyone`
 
-A concrete example: if Alice belongs to `group:teachers`, and `group:teachers` has parent `group:staff`, Alice's subject closure is:
+A concrete example: if Alice belongs to `group:editors`, and `group:editors` has parent `group:staff`, Alice's subject closure is:
 
 ```
 user:alice
-group:teachers
+group:editors
 group:staff
 everyone
 ```
@@ -107,21 +107,21 @@ Groups are named bundles of subjects. You grant access to a group with the same 
 
 ```ts
 await app.createGrant({
-  subject: "group:teachers",
+  subject: "group:editors",
   pattern: "docs.files.update_file",
   scope: "docs.folder:curriculum",
   provenance: { kind: "admin", actorUserId: "root" },
 });
 ```
 
-Every member of `group:teachers` now holds `docs.files.update_file` at that scope through their subject closure. Group membership is stored on the user record as `groupIds: string[]`.
+Every member of `group:editors` now holds `docs.files.update_file` at that scope through their subject closure. Group membership is stored on the user record as `groupIds: string[]`.
 
 Manage membership with `app.setGroupMembership(userId, groupIds, provenance)`:
 
 ```ts
 await app.setGroupMembership(
   "alice",
-  ["group_teachers", "group_staff"],
+  ["group_editors", "group_staff"],
   { kind: "admin", actorUserId: "root" },
 );
 ```
@@ -136,8 +136,8 @@ A group may declare parent groups. It inherits the union of all its ancestors' a
 
 ```ts
 await app.setGroupParents(
-  "group_biology_teachers",
-  ["group_teachers"],   // inherits everything teachers has
+  "group_senior_editors",
+  ["group_editors"],   // inherits everything editors has
   { kind: "admin", actorUserId: "root" },
 );
 ```
@@ -213,5 +213,5 @@ The underlying `SubjectAccessData` — accessible through `app.getSubjectAccess(
 ```ts
 const data = await app.getSubjectAccess({ userId: "alice" });
 console.log(data.closure);
-// ["user:alice", "group:teachers", "group:staff", "everyone"]
+// ["user:alice", "group:editors", "group:staff", "everyone"]
 ```

@@ -63,7 +63,7 @@ A role grant is an ordinary grant row — the same `createGrant` call you use fo
 
 ```ts
 await app.createGrant({
-  subject: "group:teachers",
+  subject: "group:editors",
   roleId: "role_editor",
   scope: "docs.folder:curriculum",
   provenance: { kind: "admin", actorUserId: "root" },
@@ -98,20 +98,20 @@ Like roles, a group's identity is its opaque `id`. Renaming a group never breaks
 
 ```ts
 // Create
-const teachers = await app.createGroup(
-  { name: "Teachers", description: "All teaching staff" },
+const editors = await app.createGroup(
+  { name: "Editors", description: "All editorial staff" },
   { kind: "admin", actorUserId: "root" },
 );
 
 // Add a user to a group
 await app.setGroupMembership(
   "alice",
-  ["group_teachers"],
+  ["group_editors"],
   { kind: "admin", actorUserId: "root" },
 );
 
 // List members
-const members = await app.getGroupMembers("group_teachers");
+const members = await app.getGroupMembers("group_editors");
 ```
 
 Group membership is stored on the user record as `groupIds: string[]`. At subject-closure computation time, every group in that list — and every ancestor of those groups — joins the closure.
@@ -122,13 +122,13 @@ A group may declare parent groups. It inherits the union of all its parents' acc
 
 ```ts
 await app.setGroupParents(
-  "group_biology_teachers",
-  ["group_teachers"],
+  "group_senior_editors",
+  ["group_editors"],
   { kind: "admin", actorUserId: "root" },
 );
 
-// Now group_biology_teachers inherits everything group_teachers can do.
-// If group_teachers has its own parents, those propagate too.
+// Now group_senior_editors inherits everything group_editors can do.
+// If group_editors has its own parents, those propagate too.
 ```
 
 <Warning>
@@ -160,8 +160,8 @@ await app.createGrant({
 
 // Multiple groups inherit from it
 await app.setGroupParents(
-  "group_biology_teachers",
-  ["group_teachers", sharedAccess.id],
+  "group_senior_editors",
+  ["group_editors", sharedAccess.id],
   { kind: "admin", actorUserId: "root" },
 );
 await app.setGroupParents(

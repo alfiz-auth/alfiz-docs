@@ -36,7 +36,7 @@ description: "alfiz-verify.config.json reference: catalog path, scan directories
   Additional function names to treat as concrete-permission gates, **added to** the built-in defaults (`can`, `fresh`, `require`, `requirePermission`, `gateAction`, `apiRequirePermission`). Gate calls are checked for typed key validity, mark the enclosing function as gated, and count toward coverage.
 
   ```json
-  { "gateNames": ["assertTeaches", "requireCoursePermission"] }
+  { "gateNames": ["assertCanEditFile", "requireFilePermission"] }
   ```
 
   <Note>
@@ -87,7 +87,7 @@ description: "alfiz-verify.config.json reference: catalog path, scan directories
   "catalog": "alfiz-catalog.json",
   "include": ["src", "app"],
   "exclude": ["__generated__", "e2e"],
-  "gateNames": ["assertTeaches", "requireCoursePermission"],
+  "gateNames": ["assertCanEditFile", "requireFilePermission"],
   "visibilityNames": ["showIfCanAny"],
   "serverFilePatterns": ["app/actions/", "server/handlers/"],
   "forbidClientIdentifiers": ["ALFIZ_SERVICE_KEYS", "createServiceKeyShim"]
@@ -107,7 +107,7 @@ const report = verifyProject({
   catalog,
   files,
   // Replacement, not addition: only your wrappers count as gates.
-  gateNames: ["assertTeaches", "requireCoursePermission"],
+  gateNames: ["assertCanEditFile", "requireFilePermission"],
   visibilityNames: ["showIfCanAny"],
 });
 ```

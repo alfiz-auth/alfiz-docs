@@ -76,7 +76,7 @@ await app.createGrant({
 
 ```ts Role grant (scoped)
 await app.createGrant({
-  subject: "group:teachers",
+  subject: "group:editors",
   roleId: "role_editor",
   scope: "docs.folder:9",
   provenance: { kind: "admin", actorUserId: "root" },
