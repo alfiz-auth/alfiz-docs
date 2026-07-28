@@ -8,12 +8,12 @@ Declare your permission catalog in TypeScript; your CI proves every surface is g
 
 [Start standalone](https://github.com/alfiz-auth)Talk to us about federation
 
-$ npm i @alfiz-auth/core @alfiz-auth/app
+$ npm i @alfiz/core @alfiz/app
 
 src/authz/catalog.tstsCopy
 
 ```
-1import { defineCatalog } from "@alfiz-auth/core";2 3export const catalog = defineCatalog({4  namespace: "docs",5  scopeTypes: ["docs.folder", "docs.doc"],6  permissions: {7    "drive.docs.read": { grantableAt: ["*", "docs.folder"] },8    "drive.docs.read_history": { grantableAt: ["docs.folder"] },9    "drive.docs.share_doc": { requestable: true },10    "drive.docs.delete": { grantableAt: ["docs.doc"] },11  },12});
+1import { defineCatalog } from "@alfiz/core";2 3export const catalog = defineCatalog({4  namespace: "docs",5  scopeTypes: ["docs.folder", "docs.doc"],6  permissions: {7    "drive.docs.read": { grantableAt: ["*", "docs.folder"] },8    "drive.docs.read_history": { grantableAt: ["docs.folder"] },9    "drive.docs.share_doc": { requestable: true },10    "drive.docs.delete": { grantableAt: ["docs.doc"] },11  },12});
 ```
 
 app/drive/\[id\]/page.tsxtsCopy

@@ -16,7 +16,7 @@ FreeMIT, forever
 
 Complete for one application. The full feature set, no external dependency beyond your own database.
 
-[npm i @alfiz-auth/core](https://github.com/alfiz-auth)
+[npm i @alfiz/core](https://github.com/alfiz-auth)
 
 Permission grammar, catalog, typed keys
 
