@@ -1,0 +1,193 @@
+---
+title: "Permission Metrics: Counting Checks and Attributing Them to Grants"
+sidebarTitle: "Metrics"
+description: "Emit a structured observation from every check, pipe it to OpenTelemetry or read it directly, and store per-grant usage so you know what breaks before you revoke."
+---
+
+Two questions are hard to answer from access data alone. **Which permissions does anyone actually use?** — the question before deprecating a surface. And **what breaks if I revoke this grant?** — the question with the delete button already under the cursor.
+
+Both are answerable at the one place that sees every check: the client, in your own process. Turn on metrics and each evaluated check emits a structured observation — the shape, the decision, the permission, the scope type, the principal, and the grant and revoke rows that decided it.
+
+Metrics are off by default. Nothing below changes a decision, and nothing below can slow a check down.
+
+## The observation stream
+
+`metrics.observer` is called synchronously from the check path with one `CheckObservation`:
+
+```ts
+const alfiz = createAlfizClient({
+  catalog,
+  provider: app,
+  metrics: {
+    observer: (observation) => {
+      // { shape: "can", decision: "allow", permission: "docs.files.delete",
+      //   scopeType: "docs.folder", matchedGrantIds: ["grant_9f3"],
+      //   soleMatchGrantId: "grant_9f3", … }
+    },
+  },
+});
+```
+
+Do cheap work in an observer — increment a counter, push to a buffer — and nothing else. A throwing observer loses its observation and returns the decision unchanged (pass `onError` to see the failure); a *slow* observer is your own latency, so never do I/O in one.
+
+Pass an array to fan out to several sinks at once.
+
+## OpenTelemetry
+
+`otelMetricsObserver` writes checks into a `Meter`. Alfiz does not depend on `@opentelemetry/api` — the adapter is typed structurally, so a real meter satisfies it with no cast:
+
+```ts
+import { metrics } from "@opentelemetry/api";
+import { createAlfizClient, otelMetricsObserver } from "@alfiz-auth/core";
+
+const alfiz = createAlfizClient({
+  catalog,
+  provider: app,
+  metrics: {
+    observer: otelMetricsObserver({
+      meter: metrics.getMeter("alfiz"),
+      attributes: { service: "docs-web" },
+    }),
+  },
+});
+```
+
+Four instruments arrive in your existing stack, alongside your existing application metrics:
+
+| Instrument | Attributes | What it counts |
+| --- | --- | --- |
+| `alfiz.checks` | `permission`, `decision`, `shape`, `gate`, `scope_type`, `implied`, `fresh`, `snapshot` | Every observed check |
+| `alfiz.grant.matched` | `grant_id` | Checks a grant participated in allowing |
+| `alfiz.grant.sole_match` | `grant_id` | Checks a grant was the **only** row allowing |
+| `alfiz.revoke.matched` | `revoke_id` | Checks a revoke suppressed |
+
+Principals are omitted by default — unbounded cardinality, and PII-adjacent. Turn them on with `principals: true` only if you know your backend can take it.
+
+The same shape works for StatsD, Prometheus, or a log line. The observer interface is the extension point; the OpenTelemetry adapter is just the one that ships.
+
+## Sampling for high-traffic paths
+
+`sampleRate` is evaluated with one `Math.random()` **inside the call**, before any observation is built. An unsampled check costs a comparison and allocates nothing — no storage read, no coordination.
+
+```ts
+metrics: {
+  observer,
+  sampleRate: { gate: 1, visibility: 0.02 },
+}
+```
+
+Sample gates and visibility traffic separately, because they differ by orders of magnitude. A `can` or `require` maps one-to-one onto a user action and is usually worth keeping whole. A single server render fires hundreds of `canAny`, `holds`, and `heldKeys` checks, and one in fifty says the same thing.
+
+A plain number applies to every shape. Every observation carries the rate that kept it, so counts extrapolate honestly: the aggregator and the OpenTelemetry adapter both report `observed` (what was seen) next to `estimated` (what it stands for), and never silently substitute one for the other.
+
+<Note>
+Sampling decides only whether a check is **counted**. It can never change an answer, and the sampled path and the unsampled path evaluate identically.
+</Note>
+
+## Reading metrics directly
+
+`createMetricsAggregator()` folds the stream into fixed memory and hands you the current window whenever you ask. That is a complete metrics API with no external system and no storage:
+
+```ts
+import { createMetricsAggregator } from "@alfiz-auth/core";
+
+const permissionMetrics = createMetricsAggregator();
+
+const alfiz = createAlfizClient({
+  catalog,
+  provider: app,
+  metrics: { observer: permissionMetrics.observer },
+});
+
+// Serve it from your own app, behind your own gate:
+export async function GET() {
+  await alfiz.require({ userId }, "docs.admin.read");
+  return Response.json(permissionMetrics.snapshot());
+}
+```
+
+Memory stays fixed no matter the traffic:
+
+- **Scope instances aggregate to scope type.** `docs.doc:123` counts as `docs.doc`. Opt specific types in with `scopeInstances: ["docs.folder"]` when you want per-folder numbers; do not opt in a per-document type.
+- **Principals are bounded.** Exact distinct counts up to a cap, then an `overflowed` flag — never an unbounded set.
+- **Every counter map is capped**, and each batch reports how many observations a cap refused with `dropped`.
+- **Windows are tagged** with an instance id and bounds, so batches from many app servers merge.
+
+## Storing usage, and the revocation safeguard
+
+To answer "what breaks if I revoke this", the counts have to outlive the process. Turn on storage in the Application (one extra table) and wire the client to it:
+
+```ts
+const app = createApplication({
+  catalog,
+  storage,
+  metrics: {},              // daily buckets, 90-day retention
+});
+
+const sink = createProviderMetricsSink(app);
+
+const alfiz = createAlfizClient({
+  catalog,
+  provider: app,
+  metrics: { observer: sink.observer },
+});
+```
+
+Then, wherever you render a **Revoke** button:
+
+```ts
+const [usage] = await app.getGrantUsage({ ids: [grantId] });
+const warning = revocationSafeguard(usage);
+
+// warning.level    → "warning" | "context" | "none"
+// warning.headline → "This grant was the only thing allowing 1200 checks in the last 7 days."
+```
+
+### Why it counts sole matchers
+
+The obvious metric overwarns. A check satisfied by two grants loses nothing when one of them is revoked — so "this grant matched 1,200 checks" against a row fully shadowed by a broader grant is a warning that means nothing, and administrators learn to click through it.
+
+Alfiz counts both, and warns on the second:
+
+- **`matched`** — the grant participated in an allow.
+- **`soleMatch`** — the grant was the *only* row allowing. Revoking it would have flipped exactly this many checks to deny.
+
+A shadowed grant reads as context instead of alarm: *"matched 40,000 checks, but was never the only thing allowing them."*
+
+Revokes get the mirrored treatment, pointing the other way — deleting a revoke **widens** access, so "this revoke suppressed 30 checks in the last 7 days" is a warning about removing it.
+
+### What the warning never says
+
+When a grant shows no recorded use, Alfiz says exactly that and stops:
+
+> No recorded use in the last 7 days. Absence of recent use is not evidence that removing this is safe: usage lags, metrics are sampled and lossy, and break-glass access is precisely the kind that goes unused for long stretches.
+
+Metrics tell you when a grant is *load-bearing*. They never tell you a grant is safe to remove, and copy you write on top of them should not either.
+
+<Note>
+Usage numbers are counts, not audit. They are sampled, lossy, and dropped under back-pressure. Never derive an authorization decision or a compliance record from them — that is what `explain()` and the audit log are for.
+</Note>
+
+## Nothing joins your request path
+
+Every part of this is built so that a metrics failure is a lost count and never anything more:
+
+- Observers are called synchronously but **fire-and-forget**; a throw is caught and the decision returns unchanged.
+- Attribution is computed **only when a check is sampled**, from data the evaluation already produced.
+- Delivery to storage is **batched, pre-aggregated, and never awaited** by a check, a render, or a write.
+- Under back-pressure the sink **drops batches** rather than growing a queue. The right failure mode for a counter is losing counts; adding latency is not.
+
+## Where the data lives
+
+Metrics stay in the deployment that produced them. The client hands batches to your own Application, and nothing carries them further — Alfiz Cloud never receives them, and check volume is not a billing dimension in any tier. If you want the numbers somewhere central, the observer stream is how you send them there, to the destination you choose.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Metrics API" icon="chart-line" href="/api/metrics">
+    Every option, type, and method: observations, sampling, the aggregator, the OpenTelemetry adapter, and the usage reads.
+  </Card>
+  <Card title="Grants and revokes" icon="key" href="/access/grants-revokes">
+    The rows metrics attribute to, and the precedence rules behind `soleMatch`.
+  </Card>
+</CardGroup>

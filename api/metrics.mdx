@@ -1,0 +1,279 @@
+---
+title: "Metrics API — Observations, Sampling, Aggregation, and Usage Reads"
+sidebarTitle: "Metrics"
+description: "Reference for CheckObservation, the metrics client option, createMetricsAggregator, otelMetricsObserver, createProviderMetricsSink, the usage reads, and revocationSafeguard."
+---
+
+Everything in this page is opt-in. A client without `metrics` emits nothing, and a provider whose `capabilities().metrics` is `false` stores nothing.
+
+For the guide, see [Metrics](/enforcement/metrics).
+
+## `AlfizClientOptions.metrics`
+
+```typescript
+metrics?: {
+  observer: MetricsObserver | readonly MetricsObserver[];
+  sampleRate?: number | { gate?: number; visibility?: number };
+  random?: () => number;
+  scopeInstances?: "type" | "instance" | readonly ScopeType[];
+  onError?: (error: unknown) => void;
+}
+```
+
+<ParamField body="observer" type="MetricsObserver | MetricsObserver[]" required>
+  `(observation: CheckObservation) => void`, called synchronously from the
+  check path. An array fans out, isolating failures per sink. Do cheap work
+  only — a slow observer is latency on your request path.
+</ParamField>
+
+<ParamField body="sampleRate" type="number | { gate, visibility }" default="1">
+  The probability an evaluated check is observed. A number applies to every
+  shape; the object form samples gates (`can`, `require`) and visibility
+  traffic (`canAny`, `requireAny`, `holds`, `heldKeys`) separately. Evaluated
+  with one `Math.random()` inside the call, before any observation is built.
+  Values are clamped to `[0, 1]`.
+</ParamField>
+
+<ParamField body="random" type="() => number" default="Math.random">
+  The randomness source for sampling. Injectable because `Math.random` cannot
+  be seeded and a sampled pipeline still has to be testable.
+</ParamField>
+
+<ParamField body="scopeInstances" type='"type" | "instance" | ScopeType[]' default='"type"'>
+  Cardinality policy for the scope dimension. `"type"` folds every instance
+  into its scope type. An array opts the listed scope types into raw instance
+  counting. `"instance"` opts in everything.
+</ParamField>
+
+<ParamField body="onError" type="(error: unknown) => void">
+  Receives errors thrown by an observer. Unset means silently ignored — the
+  right default for a lossy counter, the wrong one for debugging it.
+</ParamField>
+
+## `CheckObservation`
+
+```typescript
+interface CheckObservation {
+  at: number;
+  shape: "can" | "require" | "canAny" | "requireAny" | "holds" | "heldKeys";
+  gate: boolean;
+  decision: "allow" | "deny";
+  permission: string | null;
+  anyOf: boolean;
+  scopeType: string;
+  scope?: string;
+  principal: PrincipalRef;
+  matchedGrantIds: readonly string[];
+  soleMatchGrantId: string | null;
+  matchedRevokeIds: readonly string[];
+  roleIds: readonly string[];
+  implied: boolean;
+  fresh: boolean;
+  snapshot: boolean;
+  sampleRate: number;
+}
+```
+
+<ParamField body="gate" type="boolean">
+  `true` for `can` and `require` — the shapes that authorize an action.
+  `false` for the visibility shapes, which drive conditional UI and vastly
+  outnumber gates. Keep the two apart in any counter you build.
+</ParamField>
+
+<ParamField body="permission" type="string | null">
+  The concrete key that decided the check (the allowing key on an allow, the
+  first key otherwise), the pattern for `canAny` / `requireAny`, or `null`
+  for `heldKeys`, which asks about the whole catalog at once.
+</ParamField>
+
+<ParamField body="scopeType" type="string">
+  The scope type checked, or `"*"` for the global scope. Always bounded.
+</ParamField>
+
+<ParamField body="scope" type="string">
+  The scope instance — present only for scope types opted into instance
+  counting via `scopeInstances`.
+</ParamField>
+
+<ParamField body="soleMatchGrantId" type="string | null">
+  Set when exactly one grant row allowed the check. That row was the sole
+  matcher: revoking it would have flipped this check to deny. `null` when
+  several rows allowed, or when the check was denied.
+</ParamField>
+
+<ParamField body="implied" type="boolean">
+  The allow came from ancestor implication rather than a direct match. The
+  implying grants are still reported in `matchedGrantIds`.
+</ParamField>
+
+<ParamField body="sampleRate" type="number">
+  The probability that kept this observation. Multiply by `1 / sampleRate` to
+  estimate real volume.
+</ParamField>
+
+## `CheckOptions`
+
+Every check shape accepts an optional trailing `{ observe?: boolean }`, and `client.snapshot()` accepts `observe` in its options. Setting it `false` evaluates normally and records nothing.
+
+```ts
+await alfiz.can({ userId }, "docs.files.read", "docs.doc:123", { observe: false });
+const snap = await alfiz.snapshot({ userId }, { observe: false });
+```
+
+View-as sessions set this on the previewed side automatically: an administrator looking through someone else's eyes did not use that person's grants, and attribution never follows the preview.
+
+## `otelMetricsObserver(options)`
+
+```typescript
+function otelMetricsObserver(options: {
+  meter: OtelMeter;
+  prefix?: string;              // default "alfiz."
+  attributes?: Record<string, string | number | boolean>;
+  attribution?: boolean;        // default true
+  principals?: boolean;         // default false
+  scopeInstances?: boolean;     // default true
+  extrapolate?: boolean;        // default true
+}): MetricsObserver
+```
+
+`@opentelemetry/api` is not a dependency of Alfiz. `OtelMeter` is the structural subset the adapter uses — `createCounter(name, options)` returning something with `add(value, attributes)` — which a real `Meter` satisfies without a cast.
+
+Emits `alfiz.checks`, and with `attribution` on, `alfiz.grant.matched`, `alfiz.grant.sole_match`, `alfiz.revoke.matched`, and `alfiz.role.matched`.
+
+With `extrapolate` on (the default), each measurement adds `1 / sampleRate` so a sampled counter still reads as real traffic. At the default `sampleRate: 1` the two are identical.
+
+## `createMetricsAggregator(options?)`
+
+A pure, bounded, windowed fold over the observation stream.
+
+```typescript
+function createMetricsAggregator(options?: {
+  windowMs?: number;                    // default 60_000
+  instanceId?: string;                  // default "default"
+  flush?: (batch: MetricsBatch) => void;
+  maxCheckKeys?: number;                // default 10_000
+  maxRowKeys?: number;                  // default 10_000
+  maxPrincipals?: number;               // default 1_000
+  maxRecentPrincipalsPerRow?: number;   // default 5
+  onError?: (error: unknown) => void;
+  clock?: () => number;
+}): MetricsAggregator
+```
+
+| Member | Description |
+| --- | --- |
+| `observer` | Bind as the client's `metrics.observer`. |
+| `snapshot()` | The current window, without closing it. The direct-read surface. |
+| `flush()` | Closes the window, calls `flush`, returns the closed batch. |
+| `instanceId` | Tags every batch so multi-instance flushes merge. |
+
+Windows roll lazily, on the first observation past the boundary, so a quiet process schedules nothing. `startMetricsFlusher(aggregator, { intervalMs })` adds a timer when a window must close on time rather than on traffic; it returns a `stop()` function and never keeps a process alive.
+
+### `MetricsBatch`
+
+```typescript
+interface MetricsBatch {
+  instanceId: string;
+  windowStart: number;
+  windowEnd: number;
+  checks: CheckCounter[];      // per permission × decision × shape × scope
+  grants: RowUsageCounter[];   // matched + soleMatch per grant id
+  revokes: RowUsageCounter[];
+  roles: RowUsageCounter[];
+  principals: { distinct: number; overflowed: boolean };
+  dropped: number;             // observations a cardinality cap refused
+}
+```
+
+Counters carry `observed` (what was seen) and `estimated` (corrected for sampling) side by side.
+
+## `createProviderMetricsSink(provider, options?)`
+
+Aggregates locally, then batches to a provider that stores usage. Accepts every `createMetricsAggregator` option plus `intervalMs` and `maxPendingBatches` (default 4).
+
+```ts
+const sink = createProviderMetricsSink(app, { intervalMs: 30_000 });
+// metrics: { observer: sink.observer }
+// on shutdown: await sink.stop();
+```
+
+Delivery is fire-and-forget: nothing awaits the chain, so a slow or failing store cannot add time to a check or a write. When more than `maxPendingBatches` are queued behind a slow store, new batches are **dropped** and counted on `sink.droppedBatches` rather than queued. The sink checks `capabilities().metrics` once; a provider that does not accept metrics is simply never sent any, and the sink degrades to a local aggregator.
+
+## Usage reads
+
+Available on any provider whose `capabilities().metrics` is `true` — the Application with `metrics: {}`, and relayed providers pointed at one.
+
+```typescript
+app.getGrantUsage(query?):      Promise<RowUsage[]>
+app.getRevokeUsage(query?):     Promise<RowUsage[]>
+app.getRoleUsage(query?):       Promise<RowUsage[]>
+app.getPermissionUsage(query?): Promise<PermissionUsage[]>
+app.getScopeTypeUsage(query?):  Promise<PermissionUsage[]>
+```
+
+`query` is `{ ids?: string[]; since?: number; until?: number }` — `ids` filters to specific rows or keys, `since` is inclusive and `until` exclusive, both epoch ms, defaulting to the provider's full retention window.
+
+```typescript
+interface RowUsage {
+  rowId: string;
+  matched: number;
+  soleMatch: number;
+  windowStart: number;
+  windowEnd: number;
+  buckets: Array<{ bucket: number; matched: number; soleMatch: number }>;
+}
+
+interface PermissionUsage {
+  permission: string;
+  gateAllow: number;
+  gateDeny: number;
+  visibilityAllow: number;
+  visibilityDeny: number;
+  windowStart: number;
+  windowEnd: number;
+}
+```
+
+Gate and visibility counts are reported separately and never summed — forty thousand renders and twelve actions are different numbers.
+
+## `revocationSafeguard(usage, options?)`
+
+```typescript
+function revocationSafeguard(
+  usage: { matched: number; soleMatch: number; windowStart: number; windowEnd: number },
+  options?: {
+    warnAtSoleMatch?: number;              // default 1
+    kind?: "grant" | "revoke" | "role";    // default "grant"
+  },
+): {
+  level: "none" | "context" | "warning";
+  matched: number;
+  soleMatch: number;
+  days: number;
+  headline: string;
+  detail: string;
+}
+```
+
+Pure — bind it in any UI. It keys on `soleMatch`, never on `matched`, and never claims that an unused grant is safe to remove.
+
+| `level` | When | Meaning |
+| --- | --- | --- |
+| `warning` | `soleMatch >= warnAtSoleMatch` | Removing this would have denied real checks. |
+| `context` | `matched > 0`, `soleMatch === 0` | Used, but always alongside another grant. |
+| `none` | No recorded use | Says only that. Absence of use is not evidence. |
+
+## Application options
+
+```typescript
+createApplication({
+  catalog,
+  storage,
+  metrics: {
+    bucketMs?: number,      // default 86_400_000 (one day)
+    retentionMs?: number,   // default 90 days
+  },
+});
+```
+
+Requires a storage driver implementing `recordMetrics`, `readMetrics`, and `pruneMetrics` — the memory and Prisma drivers do. Construction throws if they are missing, rather than accepting batches that go nowhere. The Prisma schema fragment adds one model, `AlfizMetric`; retention compaction runs opportunistically and off the write path.

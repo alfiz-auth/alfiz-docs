@@ -18,6 +18,7 @@ async explain(
     objectClosure: ScopeId[];
     active: boolean;
     implied: boolean;
+    impliedBy: GrantRow[];
   }
 >
 ```
@@ -82,7 +83,14 @@ async explain(
   with `impliedOnAncestors: true` and the principal holds a grant of that
   leaf at a descendant scope of the requested scope. When `implied` is
   `true`, `matchedGrants` will be empty (the direct match found nothing) but
-  `allowed` is `true`.
+  `allowed` is `true`. The grants responsible are reported in `impliedBy`.
+</ResponseField>
+
+<ResponseField name="impliedBy" type="GrantRow[]">
+  The grants at a *descendant* scope that produced an implied allow. Empty
+  unless `implied` is `true`. `matchedGrants` keeps its exact meaning — rows
+  matching at the requested scope — so this is where "which grant, and at
+  which scope, implied this?" is answered.
 </ResponseField>
 
 ---

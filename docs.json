@@ -52,7 +52,8 @@
             "pages": [
               "enforcement/check-shapes",
               "enforcement/four-points",
-              "enforcement/static-verification"
+              "enforcement/static-verification",
+              "enforcement/metrics"
             ]
           },
           {
@@ -102,7 +103,8 @@
               "api/can-any",
               "api/snapshot",
               "api/explain",
-              "api/granted-scopes"
+              "api/granted-scopes",
+              "api/metrics"
             ]
           },
           {

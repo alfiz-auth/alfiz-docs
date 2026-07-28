@@ -26,7 +26,7 @@ Every `can()` runs in-process against your own database. Alfiz Cloud is not a de
 Pricing follows from it. Alfiz Cloud bills for the work it performs — the dimensions above — and **check volume is not a billing dimension and will not become one.**
 
 <Note>
-  If you enable usage metrics, aggregate check telemetry flows up as observability *for you*: opt-in, yours to read over the API, and never an input to your bill. Turning it off changes what you can see about your own deployment and changes nothing about what you pay.
+  [Permission metrics](/enforcement/metrics) are a different feature with a confusingly similar name. Metering counts work Alfiz Cloud performed; metrics count checks *your application* performed. Metrics stay where they are produced — in your process, your metrics stack, and your database. Alfiz Cloud never receives them and cannot bill on them.
 </Note>
 
 ## Reading your meters
