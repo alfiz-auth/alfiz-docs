@@ -142,7 +142,7 @@
     "defineCatalog(input) → Catalog",
     "createApplication(options) → Application",
     "memoryDriver() → StorageDriver",
-    "@alfiz-auth/prisma: PrismaDriver",
+    "@alfiz/prisma: PrismaDriver",
     "alfiz-verify CLI: verify, lint, catalog-emit",
     "alfiz-verify.config.json: catalog, include, exclude, gateNames, visibilityNames, serverFilePatterns, forbidClientIdentifiers"
   ]

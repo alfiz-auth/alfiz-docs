@@ -111,7 +111,7 @@ await alfiz.requireAny({ userId }, "docs.*");
 `AccessDeniedError` carries a typed `reason` field:
 
 ```ts
-import { AccessDeniedError } from "@alfiz-auth/core";
+import { AccessDeniedError } from "@alfiz/core";
 
 try {
   await alfiz.requirePermission({ userId }, "docs.files.delete", "docs.folder:9");

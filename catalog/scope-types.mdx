@@ -19,7 +19,7 @@ The catalog declares **scope types** — the shapes. Your application data holds
 A scope instance id is always `<scopeType>:<instanceId>`. The instance id (`42`) is an opaque string — it should be a primary key or UUID, never a path. The hierarchy is stored in your database as parent pointers, not encoded in the id:
 
 ```ts
-import { scopeId, parseScopeId } from "@alfiz-auth/core";
+import { scopeId, parseScopeId } from "@alfiz/core";
 
 const folder = scopeId("docs.folder", "42");   // → "docs.folder:42"
 const doc    = scopeId("docs.doc",    "99");   // → "docs.doc:99"
@@ -80,7 +80,7 @@ export interface ScopeTypeInput {
 
 <CodeGroup>
 ```ts Catalog definition
-import { defineCatalog, group } from "@alfiz-auth/core";
+import { defineCatalog, group } from "@alfiz/core";
 
 export const catalog = defineCatalog({
   namespaces: ["docs"],
@@ -123,7 +123,7 @@ export const catalog = defineCatalog({
 ```
 
 ```ts Runtime hierarchy
-import { parentPointerResolver } from "@alfiz-auth/core";
+import { parentPointerResolver } from "@alfiz/core";
 import { db } from "./db";
 
 // Your database holds the parent pointer — Alfiz walks it at check time.

@@ -61,7 +61,7 @@ If a single role column is genuinely enough for your application, it will stay e
 <Steps>
   <Step title="Install packages">
     ```bash
-    npm install @alfiz-auth/core @alfiz-auth/application
+    npm install @alfiz/core @alfiz/application
     ```
   </Step>
   <Step title="Define your catalog">
@@ -84,10 +84,10 @@ If a single role column is genuinely enough for your application, it will stay e
 
 | Package | Purpose |
 |---|---|
-| `@alfiz-auth/core` | Client: grammar, catalog, check shapes, caches, headless tree logic |
-| `@alfiz-auth/application` | Application: local provider against your database |
-| `@alfiz-auth/prisma` | Prisma storage driver for the Application |
-| `@alfiz-auth/verify` | `alfiz-verify` CLI for static call-site verification |
+| `@alfiz/core` | Client: grammar, catalog, check shapes, caches, headless tree logic |
+| `@alfiz/application` | Application: local provider against your database |
+| `@alfiz/prisma` | Prisma storage driver for the Application |
+| `@alfiz/verify` | `alfiz-verify` CLI for static call-site verification |
 
 The packages above are MIT-licensed and complete on their own — groups, roles, reporting hierarchy, access requests, and approvals all run against your own database with no external dependency. [Alfiz Cloud](/cloud/overview) adds hosted administration and cross-application federation when you want them, and is never required.
 

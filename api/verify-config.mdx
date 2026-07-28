@@ -98,10 +98,10 @@ description: "alfiz-verify.config.json reference: catalog path, scan directories
 
 The three name lists (`gateNames`, `visibilityNames`, `serverFilePatterns`) are always **additive** through the CLI. This is intentional: the CLI is the batteries-included path, and forgetting to restate `can` in `gateNames` should not silently un-gate your whole codebase.
 
-If you need full replacement of the built-in defaults — for example, a codebase that uses entirely custom gate wrappers and wants to treat the built-in names as errors — use the programmatic `verifyProject` API from `@alfiz-auth/verify` directly:
+If you need full replacement of the built-in defaults — for example, a codebase that uses entirely custom gate wrappers and wants to treat the built-in names as errors — use the programmatic `verifyProject` API from `@alfiz/verify` directly:
 
 ```ts
-import { verifyProject } from "@alfiz-auth/verify";
+import { verifyProject } from "@alfiz/verify";
 
 const report = verifyProject({
   catalog,

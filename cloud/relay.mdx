@@ -1,7 +1,7 @@
 ---
 title: "Connecting Your Application to Alfiz Cloud: The Relay"
 sidebarTitle: "Relay setup"
-description: "Mount the relay handler from @alfiz-auth/application, register your Application in the Dashboard, and verify the connection — administrative traffic only, never on the check path."
+description: "Mount the relay handler from @alfiz/application, register your Application in the Dashboard, and verify the connection — administrative traffic only, never on the check path."
 ---
 
 The **relay** is how Alfiz Cloud talks to your Application: the provider contract, carried over HTTPS, terminating at a route you mount inside your own deployment. It carries administrative traffic only — dashboard operations, approval decisions, org-domain reads. It is never on the check path. A Dashboard session produces a relayed operation; your Application enforces that operation exactly as it would a local admin call, and answers over the same route.
@@ -10,10 +10,10 @@ Because the relay speaks the provider contract your Application already implemen
 
 ## Mount the handler
 
-The handler ships in `@alfiz-auth/application`. Mount it as a POST route wherever your Application runs:
+The handler ships in `@alfiz/application`. Mount it as a POST route wherever your Application runs:
 
 ```ts src/app/api/alfiz-relay/route.ts
-import { createRelayHandler } from "@alfiz-auth/application";
+import { createRelayHandler } from "@alfiz/application";
 import { app, storage } from "@/authz/app";
 
 export const POST = createRelayHandler({
@@ -63,7 +63,7 @@ The options are:
 `orgRoot` is a constructor commitment — `createApplication` records it once and the library never flips it at runtime. When you later [promote](/cloud/promotion) to federation (or demote back), Alfiz Cloud pushes the new dataset over the relay and calls `onAuthorityChanged(orgRoot)` so your host process can rebuild its Application with the new flag:
 
 ```ts src/app/api/alfiz-relay/route.ts
-import { createRelayHandler } from "@alfiz-auth/application";
+import { createRelayHandler } from "@alfiz/application";
 import { getApp, rebuildApp, storage } from "@/authz/app";
 
 export const POST = createRelayHandler({

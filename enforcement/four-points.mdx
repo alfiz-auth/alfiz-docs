@@ -110,7 +110,7 @@ Every server action and every route handler gates on a concrete permission befor
     // app/api/docs/[id]/route.ts
     import { alfiz } from "@/lib/alfiz";
     import { getSession } from "@/lib/session";
-    import { isAccessDenied } from "@alfiz-auth/core";
+    import { isAccessDenied } from "@alfiz/core";
     import { NextResponse } from "next/server";
 
     export async function PUT(
@@ -246,7 +246,7 @@ export default async function PortalLayout({ children }) {
 
 import { alfiz } from "@/lib/alfiz";
 import { getSession } from "@/lib/session";
-import { AccessDeniedError } from "@alfiz-auth/core";
+import { AccessDeniedError } from "@alfiz/core";
 
 export async function saveDocument(docId: string, data: { title: string; body: string }) {
   const session = await getSession();

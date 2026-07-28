@@ -38,7 +38,7 @@ Pass an array to fan out to several sinks at once.
 
 ```ts
 import { metrics } from "@opentelemetry/api";
-import { createAlfizClient, otelMetricsObserver } from "@alfiz-auth/core";
+import { createAlfizClient, otelMetricsObserver } from "@alfiz/core";
 
 const alfiz = createAlfizClient({
   catalog,
@@ -89,7 +89,7 @@ Sampling decides only whether a check is **counted**. It can never change an ans
 `createMetricsAggregator()` folds the stream into fixed memory and hands you the current window whenever you ask. That is a complete metrics API with no external system and no storage:
 
 ```ts
-import { createMetricsAggregator } from "@alfiz-auth/core";
+import { createMetricsAggregator } from "@alfiz/core";
 
 const permissionMetrics = createMetricsAggregator();
 

@@ -4,7 +4,7 @@ sidebarTitle: Quickstart
 description: Install Alfiz, define your first permission catalog, wire a storage driver, and run your first can() check — all in under ten minutes.
 ---
 
-Alfiz ships as two packages: `@alfiz-auth/core` holds the evaluator — the catalog, grammar, closures, and check logic — and `@alfiz-auth/application` wraps a storage driver into the full local provider. You define your permissions in TypeScript, wire up storage, and every `can()` check runs in-process against your own database with no external round-trips required.
+Alfiz ships as two packages: `@alfiz/core` holds the evaluator — the catalog, grammar, closures, and check logic — and `@alfiz/application` wraps a storage driver into the full local provider. You define your permissions in TypeScript, wire up storage, and every `can()` check runs in-process against your own database with no external round-trips required.
 
 <Steps>
 
@@ -15,17 +15,17 @@ Install the core client and the application provider. If you are targeting a pro
 <CodeGroup>
 
 ```bash Core + Application
-npm install @alfiz-auth/core @alfiz-auth/application
+npm install @alfiz/core @alfiz/application
 ```
 
 ```bash With Prisma driver
-npm install @alfiz-auth/core @alfiz-auth/application @alfiz-auth/prisma
+npm install @alfiz/core @alfiz/application @alfiz/prisma
 ```
 
 </CodeGroup>
 
 <Note>
-  `memoryDriver()` (bundled with `@alfiz-auth/application`) is a complete, correct in-memory implementation — perfect for tests and local development. Swap in `@alfiz-auth/prisma` before going to production so grants survive restarts.
+  `memoryDriver()` (bundled with `@alfiz/application`) is a complete, correct in-memory implementation — perfect for tests and local development. Swap in `@alfiz/prisma` before going to production so grants survive restarts.
 </Note>
 
 ### Define the catalog
@@ -33,7 +33,7 @@ npm install @alfiz-auth/core @alfiz-auth/application @alfiz-auth/prisma
 The catalog is your single source of truth for every permission and scope type in the system. Call `defineCatalog` with your `namespaces`, your `permissions`, and the `scopeTypes` your resources belong to. Permissions are declared by their full dotted key — the same string you check with — and `defineCatalog` throws at boot if anything is structurally invalid.
 
 ```ts catalog.ts
-import { defineCatalog } from "@alfiz-auth/core";
+import { defineCatalog } from "@alfiz/core";
 
 export const catalog = defineCatalog({
   namespaces: ["docs"],
@@ -58,8 +58,8 @@ Every key in the catalog — `docs.files.read`, `docs.files.update_file`, `docs.
 The application is the local provider: it connects your storage driver and your resource hierarchy (the ancestry resolver) to Alfiz's evaluation engine.
 
 ```ts app.ts
-import { parentPointerResolver } from "@alfiz-auth/core";
-import { createApplication, memoryDriver } from "@alfiz-auth/application";
+import { parentPointerResolver } from "@alfiz/core";
+import { createApplication, memoryDriver } from "@alfiz/application";
 import { catalog } from "./catalog";
 import { db } from "./db"; // your own database client
 
@@ -77,7 +77,7 @@ The `ancestry` option tells Alfiz how to walk up your object hierarchy — so a 
 The client wraps the application with typed check methods. Pass your catalog literal so TypeScript can derive the exact union of valid keys and patterns at every call site.
 
 ```ts alfiz.ts
-import { createAlfizClient } from "@alfiz-auth/core";
+import { createAlfizClient } from "@alfiz/core";
 import { catalog } from "./catalog";
 import { app } from "./app";
 

@@ -15,15 +15,15 @@ A standalone deployment is exactly what it sounds like: your application, your d
 Standalone is the composition of two packages:
 
 <CardGroup cols={2}>
-  <Card title="@alfiz-auth/core" icon="cube">
+  <Card title="@alfiz/core" icon="cube">
     The **Client**: the evaluator. Grammar, catalog, typed keys, check shapes, closure caches, static verification, and the headless admin kit. Every capability is a pure function over provider-supplied data — no storage, no I/O of its own.
   </Card>
-  <Card title="@alfiz-auth/application" icon="database">
+  <Card title="@alfiz/application" icon="database">
     The **Application**: your local provider. Implements the provider contract against your own database through a storage seam. In standalone mode, it is the org root — the single authoritative home of all organizational data.
   </Card>
 </CardGroup>
 
-Your database is the only infrastructure requirement. Swap in `@alfiz-auth/prisma` for a Postgres, MySQL, or SQLite-backed storage driver, or use `memoryDriver()` for tests.
+Your database is the only infrastructure requirement. Swap in `@alfiz/prisma` for a Postgres, MySQL, or SQLite-backed storage driver, or use `memoryDriver()` for tests.
 
 ## What you get
 
@@ -62,24 +62,24 @@ await alfiz.can.fresh({ userId }, "docs.files.delete", "docs.folder:9"); // bypa
   <Step title="Install the packages">
     <CodeGroup>
       ```bash npm
-      npm install @alfiz-auth/core @alfiz-auth/application
+      npm install @alfiz/core @alfiz/application
       ```
       ```bash pnpm
-      pnpm add @alfiz-auth/core @alfiz-auth/application
+      pnpm add @alfiz/core @alfiz/application
       ```
       ```bash yarn
-      yarn add @alfiz-auth/core @alfiz-auth/application
+      yarn add @alfiz/core @alfiz/application
       ```
     </CodeGroup>
 
-    For a Prisma-backed storage driver, also install `@alfiz-auth/prisma`.
+    For a Prisma-backed storage driver, also install `@alfiz/prisma`.
   </Step>
 
   <Step title="Define your catalog">
     The catalog is the single source of truth for your permission tree. It lives in code, not a dashboard.
 
     ```ts src/authz/catalog.ts
-    import { defineCatalog } from "@alfiz-auth/core";
+    import { defineCatalog } from "@alfiz/core";
 
     export const catalog = defineCatalog({
       namespaces: ["docs"],
@@ -100,14 +100,14 @@ await alfiz.can.fresh({ userId }, "docs.files.delete", "docs.folder:9"); // bypa
     Pass your catalog, a storage driver, and an ancestry resolver. `orgRoot` defaults to `true` — you do not need to set it explicitly in standalone mode.
 
     ```ts src/authz/app.ts
-    import { parentPointerResolver } from "@alfiz-auth/core";
-    import { createApplication, memoryDriver } from "@alfiz-auth/application";
+    import { parentPointerResolver } from "@alfiz/core";
+    import { createApplication, memoryDriver } from "@alfiz/application";
     import { catalog } from "./catalog";
     import { db } from "../db";
 
     export const app = createApplication({
       catalog,
-      storage: memoryDriver(),         // swap for @alfiz-auth/prisma in production
+      storage: memoryDriver(),         // swap for @alfiz/prisma in production
       ancestry: parentPointerResolver((scope) => db.parentOf(scope)),
       orgRoot: true,                   // default — shown here for clarity
     });
@@ -120,7 +120,7 @@ await alfiz.can.fresh({ userId }, "docs.files.delete", "docs.folder:9"); // bypa
 
   <Step title="Create the client and start checking">
     ```ts src/authz/index.ts
-    import { createAlfizClient } from "@alfiz-auth/core";
+    import { createAlfizClient } from "@alfiz/core";
     import { catalog } from "./catalog";
     import { app } from "./app";
 

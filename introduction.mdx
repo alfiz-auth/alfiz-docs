@@ -16,8 +16,8 @@ Alfiz is organized into three layers. The first two are open-source packages you
 
 | Layer | Package | What it does |
 |---|---|---|
-| **Client** | `@alfiz-auth/core` | The evaluator: grammar, catalog, closures, check shapes, caches, graph integrity, and request evaluation. Every capability is a pure function over provider-supplied data — no storage, no I/O. |
-| **Application** | `@alfiz-auth/application` | The local provider: the same contract implemented against *your* database through a storage seam. Standalone, it is the org root — the complete system for one organization, with no external dependency. |
+| **Client** | `@alfiz/core` | The evaluator: grammar, catalog, closures, check shapes, caches, graph integrity, and request evaluation. Every capability is a pure function over provider-supplied data — no storage, no I/O. |
+| **Application** | `@alfiz/application` | The local provider: the same contract implemented against *your* database through a storage seam. Standalone, it is the org root — the complete system for one organization, with no external dependency. |
 | **Alfiz Cloud** | — | The managed provider speaking the same contract: the Dashboard (hosted administration by relay) and Federation (registry, cross-application composition, the hosted org root). Nothing in the OSS packages depends on it. |
 
 <Note>
@@ -49,7 +49,7 @@ Two further semantics are worth knowing early, because they shape how you model 
 
 ## What's included in the open-source packages
 
-The Client (`@alfiz-auth/core`) and Application (`@alfiz-auth/application`) packages are MIT-licensed and free forever. Together they give you:
+The Client (`@alfiz/core`) and Application (`@alfiz/application`) packages are MIT-licensed and free forever. Together they give you:
 
 - **Permission grammar, catalog, and typed keys** — catalog-derived template-literal types mean every call site is verified at compile time
 - **`can` / `canAny` / `can.fresh`** — in-process checks; `canAny` is a visibility affordance only, never a gate; `can.fresh` bypasses all caches for destructive actions
@@ -62,7 +62,7 @@ The Client (`@alfiz-auth/core`) and Application (`@alfiz-auth/application`) pack
 - **Clerk adapter; provider-agnostic interface** — drop in Clerk or wire any identity provider through the open contract
 
 <Tip>
-The `@alfiz-auth/prisma` package adds a Prisma storage driver and schema fragment so the Application layer slots straight into your existing Prisma setup.
+The `@alfiz/prisma` package adds a Prisma storage driver and schema fragment so the Application layer slots straight into your existing Prisma setup.
 </Tip>
 
 ## Alfiz Cloud
@@ -88,7 +88,7 @@ Pricing follows from it. Alfiz Cloud bills for the work it performs — admin se
 
 <CardGroup cols={2}>
   <Card title="Quickstart" icon="rocket" href="/quickstart">
-    Install `@alfiz-auth/core` and `@alfiz-auth/application`, define your first catalog, and run your first `can()` check in minutes.
+    Install `@alfiz/core` and `@alfiz/application`, define your first catalog, and run your first `can()` check in minutes.
   </Card>
   <Card title="Core Concepts" icon="book-open" href="/core-concepts">
     Understand the catalog, scope types, grant model, inheritance rules, and the four enforcement points in depth.

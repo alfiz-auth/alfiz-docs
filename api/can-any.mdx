@@ -4,7 +4,7 @@ sidebarTitle: "canAny()"
 description: "canAny(principal, pattern) tests whether a principal holds any permission matching a pattern. Visibility affordance only — never an authorization gate."
 ---
 
-`canAny` answers a different question from `can`: not "does this principal hold *this specific permission* here?" but "does this principal hold *anything under this subtree* at all?" That distinction makes `canAny` the right tool for show/hide decisions in navigation and conditional UI — and the wrong tool for anything that authorizes an action. The static verifier (`@alfiz-auth/verify`) produces a build error if it detects `canAny` in a server action or route handler, treating it as a gate.
+`canAny` answers a different question from `can`: not "does this principal hold *this specific permission* here?" but "does this principal hold *anything under this subtree* at all?" That distinction makes `canAny` the right tool for show/hide decisions in navigation and conditional UI — and the wrong tool for anything that authorizes an action. The static verifier (`@alfiz/verify`) produces a build error if it detects `canAny` in a server action or route handler, treating it as a gate.
 
 ## `canAny(principal, pattern)`
 

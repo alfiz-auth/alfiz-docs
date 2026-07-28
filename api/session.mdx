@@ -9,7 +9,7 @@ A session is the typed, per-request object your server code calls `can()` on. It
 ## Creating a session
 
 ```ts
-import { createSession } from "@alfiz-auth/application";
+import { createSession } from "@alfiz/application";
 
 async function createSession<K extends string, P extends string>(
   client: AlfizClient<K, P>,
@@ -63,7 +63,7 @@ class AlfizSession<K, P> {
 Use `SessionOf<typeof catalog>` to type session variables without writing out the `K` and `P` type parameters by hand:
 
 ```ts
-import type { SessionOf } from "@alfiz-auth/application";
+import type { SessionOf } from "@alfiz/application";
 import { catalog } from "./alfiz.js";
 
 type AppSession = SessionOf<typeof catalog>;
@@ -77,7 +77,7 @@ Alfiz does not provide a Clerk adapter package — you write a thin `getAlfizSes
 ```ts
 // lib/alfiz-session.ts
 import { auth } from "@clerk/nextjs/server";
-import { createSession, parseViewAs } from "@alfiz-auth/application";
+import { createSession, parseViewAs } from "@alfiz/application";
 import { alfiz } from "./alfiz.js"; // your AlfizClient
 
 export async function getAlfizSession() {
@@ -115,7 +115,7 @@ export async function publishDoc(docId: string) {
 Administrators holding `alfiz_internal.access.view_as` can preview the product as either a role or an individual user. `createSession` enforces this gate automatically — passing a non-null `viewAs` without the permission throws `AccessDeniedError`.
 
 ```ts
-import { createSession, serializeViewAs, parseViewAs } from "@alfiz-auth/application";
+import { createSession, serializeViewAs, parseViewAs } from "@alfiz/application";
 
 // Start a role preview (UI sets the cookie):
 const session = await createSession(alfiz, {
@@ -139,7 +139,7 @@ const session = await createSession(alfiz, {
 Serialize and deserialize view-as state for cookie storage:
 
 ```ts
-import { serializeViewAs, parseViewAs } from "@alfiz-auth/application";
+import { serializeViewAs, parseViewAs } from "@alfiz/application";
 
 // Serialize to a cookie value:
 const cookieValue = serializeViewAs({ kind: "role", roleId: "r1" });
@@ -159,7 +159,7 @@ const viewAs = parseViewAs(cookieValue);
 If you need to check preview eligibility independently (for example, to show or hide the "view as" UI affordance), call `assertCanViewAs` directly:
 
 ```ts
-import { assertCanViewAs } from "@alfiz-auth/application";
+import { assertCanViewAs } from "@alfiz/application";
 
 async function assertCanViewAs<K extends string, P extends string>(
   client: AlfizClient<K, P>,
@@ -179,7 +179,7 @@ For machine-to-machine authentication — background jobs, CI pipelines, interna
 import {
   createServiceKeyShim,
   parseServiceKeysEnv,
-} from "@alfiz-auth/application";
+} from "@alfiz/application";
 
 // Parse keys from the conventional env format:
 // ALFIZ_SERVICE_KEYS="worker:key1current,key1previous;scheduler:key2"

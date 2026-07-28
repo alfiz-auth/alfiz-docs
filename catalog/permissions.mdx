@@ -118,7 +118,7 @@ permissions: {
 A flat map is the right shape for a small catalog — ten permissions in one object is complete and idiomatic, and groups are never required. Past a few dozen keys it becomes a wall of strings, and that is what `group()` is for: a named, foldable block carrying one group's metadata and the keys under it.
 
 ```ts
-import { defineCatalog, group } from "@alfiz-auth/core";
+import { defineCatalog, group } from "@alfiz/core";
 
 export const files = group("docs.files", {
   label: "Files",

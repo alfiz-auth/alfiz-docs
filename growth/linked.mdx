@@ -85,10 +85,10 @@ Linking is a registration step — you associate your Application with an Alfiz 
   </Step>
 
   <Step title="Configure the Alfiz Cloud connection in your Application">
-    The connection is the **relay** — a POST route that ships in `@alfiz-auth/application`. Mount it, and Alfiz Cloud forwards administrative operations through it to your Application for enforcement. Your `createApplication` options do not change.
+    The connection is the **relay** — a POST route that ships in `@alfiz/application`. Mount it, and Alfiz Cloud forwards administrative operations through it to your Application for enforcement. Your `createApplication` options do not change.
 
     ```ts src/app/api/alfiz-relay/route.ts
-    import { createRelayHandler } from "@alfiz-auth/application";
+    import { createRelayHandler } from "@alfiz/application";
     import { app, storage } from "@/authz/app";
 
     export const POST = createRelayHandler({
@@ -113,7 +113,7 @@ Linking is a registration step — you associate your Application with an Alfiz 
 
 ## Replacing the hosted dashboard
 
-The hosted dashboard is convenience, not capability. Every workflow it exposes is buildable from the headless admin kit included in `@alfiz-auth/core` — the hosted product is assembled from the same components, speaking the same provider contract.
+The hosted dashboard is convenience, not capability. Every workflow it exposes is buildable from the headless admin kit included in `@alfiz/core` — the hosted product is assembled from the same components, speaking the same provider contract.
 
 If you outgrow the hosted dashboard or need a custom look, build your own admin UI from the kit. The `Application` you already have is its provider. Unlinking your Alfiz Cloud registration removes the relay and the hosted access — nothing else changes.
 

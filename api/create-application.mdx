@@ -9,7 +9,7 @@ description: "createApplication wires catalog, storage, and ancestry into the Al
 ## Signature
 
 ```ts
-import { createApplication } from "@alfiz-auth/application";
+import { createApplication } from "@alfiz/application";
 
 function createApplication(options: ApplicationOptions): AlfizApplication
 ```
@@ -21,7 +21,7 @@ function createApplication(options: ApplicationOptions): AlfizApplication
 </ParamField>
 
 <ParamField body="storage" type="StorageDriver" required>
-  The storage driver the Application reads and writes through. Use `memoryDriver()` during development and tests; use `prismaDriver` from `@alfiz-auth/prisma` in production. You can also implement the `StorageDriver` interface yourself over any other database. See [Storage Drivers](/api/storage-drivers) for details.
+  The storage driver the Application reads and writes through. Use `memoryDriver()` during development and tests; use `prismaDriver` from `@alfiz/prisma` in production. You can also implement the `StorageDriver` interface yourself over any other database. See [Storage Drivers](/api/storage-drivers) for details.
 </ParamField>
 
 <ParamField body="ancestry" type="AncestryResolver" optional>
@@ -82,7 +82,7 @@ function createApplication(options: ApplicationOptions): AlfizApplication
 The ancestry resolver is the bridge between Alfiz's permission evaluation engine and your application's object hierarchy. Because you own the hierarchy (a document lives in a folder, a folder lives in a workspace), only your code knows which ancestors a given scope has. The resolver is called during scoped `can()` checks; its output is the ancestor chain Alfiz uses to walk from the checked scope up to `"*"`.
 
 ```ts
-import { parentPointerResolver } from "@alfiz-auth/core";
+import { parentPointerResolver } from "@alfiz/core";
 
 // The simplest conforming implementation: wrap a single parent-pointer lookup.
 const ancestry = parentPointerResolver((scope) => myDb.parentOf(scope));
@@ -114,8 +114,8 @@ const ancestry: AncestryResolver = async (scope) => {
 The in-process invalidation stream never leaves the process that wrote the event, so in a multi-node or serverless deployment the client's TTLs are the only bound on how quickly a revocation on one instance takes effect on another. Turning on `events.persist` appends every invalidation event to a sequenced log in your database before the write returns, exposing it as `provider.epoch`. Clients configured with `revalidateAfterMs` then validate their caches against that log with one constant-cost single-row read per window.
 
 ```ts
-import { createApplication, startEventPoller } from "@alfiz-auth/application";
-import { prismaDriver } from "@alfiz-auth/prisma";
+import { createApplication, startEventPoller } from "@alfiz/application";
+import { prismaDriver } from "@alfiz/prisma";
 
 const app = createApplication({
   catalog,
@@ -133,7 +133,7 @@ process.on("SIGTERM", () => poller.stop());
 
 Compatibility:
 
-- The Prisma schema fragment ships two new additive models (`AlfizEpoch`, `AlfizEvent`). Merge and migrate as usual — no backfill, no seed. See the `@alfiz-auth/prisma` README.
+- The Prisma schema fragment ships two new additive models (`AlfizEpoch`, `AlfizEvent`). Merge and migrate as usual — no backfill, no seed. See the `@alfiz/prisma` README.
 - Multi-node deployments should already be passing a database advisory lock to `prismaDriver`; event appends serialize under the same lock.
 - Custom storage drivers keep compiling — the four event methods and `getRoles` are all optional. When `events.persist` is on and the driver doesn't implement the event methods, construction fails loudly rather than silently degrading.
 
@@ -167,8 +167,8 @@ The returned `AlfizApplication` exposes the full provider surface. Key method gr
 <CodeGroup>
 
 ```ts Development (memory driver)
-import { defineCatalog, createAlfizClient, parentPointerResolver } from "@alfiz-auth/core";
-import { createApplication, memoryDriver } from "@alfiz-auth/application";
+import { defineCatalog, createAlfizClient, parentPointerResolver } from "@alfiz/core";
+import { createApplication, memoryDriver } from "@alfiz/application";
 
 export const catalog = defineCatalog({
   namespaces: ["docs"],
@@ -194,9 +194,9 @@ export const alfiz = createAlfizClient({ catalog, provider: app });
 ```
 
 ```ts Production (Prisma driver)
-import { defineCatalog, createAlfizClient, parentPointerResolver } from "@alfiz-auth/core";
-import { createApplication } from "@alfiz-auth/application";
-import { prismaDriver } from "@alfiz-auth/prisma";
+import { defineCatalog, createAlfizClient, parentPointerResolver } from "@alfiz/core";
+import { createApplication } from "@alfiz/application";
+import { prismaDriver } from "@alfiz/prisma";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();

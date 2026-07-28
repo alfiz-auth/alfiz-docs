@@ -11,7 +11,7 @@ Every grant row carries a scope — the resource or level at which that grant ap
 The global scope is the string constant `"*"`. A grant with no `scope` field — or one explicitly set to `"*"` — applies everywhere:
 
 ```ts
-import { GLOBAL_SCOPE } from "@alfiz-auth/core";
+import { GLOBAL_SCOPE } from "@alfiz/core";
 // GLOBAL_SCOPE === "*"
 ```
 
@@ -22,7 +22,7 @@ Because `*` is present in every object closure, a global grant satisfies any sco
 A scope instance id takes the form `<scopeType>:<instanceId>` — for example, `docs.doc:123` or `docs.folder:9`. The scope type is a dot-separated key that matches a declaration in the catalog; the instance id is an opaque string from your database.
 
 ```ts
-import { scopeId, parseScopeId } from "@alfiz-auth/core";
+import { scopeId, parseScopeId } from "@alfiz/core";
 
 scopeId("docs.doc", "123")     // "docs.doc:123"
 parseScopeId("docs.doc:123")   // { type: "docs.doc", instanceId: "123" }
@@ -43,8 +43,8 @@ type AncestryResolver = (scope: ScopeId) => ScopeId[] | Promise<ScopeId[]>;
 The resolver must return the **ancestor chain** of the given scope, ordered nearest-first, ending at the global scope `*`. The chain excludes the scope itself. You supply this to the Application at construction time:
 
 ```ts
-import { createApplication } from "@alfiz-auth/application";
-import { parentPointerResolver } from "@alfiz-auth/core";
+import { createApplication } from "@alfiz/application";
+import { parentPointerResolver } from "@alfiz/core";
 
 const app = createApplication({
   catalog,
@@ -56,7 +56,7 @@ const app = createApplication({
 The `parentPointerResolver` helper wraps a synchronous parent-pointer lookup into a conforming resolver. It walks up the parent chain breadth-first, deduplicates, and guarantees that `*` appears last. It handles both single-parent and multi-parent hierarchies:
 
 ```ts
-import { parentPointerResolver } from "@alfiz-auth/core";
+import { parentPointerResolver } from "@alfiz/core";
 
 // Single-parent: return one parent id or null
 const resolver = parentPointerResolver((scope) => {
@@ -116,7 +116,7 @@ const { granted, revoked } = await alfiz.grantedScopes(
 Then use `planListing` to turn the granted/revoked sets into an actionable plan:
 
 ```ts
-import { planListing } from "@alfiz-auth/core";
+import { planListing } from "@alfiz/core";
 
 const plan = planListing({ granted, revoked });
 // { mode: "all" }
@@ -130,7 +130,7 @@ const plan = planListing({ granted, revoked });
 If your resource table stores ancestry in a materialized path column (e.g. `/docs.folder:2/docs.folder:9/docs.doc:123/`), use the `matPathCondition` helper to generate the SQL fragment:
 
 ```ts
-import { matPathCondition } from "@alfiz-auth/core";
+import { matPathCondition } from "@alfiz/core";
 
 const { sql, params } = matPathCondition(
   [...plan.include],
@@ -143,7 +143,7 @@ const { sql, params } = matPathCondition(
 For Prisma users, `prismaMatPathWhere` produces a `where` object directly:
 
 ```ts
-import { prismaMatPathWhere } from "@alfiz-auth/core";
+import { prismaMatPathWhere } from "@alfiz/core";
 
 const where = prismaMatPathWhere([...plan.include], {
   pathField: "ancestryPath",
@@ -156,7 +156,7 @@ const where = prismaMatPathWhere([...plan.include], {
 If your resource table uses a closure table (one row per ancestor–descendant pair), use `closureTableCondition`:
 
 ```ts
-import { closureTableCondition } from "@alfiz-auth/core";
+import { closureTableCondition } from "@alfiz/core";
 
 const { sql, params } = closureTableCondition(
   [...plan.include],

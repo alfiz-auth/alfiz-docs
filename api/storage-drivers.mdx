@@ -9,7 +9,7 @@ The storage seam is the single interface a database must satisfy to host an Alfi
 ## The `StorageDriver` interface
 
 ```ts
-import type { StorageDriver } from "@alfiz-auth/application";
+import type { StorageDriver } from "@alfiz/application";
 ```
 
 A `StorageDriver` is a flat bundle of async methods organized into eight areas:
@@ -43,11 +43,11 @@ Both bundled drivers (`memoryDriver` and `prismaDriver`) implement every optiona
 The in-memory driver is the reference implementation of the storage seam. It is complete and correct — every Application feature works with it — making it the natural choice for unit tests, local development, and ephemeral deployments.
 
 ```ts
-import { memoryDriver } from "@alfiz-auth/application";
+import { memoryDriver } from "@alfiz/application";
 ```
 
 ```ts
-import { createApplication, memoryDriver } from "@alfiz-auth/application";
+import { createApplication, memoryDriver } from "@alfiz/application";
 
 const app = createApplication({
   catalog,
@@ -65,8 +65,8 @@ Each call to `memoryDriver()` returns an independent, empty store. Two calls pro
 
 ```ts
 import { describe, it, expect, beforeEach } from "vitest";
-import { createApplication, memoryDriver } from "@alfiz-auth/application";
-import { createAlfizClient } from "@alfiz-auth/core";
+import { createApplication, memoryDriver } from "@alfiz/application";
+import { createAlfizClient } from "@alfiz/core";
 import { catalog } from "./alfiz.js";
 
 describe("document access", () => {
@@ -98,20 +98,20 @@ describe("document access", () => {
 
 ## `prismaDriver`
 
-The Prisma driver is the production driver shipped in `@alfiz-auth/prisma`. It maps the `StorageDriver` interface onto a generated Prisma client without taking `@prisma/client` as a hard dependency — it operates against a structural delegate interface instead.
+The Prisma driver is the production driver shipped in `@alfiz/prisma`. It maps the `StorageDriver` interface onto a generated Prisma client without taking `@prisma/client` as a hard dependency — it operates against a structural delegate interface instead.
 
 ### Installation
 
 ```bash
-npm install @alfiz-auth/prisma
+npm install @alfiz/prisma
 ```
 
-`@prisma/client` must be in your own dependencies and generated from a schema that includes the Alfiz models. `@alfiz-auth/prisma` does not depend on it directly.
+`@prisma/client` must be in your own dependencies and generated from a schema that includes the Alfiz models. `@alfiz/prisma` does not depend on it directly.
 
 ### Creating a Prisma driver
 
 ```ts
-import { prismaDriver } from "@alfiz-auth/prisma";
+import { prismaDriver } from "@alfiz/prisma";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
@@ -162,7 +162,7 @@ interface AlfizPrismaDelegates {
 A generated `PrismaClient` for a schema containing the Alfiz models satisfies this interface automatically. You can also pass a hand-rolled mock for testing:
 
 ```ts
-import type { AlfizPrismaDelegates } from "@alfiz-auth/prisma";
+import type { AlfizPrismaDelegates } from "@alfiz/prisma";
 
 const mockDb: AlfizPrismaDelegates = {
   alfizGrant: { /* ... */ },
@@ -299,10 +299,10 @@ The default in-process mutex inside both the memory driver and the Prisma driver
 
 ## Implementing a custom driver
 
-If you use a database without a Prisma provider — DynamoDB, a raw SQL driver, MongoDB, or similar — implement `StorageDriver` directly. The interface is in `@alfiz-auth/application`:
+If you use a database without a Prisma provider — DynamoDB, a raw SQL driver, MongoDB, or similar — implement `StorageDriver` directly. The interface is in `@alfiz/application`:
 
 ```ts
-import type { StorageDriver } from "@alfiz-auth/application";
+import type { StorageDriver } from "@alfiz/application";
 
 export function myCustomDriver(): StorageDriver {
   return {

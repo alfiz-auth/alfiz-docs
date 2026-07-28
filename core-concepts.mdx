@@ -13,7 +13,7 @@ Alfiz is not a general-purpose policy engine. It ships with strong, fixed opinio
 The catalog is your application's single source of truth for every permission key, every scope type, and the relationships between them. You declare it explicitly in TypeScript using `defineCatalog` — nothing is inferred from call sites, and nothing is configured in a dashboard.
 
 ```ts
-import { defineCatalog } from "@alfiz-auth/core";
+import { defineCatalog } from "@alfiz/core";
 
 export const catalog = defineCatalog({
   namespaces: ["docs"],
@@ -31,11 +31,11 @@ export const catalog = defineCatalog({
 
 Permissions are declared by their **full dotted key** — the same notation every check, grant, role pattern, and navigation entry uses. A key at a call site greps straight back to its declaration, and the group levels (`docs`, `docs.files`) are inferred from the keys rather than declared.
 
-`defineCatalog` throws at boot if the catalog is structurally invalid (bad segments, undeclared scope types, a key that is also a group path). That means a broken catalog fails fast, before your server accepts any requests. Conventions — key depth, the naming floor, nav wiring — are reported by `lintCatalog` and failed by `@alfiz-auth/verify` in CI instead, so house style is a setting rather than a boot-time law.
+`defineCatalog` throws at boot if the catalog is structurally invalid (bad segments, undeclared scope types, a key that is also a group path). That means a broken catalog fails fast, before your server accepts any requests. Conventions — key depth, the naming floor, nav wiring — are reported by `lintCatalog` and failed by `@alfiz/verify` in CI instead, so house style is a setting rather than a boot-time law.
 
 **Template-literal types** flow from the catalog literal to every call site. The type `KeyOf<typeof catalog>` resolves to the union `"docs.files.read" | "docs.files.update_file" | "docs.files.delete"` — plus the built-in `alfiz_internal.*` keys. Pass a misspelled key to `alfiz.can()` and TypeScript reports a compile-time error. The runtime evaluator also verifies every key before evaluating it, which closes the hole where a runtime-string path could pass for anyone holding a covering wildcard.
 
-The **naming floor** is enforced at build time by `@alfiz-auth/verify`: every tab must have at least one `read` permission; actions follow `<verb>_<noun>` in snake_case; destructive actions (`delete`, `delete_*`) stand alone as their own leaf; and keys match the catalog's declared depth convention (three levels by default).
+The **naming floor** is enforced at build time by `@alfiz/verify`: every tab must have at least one `read` permission; actions follow `<verb>_<noun>` in snake_case; destructive actions (`delete`, `delete_*`) stand alone as their own leaf; and keys match the catalog's declared depth convention (three levels by default).
 
 ---
 

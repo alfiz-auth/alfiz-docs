@@ -4,7 +4,7 @@ sidebarTitle: "Catalog Types"
 description: "Reference for CatalogInput, PermissionLeafInput, GroupInput, ScopeTypeInput, NavItemInput, and the derived KeyOf and PatternOf types used throughout Alfiz."
 ---
 
-This page covers every TypeScript type used when declaring a catalog with `defineCatalog`. All input types are imported from `@alfiz-auth/core`.
+This page covers every TypeScript type used when declaring a catalog with `defineCatalog`. All input types are imported from `@alfiz/core`.
 
 ```ts
 import type {
@@ -15,7 +15,7 @@ import type {
   GroupInput,
   ScopeTypeInput,
   NavItemInput,
-} from "@alfiz-auth/core";
+} from "@alfiz/core";
 ```
 
 ## `CatalogInput`
@@ -238,7 +238,7 @@ Navigation items wire permission keys to sidebar entries. Each item's `permissio
 All concrete permission keys of the catalog as a TypeScript union:
 
 ```ts
-import type { KeyOf } from "@alfiz-auth/core";
+import type { KeyOf } from "@alfiz/core";
 import { catalog } from "./alfiz.js";
 
 type AppKey = KeyOf<typeof catalog>;
@@ -250,7 +250,7 @@ type AppKey = KeyOf<typeof catalog>;
 All valid patterns — concrete keys, group wildcards, and the bare `"*"`:
 
 ```ts
-import type { PatternOf } from "@alfiz-auth/core";
+import type { PatternOf } from "@alfiz/core";
 import { catalog } from "./alfiz.js";
 
 type AppPattern = PatternOf<typeof catalog>;
@@ -262,7 +262,7 @@ type AppPattern = PatternOf<typeof catalog>;
 The session type for a catalog (see [Sessions](/api/session)):
 
 ```ts
-import type { SessionOf } from "@alfiz-auth/application";
+import type { SessionOf } from "@alfiz/application";
 import { catalog } from "./alfiz.js";
 
 type AppSession = SessionOf<typeof catalog>;
@@ -274,7 +274,7 @@ type AppSession = SessionOf<typeof catalog>;
 The union of all `alfiz_internal.*` permission keys:
 
 ```ts
-import type { AlfizInternalKey } from "@alfiz-auth/core";
+import type { AlfizInternalKey } from "@alfiz/core";
 // → "alfiz_internal.access.read"
 //   | "alfiz_internal.access.manage_roles"
 //   | "alfiz_internal.access.manage_groups"

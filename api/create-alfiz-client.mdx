@@ -17,7 +17,7 @@ function createAlfizClient<Cat extends AnyCatalog>(
 The return type `AlfizClient<Cat["$key"], Cat["$pattern"]>` is equivalent to the `ClientOf<Cat>` type alias, which exists precisely so you can annotate a stored client without hand-writing the type parameters.
 
 ```typescript
-import { type ClientOf } from "@alfiz-auth/core";
+import { type ClientOf } from "@alfiz/core";
 // ClientOf<typeof catalog> ≡ AlfizClient<KeyOf<typeof catalog>, PatternOf<typeof catalog>>
 ```
 
@@ -168,7 +168,7 @@ import { type ClientOf } from "@alfiz-auth/core";
 When you attach the client to a framework context object or export it from a module, annotate it with `ClientOf` rather than spelling out the full generic:
 
 ```typescript
-import { type ClientOf } from "@alfiz-auth/core";
+import { type ClientOf } from "@alfiz/core";
 import { catalog } from "./catalog.js";
 
 // ✅ Clean annotation for context objects
@@ -188,8 +188,8 @@ Unsubscribes from the provider's invalidation stream and clears the subject and 
 ## Complete initialization example
 
 ```typescript
-import { defineCatalog, group, createAlfizClient } from "@alfiz-auth/core";
-import { AlfizApplication } from "@alfiz-auth/application";
+import { defineCatalog, group, createAlfizClient } from "@alfiz/core";
+import { AlfizApplication } from "@alfiz/application";
 
 // 1. Define the catalog (once, at the module level).
 export const catalog = defineCatalog({
@@ -240,8 +240,8 @@ The in-process invalidation stream only reaches the process that wrote the event
 Turn on the log on the Application, then set a revalidation window on the client:
 
 ```typescript
-import { createApplication } from "@alfiz-auth/application";
-import { createAlfizClient, respCacheStore } from "@alfiz-auth/core";
+import { createApplication } from "@alfiz/application";
+import { createAlfizClient, respCacheStore } from "@alfiz/core";
 import { createClient } from "redis";
 
 const app = createApplication({

@@ -44,7 +44,7 @@ Three levels is the default **convention**, checked by `alfiz-verify` rather tha
 `defineCatalog` accepts a `CatalogInput` object and returns a typed `Catalog<C>` instance. It throws a `CatalogError` at boot when the input is structurally invalid — a broken catalog fails immediately, not at the first check.
 
 ```ts
-import { defineCatalog } from "@alfiz-auth/core";
+import { defineCatalog } from "@alfiz/core";
 
 export const catalog = defineCatalog({
   namespaces: ["docs"],
@@ -102,7 +102,7 @@ await alfiz.canAny(actor, "docs.typo.*");           // ✅ TypeScript error
 Two utility types let you reference these unions by name without re-declaring them:
 
 ```ts
-import type { KeyOf, PatternOf } from "@alfiz-auth/core";
+import type { KeyOf, PatternOf } from "@alfiz/core";
 
 type MyPermissionKey     = KeyOf<typeof catalog>;
 type MyPermissionPattern = PatternOf<typeof catalog>;
