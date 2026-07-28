@@ -133,6 +133,14 @@ const alfiz = createAlfizClient({
 });
 ```
 
+Every usage read carries a per-bucket series alongside its totals, so "how often is this permission checked" plots without a second query:
+
+```ts
+const [usage] = await app.getPermissionUsage({ ids: ["docs.files.delete"] });
+usage.gateAllow;                        // 1,284 over the window
+usage.buckets.map((b) => b.gateAllow);  // day by day
+```
+
 Then, wherever you render a **Revoke** button:
 
 ```ts

@@ -231,10 +231,19 @@ interface PermissionUsage {
   visibilityDeny: number;
   windowStart: number;
   windowEnd: number;
+  buckets: Array<{
+    bucket: number;
+    gateAllow: number;
+    gateDeny: number;
+    visibilityAllow: number;
+    visibilityDeny: number;
+  }>;
 }
 ```
 
 Gate and visibility counts are reported separately and never summed — forty thousand renders and twelve actions are different numbers.
+
+`buckets` (0.5.1) is the same per-bucket series `RowUsage` carries: the totals are exactly that list summed, so one read gives you both the headline number and the shape of it over time. Buckets with no traffic are absent rather than zero-filled — you know the window and the granularity, so a dense axis is yours to fill.
 
 ## `revocationSafeguard(usage, options?)`
 
