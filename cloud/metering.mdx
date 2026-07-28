@@ -26,7 +26,7 @@ Every `can()` runs in-process against your own database. Alfiz Cloud is not a de
 Pricing follows from it. Alfiz Cloud bills for the work it performs — the dimensions above — and **check volume is not a billing dimension and will not become one.**
 
 <Note>
-  [Permission metrics](/enforcement/metrics) are a different feature with a confusingly similar name. Metering counts work Alfiz Cloud performed; metrics count checks *your application* performed. Metrics stay where they are produced — in your process, your metrics stack, and your database. Alfiz Cloud never receives them and cannot bill on them.
+  [Permission metrics](/enforcement/metrics) are a different feature with a confusingly similar name. Metering counts work Alfiz Cloud performed; metrics count checks *your application* performed. Metrics are stored by the application that produced them, in its own database. The hosted dashboard can *read* them for your own administrators — the same relayed read as every other admin surface — but Alfiz Cloud stores no copy and never bills on them.
 </Note>
 
 ## Reading your meters

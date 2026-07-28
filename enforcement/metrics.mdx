@@ -179,7 +179,7 @@ Every part of this is built so that a metrics failure is a lost count and never 
 
 ## Where the data lives
 
-Metrics stay in the deployment that produced them. The client hands batches to your own Application, and nothing carries them further — Alfiz Cloud never receives them, and check volume is not a billing dimension in any tier. If you want the numbers somewhere central, the observer stream is how you send them there, to the destination you choose.
+Metrics stay in the deployment that produced them. The client hands batches to your own Application, and nothing carries them further: there is no uplink and no central metrics store. If you use the hosted dashboard, it can *read* your numbers for your own administrators — the same relayed read as every other admin surface — but Alfiz Cloud keeps no copy, and check volume is not a billing dimension in any tier. If you want the numbers somewhere central, the observer stream is how you send them there, to the destination you choose.
 
 ## Next steps
 
