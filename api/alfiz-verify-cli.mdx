@@ -20,9 +20,33 @@ alfiz-verify [--config <path>]
 
 By default, `alfiz-verify` reads `alfiz-verify.config.json` in the current working directory. Pass `--config <path>` to use a different location.
 
+## The `codegen` subcommand
+
+```bash
+alfiz-verify codegen --catalog <document.json> [--out <file>] [--prefix <Name>]
+```
+
+Emits derived key, pattern, and scope-id type unions from a published catalog document, as a dependency-free `.ts` module. Without `--out` it writes to stdout. `--prefix` names the emitted aliases (`<Prefix>Key`, `<Prefix>Pattern`, `<Prefix>ScopeType`, `<Prefix>ScopeId`); it defaults to `Alfiz`.
+
+`defineCatalog` derives those unions from your catalog *literal*, so code importing the source module already has them. This is for everything that consumes the published **document** instead — a document is data, not a literal, so its keys reach the type system only through codegen:
+
+```bash
+# Your own catalog, consumed from another repo or a generated client
+alfiz-verify codegen --catalog alfiz-catalog.json --out alfiz.gen.ts
+```
+
+```ts
+import { catalogFromDocument } from "@alfiz/core";
+import type { AlfizKey, AlfizPattern, AlfizScopeId } from "./alfiz.gen.js";
+
+const catalog = catalogFromDocument<AlfizKey, AlfizPattern, AlfizScopeId>(doc);
+```
+
+It is also how a wildcard [import](/catalog/imports) closes its key union — generate from the namespace owner's document, then pin it with `importedKeys<ZoomKey>({ ... })`. Members are sorted, so regenerating diffs exactly the catalog change. A malformed document fails here, loudly, rather than emitting types from garbage.
+
 ## What it checks
 
-`alfiz-verify` runs four categories of checks on every scan:
+`alfiz-verify` runs five categories of checks on every scan:
 
 ### 1. Typed key validation
 
@@ -63,6 +87,17 @@ Convention violations detected by running `lintCatalog` on the loaded catalog do
 ⚠ [catalog] <catalog>:0 — docs.admin.ManageBilling: actions are named `<verb>_<noun>` in snake_case
 ✖ [catalog] <catalog>:0 — docs.doc: requestable without a resolvable policy: declare at least one approval stage
 ```
+
+### 5. Import validation
+
+Permissions from a namespace your catalog neither owns nor [imports](/catalog/imports) are reported as **implicit imports** — an error when no import source is configured, a warning when one is. A reach beyond what an import *does* cover is always an error, with a did-you-mean drawn from the namespace owner's published document:
+
+```
+✖ [unknown-import] src/actions/meet.ts:8 — "zoom.hostt" is not in the catalog (typo, or an undeclared key) — did you mean "zoom.host"?
+⚠ [implicit-import] src/actions/pay.ts:11 — "stripe.charges.read" is in namespace "stripe", which this catalog neither owns nor imports — declare it: imports: { stripe: { permissions: { "stripe.charges.read": true } } }
+```
+
+Configure the severity with [`importSource` and `implicitImports`](/api/verify-config), and point the CLI at your import manifest so it knows what you legitimately reference. Verification is offline and deterministic: it never fetches a catalog to grade your code.
 
 ## Emitting the catalog
 

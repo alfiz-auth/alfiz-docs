@@ -13,7 +13,7 @@ The catalog is not an enum of strings. It is a structured description of four th
 - **Permissions** — every leaf action and read your application exposes, organized into named groups.
 - **Scope types** — the resource hierarchy your permissions apply to (folders, documents, projects, or nothing at all for flat apps).
 - **Navigation entries** — the menu structure your UI renders, wired to permission patterns so items hide automatically for users who hold nothing under them.
-- **Namespaces** — the ownership prefixes that scope every key to your application, preventing collisions when multiple permission catalogs are composed together.
+- **Namespaces** — the ownership prefixes that scope every key to your application, preventing collisions when multiple permission catalogs are composed together. Permissions your application references but does *not* own — from Alfiz Cloud or another application — are declared separately, as [imports](/catalog/imports).
 
 None of this is inferred from call sites. Nothing is configured in a dashboard. Every structural fact is in code, at the top of your authorization module, readable by any engineer and provable by CI.
 

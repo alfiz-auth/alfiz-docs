@@ -1,0 +1,213 @@
+---
+title: "Importing Permissions From Another Application"
+sidebarTitle: "Imports"
+description: "Declare the permissions your application references but does not own — from Alfiz Cloud or a federated application — and keep the same typed keys, verified call sites, and grants you have for your own."
+---
+
+Your catalog declares what your application owns. Sometimes it also needs to *reference* permissions it does not own: a connector's capabilities, or another application's keys that your roles bundle alongside your own.
+
+`namespaces` and `imports` are the two halves of that:
+
+- **`namespaces`** — prefixes you own. You define these keys, and you publish them.
+- **`imports`** — prefixes you reference. Another application defines them; you name the slice you interface with, and wire it to your own resources.
+
+Both live in the same catalog module, in code, for the same reason everything else does.
+
+```ts src/authz/catalog.ts
+import { defineCatalog } from "@alfiz/core";
+import zoomDoc from "./zoom.catalog.json" with { type: "json" };
+
+export const catalog = defineCatalog({
+  namespaces: ["docs"],
+  permissions: {
+    "docs.files.read": { scopes: ["docs.folder", "docs.doc"] },
+    "docs.files.share": { scopes: ["docs.folder", "docs.doc"] },
+  },
+  scopeTypes: {
+    "docs.folder": { parent: "docs.folder" },
+    "docs.doc": { parent: "docs.folder" },
+  },
+  imports: {
+    zoom: {
+      from: "registry:zoom@^3",
+      document: zoomDoc,
+      scopes: ["docs.folder"],
+      permissions: { "zoom.host": true },
+    },
+  },
+});
+```
+
+From here the catalog behaves as it always does. `zoom.host` is a typed key, `alfiz-verify` checks call sites that use it, and a role can bundle it with your own:
+
+```ts
+await app.createRole({
+  name: "Project Lead",
+  patterns: ["docs.files.*", "zoom.host"],
+});
+```
+
+## Attach the published document
+
+An import resolves against the namespace owner's published catalog. Fetch it in CI and commit it, exactly as you already commit the output of `catalog.toDocument()`:
+
+```bash
+curl -H "authorization: Bearer $ALFIZ_ADMIN_KEY" \
+  "https://alfiz.dev/api/v1/orgs/acme/registry/zoom/document" > src/authz/zoom.catalog.json
+```
+
+Attaching it is the recommended pattern, and the difference is concrete.
+
+| | With the document | Without it |
+|---|---|---|
+| `imports: { zoom: { permissions: { "zoom.meetings.*": true } } }` | expands to the published keys | stays an opaque **region** |
+| `can(user, "zoom.meetings.reed")` | throws — the catalog knows the real keys | evaluated; the typo is admitted |
+| `canAny(user, "zoom.meetings.*")` | exact | approximate, fail-closed |
+| A pattern the owner no longer publishes | **build error** | unnoticed |
+| Permission tree | renders each key | renders one selectable unit |
+
+A region is not broken — it is grantable, checkable, and storable — but it is an approximation, and every approximation errs toward showing less. A revoke overlapping any part of a region suppresses the whole region for visibility checks.
+
+If you must import without a document, `strict: true` closes the admission half: the wildcard still declares grantable vocabulary, but `can()` on a key you cannot name throws rather than being evaluated.
+
+<Warning>
+An import declares specific keys or subtree patterns — never the bare `*`. Importing everything from every namespace is not a contract.
+</Warning>
+
+## Scope types are yours, not theirs
+
+`scopes` on an import names scope types **your** catalog declares:
+
+```ts
+imports: {
+  zoom: {
+    scopes: ["docs.folder"],        // ✅ yours
+    permissions: { "zoom.host": true },
+  },
+}
+```
+
+Writing `scopes: ["zoom.meeting"]` is a build error even though Zoom really does declare that scope type. The reason is structural rather than stylistic: resolving a scope's ancestor chain requires the resolver of the application that owns the resource, and your application does not have Zoom's. Scope types you *can* resolve are the only ones a check here can honestly use.
+
+The default is `[]` — grantable at the global scope only. Wire an import to a scope type when your own resources are what narrows it, as `docs.folder` does above.
+
+## Import the narrowest thing that works
+
+A pattern broader than what you imported is rejected:
+
+```ts
+imports: { zoom: { permissions: { "zoom.meetings.*": true } } }
+```
+
+```ts
+await client.canAny(user, "zoom.meetings.breakout.*");  // ✅ narrower
+await client.canAny(user, "zoom.*");                    // ❌ broader than the import
+```
+
+`zoom.*` is a claim over a namespace you do not own, and forward-inclusive wildcards mean a stored one would absorb every future Zoom permission. Declaring the slice you interface with keeps that from happening by accident, and keeps a role editor from storing it.
+
+## Typed keys across the boundary
+
+A concrete import contributes its keys to `KeyOf<typeof catalog>` as literals, exactly like your own. A *wildcard* import cannot: a subtree you cannot enumerate has no closed key set, so it widens the union by one template member (`` `zoom.meetings.${string}` ``) — enough to autocomplete the prefix, not enough to catch a typo in the last segment.
+
+Close it with codegen, the same mechanism that types a published catalog anywhere else:
+
+```bash
+npx alfiz-verify codegen --catalog src/authz/zoom.catalog.json --prefix Zoom --out src/authz/zoom.gen.ts
+```
+
+```ts
+import { defineCatalog, importedKeys } from "@alfiz/core";
+import type { ZoomKey } from "./zoom.gen.js";
+
+imports: {
+  zoom: importedKeys<ZoomKey>({
+    document: zoomDoc,
+    permissions: { "zoom.meetings.*": true },
+  }),
+}
+```
+
+Now `zoom.meetings.reed` fails to compile.
+
+## Publishing: what you announce vs. what you consume
+
+`catalog.toDocument()` carries **owned vocabulary only**. Imported keys are never in it — publishing them would mean defining keys in a namespace you do not own, which the registry's namespace ownership exists to prevent.
+
+What you consume publishes separately:
+
+```ts
+await app.publishImports(catalog.toImportManifest(), {
+  kind: "admin",
+  actorUserId: "root",
+});
+```
+
+They are different contracts. The first is vocabulary others may write grants against; the second is a dependency others can only warn you about — and that warning is the point. The [drift report](/cloud/registry) can name roles and grants that reference a tombstoned key, but without manifests it can never name the *code* that still imports one.
+
+## Checking a permission you never declared
+
+A check for a permission in a namespace you neither own nor import is an **implicit import**. It is not a topology — it is a missing line — and both the verifier and the runtime say so.
+
+**In CI**, `alfiz-verify` reports the `implicit-import` rule:
+
+```text
+✖ [implicit-import] src/app/page.ts:11 — "stripe.charges.read" is in namespace "stripe",
+  which this catalog neither owns nor imports. If it belongs to another application,
+  declare it in the catalog's `imports`; otherwise it is a typo, and this check will
+  throw at runtime
+```
+
+The severity is an **error** when no import source is configured — an application that has never imported anything has no plausible source for a foreign key, so it is a typo — and a **warning** when one is, naming the declaration to paste. Configure it in `alfiz-verify.config.json`:
+
+```json alfiz-verify.config.json
+{
+  "catalog": "alfiz-catalog.json",
+  "importManifest": "alfiz-imports.json",
+  "imports": { "zoom": "src/authz/zoom.catalog.json" },
+  "importSource": "registry",
+  "implicitImports": "warn"
+}
+```
+
+Set `"implicitImports": "off"` to suppress the rule entirely, `"implicitImportAllow": ["stripe"]` to exempt one namespace, or suppress a single call site in place:
+
+```ts
+// alfiz-verify-ignore-next-line implicit-import legacy bridge, removed in Q3
+await client.can(user, legacyKey);
+```
+
+The rule name is required, so a per-line ignore can never quiet a finding it was not written for.
+
+**At runtime**, the check raises `UnknownPermissionError` unless you opt in:
+
+```ts
+const alfiz = createAlfizClient({
+  catalog,
+  provider: app,
+  externalPermissions: "warn",   // "error" (default) | "warn" | "allow"
+  onExternalPermission: (info) => logger.warn(info),
+});
+```
+
+Two things this never relaxes, whatever you set it to:
+
+- A permission under a namespace **you own**. Your catalog is enumerable, so an unknown key in it is a typo, and no configuration should hide one.
+- A permission outside an **enumerated import**. That import knows its own keys, so it can tell you which ones — and does, with a did-you-mean.
+
+And one thing it never does: **I/O**. There is no provider lookup, no lazy fetch, no registry call. Alfiz is never in your request path, and `snapshot.can()` is synchronous — which makes a fetch-on-unknown design structurally impossible there, not merely discouraged.
+
+<Note>
+A permission admitted this way is declared in no catalog, so a bare global `*` grant does not confer it — `*` means everything in the *declared* vocabulary. A grant naming the namespace (`zoom.*`, or narrower) confers it normally. Without that rule, a typo in a foreign namespace would pass for exactly the broadly-privileged users who review and test the gate, and deny everyone it was written for.
+</Note>
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="The catalog registry" icon="box-archive" href="/cloud/registry">
+    Where a namespace is published, versioned, and tombstoned.
+  </Card>
+  <Card title="Federated" icon="share-nodes" href="/growth/federated">
+    Cross-application roles, and what composes them.
+  </Card>
+</CardGroup>

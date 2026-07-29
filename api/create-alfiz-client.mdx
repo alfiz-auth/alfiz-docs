@@ -108,6 +108,18 @@ import { type ClientOf } from "@alfiz/core";
   either way.
 </ParamField>
 
+<ParamField body="externalPermissions" type='"error" | "warn" | "allow"' default='"error"'>
+  What to do with a check for a permission in a namespace this catalog neither owns nor [imports](/catalog/imports) — an *implicit* import. `"error"` throws `UnknownPermissionError`, as it always has; `"warn"` evaluates it and reports once per distinct permission; `"allow"` evaluates it silently.
+
+  Two cases never soften, whatever you set: a permission under a namespace you **own** (your catalog is enumerable, so an unknown key in it is a typo) and one outside an **enumerated** import (that import knows its own keys, and says which). And nothing here performs I/O — no provider lookup, no fetch. `snapshot.can()` is synchronous, which is what makes the decision structurally local rather than merely conventionally so.
+
+  A permission admitted this way is declared in no catalog, so a bare global `*` grant does not confer it; a grant naming the namespace does.
+</ParamField>
+
+<ParamField body="onExternalPermission" type="(info: ExternalPermissionInfo) => void">
+  Called once per distinct permission admitted under `externalPermissions: "warn"`. Replaces the default `console.warn`; point it at your logger or your metrics. Checks admitted this way also carry `externalPermission: true` in the metrics observation stream, so you can count what still needs declaring.
+</ParamField>
+
 <ParamField body="clock" type="() => number">
   Optional. A function that returns the current time as epoch milliseconds.
   Defaults to `Date.now`. Override this in tests to control grant expiry

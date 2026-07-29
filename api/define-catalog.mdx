@@ -24,6 +24,25 @@ function defineCatalog<const C extends CatalogInput>(input: C): Catalog<C>
   The namespaces your application owns — the first segment of every permission key it declares. The first entry is the primary namespace. Each must be a single valid segment (`[a-zA-Z][a-zA-Z0-9_]*`); `alfiz_internal` is reserved.
 
   Catalogs are federation-shaped from the first commit, so this is required even standalone, where it is locally redundant. Example: `["docs"]` produces keys like `docs.files.read`; a multi-project portal declares `["docs", "billing", "admin"]`.
+
+  This is what your application **owns**. Permissions it merely references belong in `imports`.
+</ParamField>
+
+<ParamField body="imports" type="Record<string, ImportInput>" optional>
+  Permissions your application references but does not own, keyed by the foreign namespace — from Alfiz Cloud or a federated application. See [Imports](/catalog/imports) for the full treatment.
+
+  ```ts
+  imports: {
+    zoom: {
+      from: "registry:zoom@^3",
+      document: zoomDoc,            // the owner's published catalog, committed
+      scopes: ["docs.folder"],      // YOUR scope types, never the owner's
+      permissions: { "zoom.host": true, "zoom.meetings.*": true },
+    },
+  }
+  ```
+
+  Each import declares specific keys or subtree patterns, never the bare `*`. Importing a namespace you own, declaring an entry outside the namespace it names, or wiring one to a scope type this catalog does not declare all throw `CatalogError`. With a `document` attached, an entry matching nothing the owner publishes throws too — the local half of drift detection.
 </ParamField>
 
 <ParamField body="permissions" type="PermissionsInput" required>

@@ -80,6 +80,48 @@ description: "alfiz-verify.config.json reference: catalog path, scan directories
   This is the build-time half of the service-principal security posture: `createServiceKeyShim` validates keys server-side; this guard ensures the key material can never be bundled into client JavaScript.
 </ParamField>
 
+<ParamField body="importManifest" type="string" optional>
+  Path to the emitted import manifest — the output of `catalog.toImportManifest()`. **Required if your catalog declares [imports](/catalog/imports)**: a catalog document carries owned vocabulary only, so without the manifest the verifier treats every imported key as foreign.
+
+  ```json
+  { "importManifest": "alfiz-imports.json" }
+  ```
+</ParamField>
+
+<ParamField body="imports" type="Record<string, string>" optional>
+  The namespace owners' published documents, keyed by namespace. Optional enrichment on top of `importManifest`: the manifest already names every imported key, so these only add display copy and sharpen did-you-mean suggestions.
+
+  ```json
+  { "imports": { "zoom": "src/authz/zoom.catalog.json" } }
+  ```
+</ParamField>
+
+<ParamField body="importSource" type='"registry" | "none"' optional>
+  Declares that a registry or Alfiz Cloud dashboard is wired up, which makes `implicit-import` a warning rather than an error. Defaults to `"registry"` when your catalog already declares imports.
+
+  This is **declared, never detected**. `alfiz-verify` is offline and deterministic by construction: no network call decides whether your build passes.
+
+  ```json
+  { "importSource": "registry" }
+  ```
+</ParamField>
+
+<ParamField body="implicitImports" type='"error" | "warn" | "off"' optional>
+  Overrides the `implicit-import` severity outright. Use `"off"` when foreign keys are an accepted, reviewed part of this codebase.
+
+  ```json
+  { "implicitImports": "off" }
+  ```
+</ParamField>
+
+<ParamField body="implicitImportAllow" type="string[]" optional>
+  Namespaces exempt from `implicit-import` entirely — narrower than turning the rule off.
+
+  ```json
+  { "implicitImportAllow": ["stripe", "zoom"] }
+  ```
+</ParamField>
+
 ## Complete example
 
 ```json

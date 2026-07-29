@@ -44,7 +44,8 @@
               "catalog/overview",
               "catalog/permissions",
               "catalog/scope-types",
-              "catalog/navigation-wiring"
+              "catalog/navigation-wiring",
+              "catalog/imports"
             ]
           },
           {

@@ -28,7 +28,7 @@ For instance-scoped grants — `docs.doc:123`, `billing.invoice:456` — the opp
 
 <CardGroup cols={2}>
   <Card title="Cross-namespace role composition" icon="arrows-merge">
-    Define a role like "Project Lead" that grants both `docs.files.*` and `zoom.host` in a single assignment. Cross-namespace composition requires the central catalog registry; it is not possible with independent applications.
+    Define a role like "Project Lead" that grants both `docs.files.*` and `zoom.host` in a single assignment. Cross-namespace composition requires the central catalog registry; it is not possible with independent applications. Each application declares the foreign slice it interfaces with as an [import](/catalog/imports), so those keys are typed and verified on its side too.
   </Card>
   <Card title="Catalog registry" icon="book-open" href="/cloud/registry">
     Each application's namespace is published as a versioned contract. The registry enforces namespace ownership (no application can define another's keys), tracks additions and tombstones, and makes published permission trees consumable across your organization.

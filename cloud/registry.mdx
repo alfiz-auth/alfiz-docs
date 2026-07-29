@@ -51,7 +51,24 @@ A consuming application can hold typed keys for a namespace it does not own. Exp
 ```bash
 curl -H "authorization: Bearer $ALFIZ_ADMIN_KEY" \
   "https://alfiz.dev/api/v1/orgs/acme/registry/zoom/document" > zoom.catalog.json
-npx alfiz-verify codegen zoom.catalog.json
+npx alfiz-verify codegen --catalog zoom.catalog.json --prefix Zoom --out zoom.gen.ts
 ```
 
 The generated types make cross-namespace references — a role bundling `docs.files.*` with `zoom.host` — compile-checked in the consuming codebase, exactly as local keys are.
+
+Commit that document and declare the slice you interface with as an [import](/catalog/imports). The consuming catalog then treats those keys as its own for typing, verification, and grants, while `toDocument()` keeps publishing only what you actually own.
+
+## What each application consumes
+
+The drift report above reads roles and grants. It cannot see **code** — an application whose catalog still imports a tombstoned key looks clean until its next deploy.
+
+Publishing the import manifest closes that gap. It is a separate artifact from the catalog on purpose: what you announce is vocabulary others may write grants against, what you consume is a dependency only others can warn you about.
+
+```ts
+await app.publishImports(catalog.toImportManifest(), provenance);
+```
+
+```text
+GET /api/v1/orgs/{org}/registry/drift
+→ "Application 'docs' imports zoom.breakout.manage, tombstoned 30 days ago."
+```
