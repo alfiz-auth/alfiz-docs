@@ -109,7 +109,7 @@ Groups are named bundles of subjects. You grant access to a group with the same 
 await app.createGrant({
   subject: "group:editors",
   pattern: "docs.files.update_file",
-  scope: "docs.folder:curriculum",
+  scope: "docs.folder:42",
   provenance: { kind: "admin", actorUserId: "root" },
 });
 ```

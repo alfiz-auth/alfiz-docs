@@ -177,6 +177,8 @@ Under federation, the `AccessRequest` shape is identical against every provider 
   <Step title="List your queue">
     Call `listApproverQueue(approverUserId)` to fetch every pending request the given user may currently decide, based on their role grants and position in the reporting hierarchy.
 
+    There is a third source of eligibility: an **administrative override**. A holder of `alfiz_internal.requests.decide_request` at the global scope may decide any stage, and those requests appear in their queue too. It is the escape hatch for a stage nobody can fill — a `named_approvers` stage whose role has no holders, or a `management` stage for a user with no manager.
+
     ```typescript
     const queue = await app.listApproverQueue("manager-uid");
     ```

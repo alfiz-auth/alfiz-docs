@@ -26,7 +26,11 @@ You supply an `ApprovalPolicyInput` wherever a requestability declaration expect
 
 ### Auto-approval predicates
 
-An `auto` stage evaluates a condition against the requester's subject closure — the same `can()` machinery that powers every check in Alfiz. There is no separate rules engine. If the predicate passes, the stage is recorded as auto-approved and the workflow immediately advances to the next stage. If it fails, the stage abstains — no decision is recorded — and the workflow still advances to the next stage. Auto stages accelerate workflows; they never block them.
+An `auto` stage evaluates a condition against the requester's subject closure — the same `can()` machinery that powers every check in Alfiz. There is no separate rules engine. If the predicate passes, the stage is recorded as auto-approved and the workflow immediately advances to the next stage. If it fails, the stage abstains — no decision is recorded — and the workflow advances to the next stage. Auto stages accelerate workflows; they never deny.
+
+<Warning>
+  With one exception: a failing auto stage that is the **last** stage has nothing to advance to. The request stays `pending` at a stage nobody can decide, and only the administrative override (`alfiz_internal.requests.decide_request`) can resolve it. Never end a policy with an `auto` stage — put a `named_approvers` or `management` stage after it.
+</Warning>
 
 ```typescript
 type AutoApprovalPredicate =

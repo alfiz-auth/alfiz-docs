@@ -161,7 +161,7 @@ A check for a permission in a namespace you neither own nor import is an **impli
   throw at runtime
 ```
 
-The severity is an **error** when no import source is configured — an application that has never imported anything has no plausible source for a foreign key, so it is a typo — and a **warning** when one is, naming the declaration to paste. Configure it in `alfiz-verify.config.json`:
+The severity is an **error** when no import source is configured — an application that has never imported anything has no plausible source for a foreign key, so it is a typo — and a **warning** when one is, naming the declaration to paste. You usually get the warning without configuring anything: `importSource` defaults to `"registry"` as soon as your catalog declares any import at all. Override it in `alfiz-verify.config.json`:
 
 ```json alfiz-verify.config.json
 {

@@ -55,7 +55,7 @@ const editorRole = await app.createRole(
 );
 ```
 
-Use `app.updateRole(roleId, input, provenance)` to rename or re-describe a role, or to change its patterns. Use `app.deleteRole(roleId, provenance)` to remove one.
+Use `app.updateRole(roleId, input, provenance)` to rename or re-describe a role, or to change its patterns. `app.deleteRole(roleId, provenance)` refuses while the role is still in use: it rejects with `code: "conflict"` naming the number of grants that confer it, and again for any pending request that references it. Remove the grants and decide or cancel the requests first.
 
 ### Assigning a role
 
@@ -65,7 +65,7 @@ A role grant is an ordinary grant row — the same `createGrant` call you use fo
 await app.createGrant({
   subject: "group:editors",
   roleId: "role_editor",
-  scope: "docs.folder:curriculum",
+  scope: "docs.folder:42",
   provenance: { kind: "admin", actorUserId: "root" },
 });
 ```
