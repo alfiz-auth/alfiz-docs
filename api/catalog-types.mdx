@@ -32,6 +32,22 @@ The top-level object passed to `defineCatalog`.
   The permissions, keyed by their full dotted key. Accepts a flat map, a single `group()` block, or an array mixing both — see [`PermissionsInput`](#permissionsinput) below. Group levels are inferred from the keys; nothing declares them.
 </ParamField>
 
+<ParamField body="imports" type="Record<string, ImportInput>" optional>
+  Permissions this application **references but does not own**, keyed by the foreign namespace — which must not be one this catalog owns. See [imported permissions](/catalog/imports).
+
+  ```ts
+  interface ImportInput {
+    from?: string;                       // provenance, e.g. "registry:zoom@^3"
+    document?: CatalogDocument;          // the owner's published catalog
+    scopes?: readonly ScopeType[];       // YOUR scope types, never theirs
+    permissions: ImportedPermissionsInput;
+    strict?: boolean;                    // close an undocumented wildcard
+  }
+  ```
+
+  Attaching `document` is the recommended shape: wildcards expand, `canAny` answers exactly, and a typo fails the build. Without it a wildcard is an **opaque region** — grantable and checkable, but approximated fail-closed wherever an answer would need expanding a pattern into keys. `strict: true` closes the admission half of an undocumented region.
+</ParamField>
+
 <ParamField body="groups" type="Record<string, GroupInput>" optional>
   Metadata for group paths not covered by a `group()` block — typically the project level. Purely optional decoration; it cannot bring a group into existence, since groups come from the keys.
 </ParamField>
@@ -128,7 +144,9 @@ type LeafInput = true | PermissionLeafInput;
 </ParamField>
 
 <ParamField body="impliedOnAncestors" type="boolean" default="false" optional>
-  Ancestor visibility (§7.5): when `true`, holding any grant of this leaf at a scope implies it on all ancestors of that scope. This enables the "a shared document shows its containing folder" pattern — a user granted access to `docs.doc:123` will also have `docs.files.read` at the folder that contains it. Off by default.
+  Ancestor visibility: when `true`, holding any grant of this leaf at a scope implies it on the **proper ancestors** of that scope. This enables the "a shared document shows its containing folder" pattern — a user granted access to `docs.doc:123` also passes `docs.files.read` at the folder that contains it. Off by default.
+
+  The implication deliberately stops short of the global scope: an unscoped `can(user, key)` is the *everywhere* question, and a grant at one document must never answer it. `explain()` reports an implied allow with `implied: true` and names the descendant grants in `impliedBy`, leaving `matchedGrants` empty — because nothing matched *at this scope*, which is what makes it implied.
 </ParamField>
 
 ---
@@ -183,7 +201,21 @@ A scope type is the static schema fact declaring a resource kind. Instances of t
   Declares that grants at instances of this scope type are requestable. When absent, access at this scope type cannot be requested.
 
   <ParamField body="requestable.prompts" type="readonly RequestPromptInput[]" optional>
-    Structured justification prompts shown on the request form. Each prompt has an `id`, `label`, and optional `required: boolean`.
+    Structured justification prompts shown on the request form.
+
+    ```ts
+    interface RequestPromptInput {
+      id: string;
+      label: string;
+      kind?: "text" | "select";     // default "text"
+      options?: readonly string[];  // for "select" prompts
+      required?: boolean;
+    }
+    ```
+
+    `submitRequest` validates answers against these prompts server-side —
+    required prompts must be answered, and a `select` answer must be one of
+    the declared `options` — so a hand-rolled form cannot skip one.
   </ParamField>
 
   <ParamField body="requestable.maxDurationMs" type="number" optional>
@@ -199,11 +231,24 @@ A scope type is the static schema fact declaring a resource kind. Instances of t
 
     ```ts
     interface ApprovalPolicyInput {
-      stages: ApprovalStage[];
+      stages: readonly ApprovalStage[];
     }
+
+    type ApprovalStage =
+      | { kind: "auto"; predicate: AutoApprovalPredicate }
+      | { kind: "named_approvers"; roleId: string }
+      | { kind: "management"; layers?: number };  // 1 = direct manager
     ```
 
-    Stage kinds include `"self"` (auto-approved), `"management"` (manager approval chain, with configurable `layers`), and explicit approver lists.
+    `ApprovalStage` is a closed union of exactly those three kinds. See
+    [approval policies](/requests/approval-policies) for the four
+    `AutoApprovalPredicate` shapes.
+
+    <Note>
+      A **role** declares its requestability differently: `RoleInput.requestable`
+      carries `stages` directly, with no enclosing `policy` key. Scope types nest
+      theirs under `policy`.
+    </Note>
   </ParamField>
 </ParamField>
 
@@ -336,9 +381,9 @@ import type { AlfizInternalKey } from "@alfiz/core";
 
 ---
 
-## `ALFIZ_INTERNAL_PROJECT`
+## `ALFIZ_INTERNAL_BLOCKS`
 
-The built-in administration project merged into every catalog where `includeAlfizInternal !== false`. Its four tab groups and their permission leaves are:
+The built-in administration blocks merged into every catalog where `includeAlfizInternal !== false`, exported as a readonly array of four `group()` blocks. Their permission leaves are:
 
 ### `alfiz_internal.access`
 

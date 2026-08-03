@@ -45,7 +45,7 @@ description: "alfiz-verify.config.json reference: catalog path, scan directories
 </ParamField>
 
 <ParamField body="visibilityNames" type="string[]" optional>
-  Additional function names to treat as visibility affordances, **added to** the built-in defaults (`canAny`, `requireAny`). Visibility affordances count toward key coverage but produce an error when used as a gate in a server file.
+  Additional function names to treat as visibility affordances, **added to** the built-in defaults (`canAny`, `requireAny`, `holds`). Visibility affordances count toward key coverage but produce an error when used as a gate in a server file.
 
   ```json
   { "visibilityNames": ["showIfAny", "hiddenUnless"] }

@@ -84,7 +84,7 @@ export interface PermissionLeafInput {
 </ParamField>
 
 <ParamField body="impliedOnAncestors" type="boolean" default="false">
-  When `true`, holding any grant of this permission at a scope implies it on all ancestor scopes of that scope. Use this for the "shared doc shows its containing folder" pattern — a user who can read a specific document automatically sees the folder containing it. Off by default.
+  When `true`, holding any grant of this permission at a scope implies it on the **proper ancestors** of that scope — never on the global scope, so an unscoped `can()` is unaffected. Use this for the "shared doc shows its containing folder" pattern: a user who can read a specific document automatically sees the folder containing it. Off by default.
 </ParamField>
 
 ## The naming floor
@@ -92,7 +92,7 @@ export interface PermissionLeafInput {
 Every group that declares permissions must meet the naming floor, enforced by `alfiz-verify`:
 
 1. **Every tab needs at least one `read` permission.** Name it `read` for general access to the section, or `read_<thing>` for a more specific read (e.g. `read_history`, `read_exports`).
-2. **Action permissions are named `<verb>_<noun>`** in `snake_case` — `invite_user`, `export_report`, `publish_file`. A short list of common standalone verbs (`create`, `update`, `delete`, `manage`, `approve`, `publish`, `archive`, `export`, `import`, `issue`, `revoke`, `view_as`) are allowed without a noun.
+2. **Action permissions are named `<verb>_<noun>`** in `snake_case` — `invite_user`, `export_report`, `publish_file`. A short list of common standalone verbs (`create`, `update`, `delete`, `manage`, `approve`, `publish`, `archive`, `export`, `import`, `issue`, `revoke`, `view_as`) are allowed without a noun. Anything else — a single-word action like `share` — is a `lintCatalog` **warning**, not an error, so it does not fail the build; rename it `share_file` if you want a clean run.
 3. **Destructive actions stand alone.** Don't bundle `delete` with `update` in the same leaf — give them separate declarations so you can grant one without the other and so enforcement can apply `can.fresh()` selectively.
 
 Keys are always written **in full**, even inside a `group()` block. There is no

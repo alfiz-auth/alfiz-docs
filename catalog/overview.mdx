@@ -122,6 +122,10 @@ node --experimental-strip-types -e \
   > alfiz-catalog.json
 ```
 
+<Note>
+`--experimental-strip-types` needs **Node 22.6 or newer**. On an older runtime, compile first and run the emitter against the built output.
+</Note>
+
 `toDocument()` returns a `CatalogDocument` — a serializable snapshot of the catalog — which `alfiz-verify` reads to check coverage, gate shapes, and naming conventions. Add this step to your CI pipeline before running the verifier.
 
 <Note>

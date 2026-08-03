@@ -79,7 +79,7 @@ Every string literal passed to a gate function (`can`, `require`, `gateAction`, 
 Warnings on catalog leaves that no gate or nav item references. Errors on exported async functions in server files that contain no gate call at all:
 
 ```
-⚠ [unreferenced-leaf] <catalog>:0 — "docs.admin.manage_billing" is declared but referenced by no gate or nav item — dead permission, or missing enforcement?
+⚠ [unreferenced-leaf] <catalog> — "docs.admin.manage_billing" is declared but referenced by no gate or nav item — dead permission, or missing enforcement?
 ✖ [ungated-action] src/actions/billing.ts:8 — exported server action "updatePaymentMethod" contains no gate — every action gates on a concrete permission before doing work
 ```
 
@@ -100,9 +100,9 @@ Errors when a visibility affordance — `canAny`, `requireAny`, or `holds` — i
 Convention violations detected by running `lintCatalog` on the loaded catalog document:
 
 ```
-✖ [catalog] <catalog>:0 — docs.files: below the naming floor: every tab defines at least one read permission (`read` or `read_<thing>`)
-⚠ [catalog] <catalog>:0 — docs.admin.ManageBilling: actions are named `<verb>_<noun>` in snake_case
-✖ [catalog] <catalog>:0 — docs.doc: requestable without a resolvable policy: declare at least one approval stage
+✖ [catalog] docs.files — below the naming floor: every tab defines at least one read permission (`read` or `read_<thing>`)
+⚠ [catalog] docs.admin.ManageBilling — actions are named `<verb>_<noun>` in snake_case (destructive actions may stand alone, e.g. `delete`)
+✖ [catalog] docs.doc — requestable without a resolvable policy: declare at least one approval stage
 ```
 
 ### 5. Import validation
@@ -150,6 +150,10 @@ node --experimental-strip-types -e \
   'import("./src/alfiz.ts").then(m => console.log(JSON.stringify(m.catalog.toDocument())))' \
   > alfiz-catalog.json
 ```
+
+<Note>
+`--experimental-strip-types` needs **Node 22.6 or newer**. On an older runtime, compile first and run the emitter against the built output.
+</Note>
 
 If you use a build step that compiles TypeScript first, run from the compiled output:
 
@@ -222,7 +226,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - run: npm ci
@@ -243,9 +247,9 @@ jobs:
 
 **Default gate names:** `can`, `fresh`, `require`, `requirePermission`, `gateAction`, `apiRequirePermission`
 
-**Default visibility names:** `canAny`, `requireAny`
+**Default visibility names:** `canAny`, `requireAny`, `holds`
 
-**Default server file patterns:** `app/.*route.(t|j)sx?`, `pages/api/`
+**Default server file patterns:** `app/.*route\.(t|j)sx?$`, `pages/api/` — the first is anchored, so it matches only paths ending in `route.ts(x)` / `route.js(x)`
 
 <Tip>
   Property access is matched on the final name only. `session.require`, `client.can`, and `can.fresh` all count as gates — you do not need to add them separately.

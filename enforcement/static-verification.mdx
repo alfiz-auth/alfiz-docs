@@ -38,6 +38,10 @@ node --experimental-strip-types -e \
   > alfiz-catalog.json
 ```
 
+<Note>
+`--experimental-strip-types` needs **Node 22.6 or newer**. On an older runtime, compile first and run the emitter against the built output.
+</Note>
+
 Commit `alfiz-catalog.json` to source control and regenerate it whenever the catalog changes. In CI, regenerate it before running `alfiz-verify` to catch a stale catalog file as a config-parse failure (exit code 2) rather than a false clean pass.
 
 ---

@@ -43,6 +43,8 @@ function defineCatalog<const C extends CatalogInput>(input: C): Catalog<C>
   ```
 
   Each import declares specific keys or subtree patterns, never the bare `*`. Importing a namespace you own, declaring an entry outside the namespace it names, or wiring one to a scope type this catalog does not declare all throw `CatalogError`. With a `document` attached, an entry matching nothing the owner publishes throws too — the local half of drift detection.
+
+  `strict: true` closes the admission half of an undocumented wildcard: without it, an **opaque region** admits any key matching its pattern, since there is no published document to check the key against. Set it when you import a wildcard you have no document for and still want a typo to fail.
 </ParamField>
 
 <ParamField body="permissions" type="PermissionsInput" required>
@@ -67,7 +69,7 @@ function defineCatalog<const C extends CatalogInput>(input: C): Catalog<C>
 </ParamField>
 
 <ParamField body="scopeTypes" type="Record<string, ScopeTypeInput>" optional>
-  Scope types this catalog uses. Required for any catalog that grants permissions at resource scopes (anything other than global `"*"`). Keys are dotted identifiers like `"docs.folder"` or `"docs.doc"`.
+  Scope types this catalog uses. Required for any catalog that grants permissions at resource scopes (anything other than global `"*"`). Keys are dotted identifiers like `"docs.folder"` or `"docs.doc"` — and the first segment must be one of the catalog's declared `namespaces`, or `defineCatalog` throws `CatalogError`. A bare `"folder"` is rejected for the same reason a bare permission key is.
 
   See [Catalog Types](/api/catalog-types) for the full `ScopeTypeInput` field reference.
 </ParamField>
@@ -78,7 +80,7 @@ function defineCatalog<const C extends CatalogInput>(input: C): Catalog<C>
   See [Catalog Types](/api/catalog-types) for the full `NavItemInput` field reference.
 </ParamField>
 
-<ParamField body="conventions" type="{ depth?: number | \"any\" }" optional>
+<ParamField body="conventions" type='{ depth?: number | "any" }' optional>
   House conventions the linter enforces. `depth` is the blessed key depth, defaulting to `3` (`project.tab.permission`); set `2` for a thin integration catalog (`zoom.host`), another number for a deeper tree, or `"any"` to opt out.
 
   This is a **convention, not a structural rule**: a key at the wrong depth is a `lintCatalog` error failed by `alfiz-verify` in CI, never a boot-time throw.
@@ -106,12 +108,16 @@ function defineCatalog<const C extends CatalogInput>(input: C): Catalog<C>
 
 `toDocument()` serializes the catalog to the stable `CatalogDocument` wire shape consumed by `alfiz-verify` and the provider's catalog publish endpoint.
 
-```ts
-// Emit to a file for use by alfiz-verify:
+```bash
+# Emit to a file for use by alfiz-verify:
 node --experimental-strip-types -e \
   'import("./src/alfiz.ts").then(m => console.log(JSON.stringify(m.catalog.toDocument())))' \
   > alfiz-catalog.json
 ```
+
+<Note>
+`--experimental-strip-types` needs **Node 22.6 or newer**. On an older runtime, compile first and run the emitter against the built output.
+</Note>
 
 ## Template-literal types
 
@@ -128,7 +134,7 @@ type AppPattern = PatternOf<typeof catalog>;
 // → "*" | AppKey | "docs.*" | "docs.files.*" | "alfiz_internal.*" | ...
 
 // Type a function that accepts any valid permission key:
-function requirePermission(key: AppKey, scope?: string): Promise<void> { /* ... */ }
+declare function requirePermission(key: AppKey, scope?: string): Promise<void>;
 
 // Type a variable holding a pattern:
 const visibilityPattern: AppPattern = "docs.files.*";
