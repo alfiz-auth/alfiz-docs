@@ -60,6 +60,18 @@ function createApplication(options: ApplicationOptions): AlfizApplication
   How long (in milliseconds) the group-parent topology is cached inside the Application. This cache is what lets `getSubjectAccess` (the closure fan-out behind every check miss) skip re-reading every group in the organization on every miss. Local group writes and ingested foreign events bust it synchronously; this TTL only bounds staleness for group writes made by another process against the same database. Set to `0` to disable and restore the per-miss scan.
 </ParamField>
 
+<ParamField body="metrics" type="{ bucketMs?: number; retentionMs?: number }" optional>
+  Store permission-usage metrics: rolling counter buckets keyed by grant id, revoke id, role id, permission key, and scope type, fed by `reportMetrics` and read back by `getGrantUsage`, `getRevokeUsage`, `getRoleUsage`, `getPermissionUsage`, and `getScopeTypeUsage` — the data behind the [revocation safeguard](/api/metrics). Off by default.
+
+  `bucketMs` is the bucket granularity, defaulting to one day; storage is bounded by attributed rows × retention ÷ granularity, so this is the knob that trades resolution for rows. `retentionMs` defaults to 90 days, pruned opportunistically off the write path.
+
+  Requires a storage driver implementing `recordMetrics`, `readMetrics`, and `pruneMetrics` — the `AlfizMetric` model in the Prisma fragment. Construction throws when they are missing, on the same reasoning as `events.persist`: silently accepting metrics that go nowhere would make every safeguard read a confident zero.
+
+  <Note>
+    A deployment that only wants numbers in its own metrics stack does **not** need this. Point the client's `metrics.observer` at OpenTelemetry or a local aggregator and store nothing here.
+  </Note>
+</ParamField>
+
 ## Return value
 
 <ResponseField name="AlfizApplication" type="AlfizApplication">

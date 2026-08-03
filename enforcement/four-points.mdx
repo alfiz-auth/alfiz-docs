@@ -149,7 +149,7 @@ Gate every button, panel, menu item, and interactive element the user can see. U
 
 ```ts
 // Document detail page — using a snapshot for synchronous per-row checks
-const snap = await alfiz.snapshot({ userId: session.userId });
+const snap = await alfiz.snapshot({ userId: session.userId }, { scopes: [scope] });
 snap.require("docs.files.read", scope); // Point 1 — gate the page
 
 // Point 4 — conditional UI controls

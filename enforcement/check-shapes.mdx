@@ -135,11 +135,12 @@ Use `require` at the top of server actions and route handlers where you want a s
 Server-rendered frameworks make hundreds of conditional-UI checks inside `.map()` callbacks and pure helpers that cannot be async. `snapshot` solves this: one provider round-trip, then every subsequent check is synchronous.
 
 ```ts
-// Once per request — one provider round-trip
-const snap = await alfiz.snapshot({ userId });
+// Once per request — one provider round-trip. Name the hierarchical scopes
+// you intend to check, so their ancestor chains resolve now.
+const snap = await alfiz.snapshot({ userId }, { scopes: ["docs.doc:123"] });
 
 // Every check below is synchronous — safe inside .map() and render helpers
-snap.can("docs.files.read");                        // boolean
+snap.can("docs.files.read");                        // GLOBAL scope, not "anywhere"
 snap.can("docs.files.update_file", "docs.doc:123"); // scoped, synchronous
 snap.canAny("docs.*");                              // visibility affordance
 snap.require("docs.files.read");                    // throws AccessDeniedError on deny

@@ -192,6 +192,33 @@ Skipped files appear in the output as `○ [ignored]` lines, with their reason, 
 
 ---
 
+## Line-level opt-out
+
+Skipping a whole file is far too blunt for the common case: one runtime-string call site in a file whose other checks you very much want to keep. Two per-line pragmas cover it:
+
+```ts
+// alfiz-verify-ignore-next-line implicit-import legacy zoom bridge, removed in Q3
+await client.can(user, legacyKey);
+
+await client.can(user, k); // alfiz-verify-ignore-line implicit-import same bridge
+```
+
+`-next-line` applies to the line below it. The trailing `-line` form applies to its own line, and only when it trails code — a comment alone on a line is not a trailing pragma.
+
+<Warning>
+The **rule name is required**, not optional. An unqualified per-line ignore is how a `client-reachable-secret` error gets silenced by someone reaching for the nearest way to quiet an unrelated warning. Name the rule it suppresses.
+</Warning>
+
+The verifier reports three ways a suppression goes wrong, all as `stale-suppression` warnings, so an exemption cannot quietly rot in place:
+
+| Situation | What you see |
+|---|---|
+| No rule name | `alfiz-verify-ignore-next-line without a rule name — name the rule it suppresses` |
+| No reason | `alfiz-verify-ignore for "implicit-import" without a reason — say why this call site is exempt` |
+| Nothing left to suppress | `alfiz-verify-ignore for "implicit-import" suppresses nothing here — the finding is gone, so remove the pragma` |
+
+---
+
 ## Output format and exit codes
 
 Every issue is printed to `stderr` in the format:

@@ -247,6 +247,9 @@ function renderActions(
 
 ```typescript
 // Take a fresh snapshot when the user has just been granted temporary access.
-const snap = await alfiz.snapshot({ userId }, { fresh: true });
+const snap = await alfiz.snapshot(
+  { userId },
+  { fresh: true, scopes: [`docs.doc:${docId}`] },
+);
 snap.require("docs.files.read", `docs.doc:${docId}`);
 ```

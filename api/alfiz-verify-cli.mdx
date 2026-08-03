@@ -44,6 +44,23 @@ const catalog = catalogFromDocument<AlfizKey, AlfizPattern, AlfizScopeId>(doc);
 
 It is also how a wildcard [import](/catalog/imports) closes its key union — generate from the namespace owner's document, then pin it with `importedKeys<ZoomKey>({ ... })`. Members are sorted, so regenerating diffs exactly the catalog change. A malformed document fails here, loudly, rather than emitting types from garbage.
 
+### The programmatic form
+
+When you generate as part of a build script rather than a shell step, call `generateCatalogTypes` directly. It returns the module source as a string — writing it is yours to do.
+
+```ts
+import { generateCatalogTypes } from "@alfiz/verify";
+import { writeFileSync } from "node:fs";
+import { catalog } from "./src/alfiz.js";
+
+const source = generateCatalogTypes(catalog.toDocument(), {
+  prefix: "Zoom",                                  // default "Alfiz"
+  banner: ["Generated from registry:zoom@3.1.0."], // extra header lines
+});
+
+writeFileSync("zoom.gen.ts", source);
+```
+
 ## What it checks
 
 `alfiz-verify` runs five categories of checks on every scan:

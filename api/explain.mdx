@@ -220,7 +220,7 @@ async function WhyCanISeeThis({
 
 ```typescript
 // Take one snapshot, then explain synchronously — no extra async.
-const snap = await alfiz.snapshot({ userId });
+const snap = await alfiz.snapshot({ userId }, { scopes: [`docs.doc:${docId}`] });
 
 const explanation = snap.explain("docs.files.read", `docs.doc:${docId}`);
 console.log(explanation.allowed, explanation.matchedGrants);

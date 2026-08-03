@@ -202,6 +202,26 @@ Under federation, the `AccessRequest` shape is identical against every provider 
   </Step>
 </Steps>
 
+## Errors on the request path
+
+Every request write rejects through `ProviderWriteRejectedError`, whose `code` tells you how to respond:
+
+| Situation | `code` | Message |
+|---|---|---|
+| No request with that id | `not_found` | `request not found` |
+| Deciding or cancelling a request that is already approved, denied, or cancelled | `conflict` | `request is <state>` |
+| Deciding when you are not an approver for the **current** stage | `validation` | `not an approver for the current stage` |
+| Approving a request whose role has since been deleted | `conflict` | `the requested role no longer exists` |
+| Cancelling someone else's request | `validation` | `only the requester may cancel` |
+| Requesting a pattern at a scope whose type is not requestable | `validation` | `scope type <type> is not requestable` |
+| Requesting a role that is not requestable | `validation` | `role <name> is not requestable` |
+
+<Note>
+Approver entitlement is resolved **at decision time**, not when the request was filed — the manager chain and role membership are read fresh. A reorg between submission and decision routes the request correctly.
+</Note>
+
+`@alfiz/core` also exports `RequestStateError`, thrown by the pure `applyDecision` helper when a decision is applied to a non-pending request. You only see it if you drive the state machine yourself; the Application converts the same condition into the `conflict` rejection above.
+
 ## Building the request surfaces
 
 Alfiz ships no request UI. What it ships is everything the UI needs, on the Application, so a request form and an approver queue are each a thin render over one call:
