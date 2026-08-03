@@ -153,3 +153,22 @@ const report = verifyProject({
   visibilityNames: ["showIfCanAny"],
 });
 ```
+
+`files` is a list of paths; the source text comes from `read`, which defaults to the filesystem — pass your own to verify an in-memory tree. `verifyProject` is synchronous and performs no network I/O, by construction.
+
+It returns a `VerifyReport`:
+
+```ts
+interface VerifyReport {
+  issues: VerifyIssue[];            // { severity, rule, file, line, message }
+  referencedKeys: Set<string>;      // concrete keys reached by a call site or nav item
+  referencedPatterns: Set<string>;  // patterns, verbatim
+  skippedFiles: Array<{ file: string; reason: string }>;
+  errorCount: number;
+  warningCount: number;
+}
+```
+
+<Note>
+`referencedPatterns` is kept separately from `referencedKeys` because an imported wildcard expands to no keys. Pattern-wise reach is the only way to tell a live import from a stale one.
+</Note>

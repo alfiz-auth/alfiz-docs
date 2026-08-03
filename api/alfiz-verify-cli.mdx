@@ -63,7 +63,7 @@ writeFileSync("zoom.gen.ts", source);
 
 ## What it checks
 
-`alfiz-verify` runs five categories of checks on every scan:
+`alfiz-verify` runs six categories of checks on every scan. Every finding carries a rule name — the same name you use to suppress it per line, and the same name the `VerifyIssue` shape reports:
 
 ### 1. Typed key validation
 
@@ -89,7 +89,7 @@ Warnings on catalog leaves that no gate or nav item references. Errors on export
 
 ### 3. Gate-shape linting
 
-Errors when a visibility affordance (`canAny`, `requireAny`) is used directly as a gate in a server file. Visibility affordances tell you whether any matching key is held somewhere — they are not access control decisions:
+Errors when a visibility affordance — `canAny`, `requireAny`, or `holds` — is used directly as a gate in a server file. Visibility affordances tell you whether any matching key is held *somewhere*; they are not access control decisions. (`heldKeys` is a property access rather than a call, so it cannot read as a gate.)
 
 ```
 ✖ [visibility-as-gate] src/actions/export.ts:15 — canAny() is a visibility affordance, never a gate — server actions and route handlers gate on a concrete permission (can/require*)
@@ -115,6 +115,31 @@ Permissions from a namespace your catalog neither owns nor [imports](/catalog/im
 ```
 
 Configure the severity with [`importSource` and `implicitImports`](/api/verify-config), and point the CLI at your import manifest so it knows what you legitimately reference. Verification is offline and deterministic: it never fetches a catalog to grade your code.
+
+### 6. The client-reach guard
+
+Errors when an identifier you have named in `forbidClientIdentifiers` appears in a `"use client"` module. This is the guard that keeps service-key material out of the bundle:
+
+```
+✖ [client-reachable-secret] src/components/Admin.tsx:4 — "ALFIZ_SERVICE_KEYS" referenced in a "use client" module — service-key material must never be client-reachable
+```
+
+## Rule inventory
+
+| Rule | Severity | Fires on |
+|---|---|---|
+| `unknown-pattern` | Error | A key or pattern in a namespace you own that the catalog does not declare |
+| `unknown-import` | Error | A reach beyond what an import actually covers |
+| `implicit-import` | Error, or warning with an import source | A permission in a namespace you neither own nor import |
+| `visibility-as-gate` | Error | `canAny`, `requireAny`, or `holds` used as a gate in a server file |
+| `ungated-action` | Error | An exported server action containing no gate at all |
+| `client-reachable-secret` | Error | A forbidden identifier in a `"use client"` module |
+| `unreferenced-leaf` | Warning | A catalog leaf no gate or nav item references |
+| `ignored-file` | Warning | An `alfiz-verify-ignore-file` pragma with no reason, or placed where it is inert |
+| `stale-suppression` | Warning | A per-line pragma with no rule, no reason, or nothing left to suppress |
+| `catalog` | Inherited from the lint | A `lintCatalog` convention violation |
+
+The command exits `1` when any error-severity issue is found. Warnings do not fail the build.
 
 ## Emitting the catalog
 
