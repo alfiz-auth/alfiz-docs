@@ -11,8 +11,8 @@ description: "snapshot(principal) fetches all closures and grants in one provide
 ```typescript
 async snapshot(
   principal: PrincipalRef,
-  options?: SnapshotOptions,
-): Promise<AlfizSnapshot<K, P>>
+  options?: SnapshotOptions<S>,
+): Promise<AlfizSnapshot<K, P, S>>
 ```
 
 <ParamField body="principal" type="PrincipalRef" required>
@@ -35,15 +35,33 @@ async snapshot(
   calling `can.fresh` for every check in the snapshot.
 </ParamField>
 
+<ParamField body="options.observe" type="boolean" default="true">
+  Whether checks made on this snapshot emit metrics observations. Inert
+  unless the client was constructed with `metrics`. Snapshot checks are the
+  render path's conditional-UI traffic — the highest-volume shape there is,
+  and what `sampleRate.visibility` exists for. Pass `false` to suppress the
+  whole snapshot; view-as previews do this on the previewed subject's side, so
+  attribution never follows the preview.
+</ParamField>
+
+<Warning>
+  Checking a **hierarchical** scope the snapshot has not resolved throws
+  `UnresolvedScopeError` rather than evaluating a truncated chain — which
+  would fail open on an ancestor revoke. Name those scopes in `scopes`, or
+  extend the snapshot afterwards with `await snap.resolve(scopes)`. The error
+  carries the scope, its type, whether it is declared, and the scopes this
+  snapshot *can* evaluate.
+</Warning>
+
 ### Return value
 
-<ResponseField name="Promise<AlfizSnapshot<K, P>>" type="Promise<AlfizSnapshot>">
+<ResponseField name="Promise<AlfizSnapshot<K, P, S>>" type="Promise<AlfizSnapshot>">
   A snapshot containing the compiled closure data and grant rows for the
   principal at the moment of the round-trip. Once resolved, all checks on
   the snapshot are synchronous.
 
   <Expandable title="AlfizSnapshot members">
-    <ResponseField name="can(key, scope?)" type="(key: K | readonly K[], scope?: ScopeId) => boolean">
+    <ResponseField name="can(key, scope?)" type="(key: K | readonly K[], scope?: LooseScopeId<S>) => boolean">
       Synchronous authorization gate. Agrees with `client.can` for every
       pre-resolved scope. Throws for unresolved hierarchical scopes — call
       `await snap.resolve([...scopes])` first.
@@ -53,7 +71,7 @@ async snapshot(
       granted scope's chain was resolved at snapshot time. Never a gate —
       same rule as `client.canAny`.
     </ResponseField>
-    <ResponseField name="require(key, scope?)" type="(key: K | readonly K[], scope?: ScopeId) => void">
+    <ResponseField name="require(key, scope?)" type="(key: K | readonly K[], scope?: LooseScopeId<S>) => void">
       Throwing form of `snap.can`. Throws `AccessDeniedError` on denial.
     </ResponseField>
     <ResponseField name="requireAny(pattern)" type="(pattern: P) => void">
@@ -72,10 +90,10 @@ async snapshot(
       Synchronous listing primitive — same result as `client.grantedScopes`
       but without an async call.
     </ResponseField>
-    <ResponseField name="explain(key, scope?)" type="(key: LooseKey<K>, scope?) => CheckExplanation & { objectClosure, active, implied }">
+    <ResponseField name="explain(key, scope?)" type="(key: LooseKey<K>, scope?) => CheckExplanation & { objectClosure, active, implied, impliedBy }">
       Synchronous explain — same result as `client.explain`.
     </ResponseField>
-    <ResponseField name="resolve(scopes)" type="(scopes: readonly ScopeId[]) => Promise<this>">
+    <ResponseField name="resolve(scopes)" type="(scopes: readonly LooseScopeId<S>[]) => Promise<this>">
       Extends the snapshot with additional pre-resolved chains, without
       re-fetching subject data. The data instant and evaluation clock are
       unchanged.
@@ -139,8 +157,10 @@ export default async function DocPage({
   const { userId } = await getSession();
   const scope = `docs.doc:${params.docId}`;
 
-  // One round-trip for all checks on this page.
-  const snap = await alfiz.snapshot({ userId });
+  // One round-trip for all checks on this page. `docs.doc` is a HIERARCHICAL
+  // scope type, so name it in `scopes` — the snapshot resolves its ancestor
+  // chain now, and every check below stays synchronous.
+  const snap = await alfiz.snapshot({ userId }, { scopes: [scope] });
 
   // Gate the page.
   snap.require("docs.files.read", scope);

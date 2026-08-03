@@ -11,7 +11,7 @@ A session is the typed, per-request object your server code calls `can()` on. It
 ```ts
 import { createSession } from "@alfiz/application";
 
-async function createSession<K extends string, P extends string>(
+async function createSession<K extends string, P extends string, S extends string>(
   client: AlfizClient<K, P>,
   options: SessionOptions,
 ): Promise<AlfizSession<K, P>>
@@ -24,7 +24,7 @@ async function createSession<K extends string, P extends string>(
 </ParamField>
 
 <ParamField body="viewAs" type="ViewAsState | null" optional>
-  Activates a preview session. Pass `null` (or omit) for a normal session. The caller is responsible for verifying that the actor holds `alfiz_internal.access.view_as` before passing a non-null value — `createSession` enforces this gate and throws `AccessDeniedError` if the actor lacks it.
+  Activates a preview session. Pass `null` (or omit) for a normal session. Activating a preview is gated for you: when `viewAs` is non-null, `createSession` calls `assertCanViewAs` and throws `AccessDeniedError` unless the **actor** holds `alfiz_internal.access.view_as`. A catalog built with `includeAlfizInternal: false` declares no such key, so previews fail closed rather than erroring.
 
   ```ts
   type ViewAsState =
@@ -42,21 +42,69 @@ async function createSession<K extends string, P extends string>(
 ## Session methods
 
 ```ts
-class AlfizSession<K, P> {
+class AlfizSession<K, P, S> {
   readonly actorUserId: string;
   readonly viewAs: ViewAsState | null;
   readonly subjectUserId: string;    // preview user's id during user preview, actor's otherwise
 
-  can(key: K | readonly K[], scope?: ScopeId): Promise<boolean>
+  can(key: K | readonly K[], scope?: LooseScopeId<S>): Promise<boolean>
   canAny(pattern: P): Promise<boolean>
-  require(key: K | readonly K[], scope?: ScopeId): Promise<void>    // throws AccessDeniedError
-  requireAny(pattern: P): Promise<void>                              // throws AccessDeniedError
+  require(key: K | readonly K[], scope?: LooseScopeId<S>): Promise<void>  // throws AccessDeniedError
+  requireAny(pattern: P): Promise<void>                                   // throws AccessDeniedError
+
+  snapshot(options?: SnapshotOptions<S>): Promise<AlfizSessionSnapshot<K, P, S>>
 }
 ```
+
+Every check on a session intersects the actor's access with the previewed
+subject's, so a preview can only ever **narrow**. It can never show the viewer
+a surface their own grants would not reach.
 
 <Note>
   Always use `actorUserId` for audit attribution — it is never the previewed subject. Use `subjectUserId` for data-scoped surfaces (e.g., "show documents owned by this user") — it returns the previewed user's ID during a user preview, and the actor's ID otherwise.
 </Note>
+
+## `session.snapshot()` — the render path under view-as
+
+The async session methods are fine for a gate, but a render path cannot `await`
+inside `.map()`. `session.snapshot()` is the session-shaped version of the
+[per-request snapshot](/api/snapshot): **one fetch per identity**, then
+synchronous, preview-narrowed checks.
+
+```ts
+const snap = await session.snapshot({ scopes: [`docs.folder:${folderId}`] });
+
+snap.can("docs.files.update_file", `docs.doc:${docId}`); // sync
+snap.canAny("docs.files.*");                             // sync
+snap.holds("docs.files.share");                          // sync, never a gate
+snap.heldKeys;                                           // ReadonlySet<PermissionKey>
+snap.require("docs.files.read", `docs.doc:${docId}`);    // throws, sync
+
+snap.actorUserId;    // always the real actor
+snap.subjectUserId;  // the previewed user during a user preview
+snap.at;             // the instant this snapshot represents
+
+await snap.resolve(rows.map((r) => `docs.doc:${r.id}`)); // extends BOTH identities
+```
+
+`options` — pre-resolved `scopes` and `fresh` — applies to both identities at
+once, so the actor and the preview are always read at the same instant.
+
+<Note>
+  A role preview evaluates synchronously with no extra resolution, because role
+  patterns are global-scope by construction. An unknown role id fails closed.
+</Note>
+
+<Warning>
+  Denials thrown from a session snapshot name the **actor**, not the previewed
+  identity — attribution never follows the preview. The same is true of metrics:
+  an administrator looking through someone's eyes did not use that person's
+  grants, so the previewed side is recorded with `observe: false`.
+</Warning>
+
+Annotate a stored session snapshot with `SessionSnapshotOf<typeof catalog>`,
+which completes the derived-type family alongside `ClientOf`, `SnapshotOf`, and
+`SessionOf`.
 
 ## Derived session type
 

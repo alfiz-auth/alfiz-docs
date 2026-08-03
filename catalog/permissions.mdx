@@ -95,21 +95,31 @@ Every group that declares permissions must meet the naming floor, enforced by `a
 2. **Action permissions are named `<verb>_<noun>`** in `snake_case` — `invite_user`, `export_report`, `publish_file`. A short list of common standalone verbs (`create`, `update`, `delete`, `manage`, `approve`, `publish`, `archive`, `export`, `import`, `issue`, `revoke`, `view_as`) are allowed without a noun.
 3. **Destructive actions stand alone.** Don't bundle `delete` with `update` in the same leaf — give them separate declarations so you can grant one without the other and so enforcement can apply `can.fresh()` selectively.
 
+Keys are always written **in full**, even inside a `group()` block. There is no
+short form: the first segment must be a declared namespace, or `defineCatalog`
+throws at boot naming the fix.
+
 ```ts
 // ✅ Well-formed tab
 permissions: {
-  read:               { kind: "read", description: "View the file list" },
-  read_collaborators: { kind: "read", description: "View who a file is shared with" },
-  create:             { description: "Create a new file" },
-  publish:            { description: "Publish a draft file" },
-  archive:            { description: "Archive a file" },
-  delete:             { destructive: true, description: "Permanently delete a file" },
+  "docs.files.read":               { kind: "read", description: "View the file list" },
+  "docs.files.read_collaborators": { kind: "read", description: "View who a file is shared with" },
+  "docs.files.create":             { description: "Create a new file" },
+  "docs.files.publish":            { description: "Publish a draft file" },
+  "docs.files.archive":            { description: "Archive a file" },
+  "docs.files.delete":             { destructive: true, description: "Permanently delete a file" },
 }
 
-// ❌ Below the naming floor — no read permission
+// ❌ Below the naming floor — no read permission under docs.files
 permissions: {
-  create: { description: "Create a file" },
-  publish: { description: "Publish a file" },
+  "docs.files.create":  { description: "Create a file" },
+  "docs.files.publish": { description: "Publish a file" },
+}
+
+// ❌ Fails at boot — bare leaf names are not keys
+permissions: {
+  read:   { kind: "read" },   // "read" is not under a declared namespace
+  create: {},
 }
 ```
 
