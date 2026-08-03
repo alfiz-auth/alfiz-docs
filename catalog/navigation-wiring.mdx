@@ -10,10 +10,10 @@ The catalog is not just a list of permissions — it also carries the navigation
 
 Navigation visibility is evaluated by `canAny()`. When a user loads your application, each nav item's `permission` field is tested against what the user actually holds. Items for which the user holds nothing under the declared pattern simply do not render.
 
-This evaluation happens client-side — it is a **display optimization**, not a security gate. The page the nav item points to must gate itself independently with `requirePermission` on a concrete key. Visibility and access are separate concerns, enforced separately.
+This evaluation happens client-side — it is a **display optimization**, not a security gate. The page the nav item points to must gate itself independently with `require` on a concrete key. Visibility and access are separate concerns, enforced separately.
 
 <Warning>
-  Navigation visibility is **not** a security gate. A user who knows a URL can navigate directly to a page regardless of whether the nav item rendered for them. Every page, server action, and route handler must gate itself with `requirePermission` on a concrete key. `alfiz-verify` errors when it finds `canAny()` used as a gate in a server action or route handler.
+  Navigation visibility is **not** a security gate. A user who knows a URL can navigate directly to a page regardless of whether the nav item rendered for them. Every page, server action, and route handler must gate itself with `require` on a concrete key. `alfiz-verify` errors when it finds `canAny()` used as a gate in a server action or route handler.
 </Warning>
 
 ## `NavItemInput` fields
@@ -63,9 +63,9 @@ export interface NavItemInput {
 // ✅ Correct: canAny decides whether the nav section renders
 const showAdminSection = await alfiz.canAny(actor, "admin.*");
 
-// ✅ Correct: can (or requirePermission) is the gate at the doorway
+// ✅ Correct: can (or require) is the gate at the doorway
 export default async function AdminPage() {
-  await alfiz.requirePermission(actor, "admin.users.read");
+  await alfiz.require(actor, "admin.users.read");
   // ...
 }
 
@@ -184,7 +184,7 @@ export const catalog = defineCatalog({
 // The nav item rendered because canAny("docs.files.*") was true.
 // The page still gates independently — visibility is not access.
 export default async function FilesPage() {
-  await alfiz.requirePermission(actor, "docs.files.read");
+  await alfiz.require(actor, "docs.files.read");
   // ...
 }
 ```

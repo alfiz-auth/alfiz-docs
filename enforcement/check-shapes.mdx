@@ -1,5 +1,5 @@
 ---
-title: "Check Shapes: can, canAny, can.fresh, and requirePermission"
+title: "Check Shapes: can, canAny, can.fresh, and require"
 sidebarTitle: "Check Shapes"
 description: "Alfiz exposes two check shapes: can() for gates and canAny() for visibility affordances, plus can.fresh() to bypass caches on destructive actions."
 ---
@@ -35,7 +35,7 @@ await alfiz.can({ userId }, ["docs.files.read", "docs.files.update_file"], "docs
 
 **`scope`** is an optional `ScopeId` — the resource instance being accessed (e.g., `"docs.doc:123"`, `"docs.folder:9"`). Omit it for global checks. When a principal holds the key at any ancestor of the scope, `can` returns `true` — hierarchy is resolved at check time.
 
-`can` returns `Promise<boolean>`. It never throws on a denied check; use `requirePermission` when you want a throw instead.
+`can` returns `Promise<boolean>`. It never throws on a denied check; use `require` when you want a throw instead.
 
 <Note>
 Every call to `can` is verified against the catalog before evaluation. If the key is not declared, Alfiz throws `UnknownPermissionError` — a programming error, not a denial. Map it to a 500, never to a 403.
@@ -83,19 +83,19 @@ const visible: boolean = await alfiz.canAny(
 `pattern` is a wildcard string derived from the catalog's `$pattern` union — e.g., `"docs.*"`, `"docs.files.*"`. Passing an undeclared pattern throws `UnknownPermissionError`.
 
 <Warning>
-**`canAny` is never a gate.** It tells you whether a section is worth showing — it does not authorize any action. The `alfiz-verify` static verifier emits an error whenever `canAny` appears inside a server action or route handler. Gate on a concrete key with `can` or `requirePermission`.
+**`canAny` is never a gate.** It tells you whether a section is worth showing — it does not authorize any action. The `alfiz-verify` static verifier emits an error whenever `canAny` appears inside a server action or route handler. Gate on a concrete key with `can` or `require`.
 </Warning>
 
 ---
 
-## `requirePermission` and `requireAny`
+## `require` and `requireAny`
 
-`requirePermission` and `requireAny` are the throwing forms of `can` and `canAny`. They return `Promise<void>` and throw `AccessDeniedError` when the check fails.
+`require` and `requireAny` are the throwing forms of `can` and `canAny`. They return `Promise<void>` and throw `AccessDeniedError` when the check fails.
 
 <CodeGroup>
-```ts requirePermission
+```ts require
 // Throws AccessDeniedError on denial
-await alfiz.requirePermission(
+await alfiz.require(
   { userId },
   "docs.files.update_file",
   "docs.doc:123",
@@ -114,7 +114,7 @@ await alfiz.requireAny({ userId }, "docs.*");
 import { AccessDeniedError } from "@alfiz/core";
 
 try {
-  await alfiz.requirePermission({ userId }, "docs.files.delete", "docs.folder:9");
+  await alfiz.require({ userId }, "docs.files.delete", "docs.folder:9");
 } catch (err) {
   if (err instanceof AccessDeniedError) {
     // err.reason: "unauthenticated" | "forbidden" | "inactive"
@@ -126,7 +126,7 @@ try {
 }
 ```
 
-Use `requirePermission` at the top of server actions and route handlers where you want a single thrown value to carry all downstream error handling. Use the boolean `can` when you need to branch without catching.
+Use `require` at the top of server actions and route handlers where you want a single thrown value to carry all downstream error handling. Use the boolean `can` when you need to branch without catching.
 
 ---
 

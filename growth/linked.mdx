@@ -22,7 +22,7 @@ The only data that flows to Alfiz Cloud is the **opt-in audit stream**: an appen
 
 <CardGroup cols={2}>
   <Card title="Dashboard" icon="layout-dashboard">
-    A styled, maintained admin dashboard that non-engineer administrators can use to manage roles, groups, grants, and access requests — assembled from the same headless kit your own admin UI would use, backed by your Application.
+    A styled, maintained admin dashboard that non-engineer administrators can use to manage roles, groups, grants, and access requests — speaking the same provider contract your own admin UI would, backed by your Application.
   </Card>
   <Card title="Admin seats" icon="users">
     Authenticated dashboard sessions for non-engineer administrators. Seat billing starts when someone uses the dashboard, not when you link.
@@ -113,9 +113,9 @@ Linking is a registration step — you associate your Application with an Alfiz 
 
 ## Replacing the hosted dashboard
 
-The hosted dashboard is convenience, not capability. Every workflow it exposes is buildable from the headless admin kit included in `@alfiz/core` — the hosted product is assembled from the same components, speaking the same provider contract.
+The hosted dashboard is convenience, not capability. It speaks the same provider contract your own code does, and every write it makes lands in the same `Application` methods — so there is no workflow it can perform that your own admin UI cannot.
 
-If you outgrow the hosted dashboard or need a custom look, build your own admin UI from the kit. The `Application` you already have is its provider. Unlinking your Alfiz Cloud registration removes the relay and the hosted access — nothing else changes.
+If you outgrow it or need a custom look, build your own admin surface against the `Application` you already have, using the headless permission tree in `@alfiz/core` for the role editor and grant picker logic. Unlinking your Alfiz Cloud registration removes the relay and the hosted access — nothing else changes.
 
 ## Next: federation
 

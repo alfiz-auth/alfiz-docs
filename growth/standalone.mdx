@@ -1,13 +1,13 @@
 ---
 title: "Alfiz Standalone: Complete Authorization, One Application"
 sidebarTitle: Standalone
-description: "Two npm packages and your own database — the complete Alfiz feature set, free and MIT-licensed, with no external service on your request path."
+description: "Two npm packages and your own database — the complete Alfiz feature set, with no external service on your request path."
 ---
 
-A standalone deployment is exactly what it sounds like: your application, your database, and two npm packages. No hosted service sits on your request path, no external dependency is required beyond the database you already run, and nothing is withheld. Every feature Alfiz ships — permission grammar, scoped grants, groups, roles, access requests, management-layer approvals, the headless admin kit — is fully available the moment you call `createApplication`.
+A standalone deployment is exactly what it sounds like: your application, your database, and two npm packages. No hosted service sits on your request path, no external dependency is required beyond the database you already run, and nothing is withheld. Every feature Alfiz ships — permission grammar, scoped grants, groups, roles, access requests, management-layer approvals, sessions and view-as, permission metrics — is fully available the moment you call `createApplication`.
 
 <Note>
-  Standalone is a finished place to stand, not a trial. Most deployments stay here permanently, and nothing about staying is a compromise: the packages are MIT, the feature set is complete, and the pages that follow describe answers to *organizational* problems — a non-engineer who needs to administer access, a second application — not to missing capability.
+  Standalone is a finished place to stand, not a trial. Most deployments stay here permanently, and nothing about staying is a compromise: the feature set is complete, no capability is gated behind a paid tier, and the pages that follow describe answers to *organizational* problems — a non-engineer who needs to administer access, a second application — not to missing capability.
 </Note>
 
 ## What standalone means
@@ -16,7 +16,7 @@ Standalone is the composition of two packages:
 
 <CardGroup cols={2}>
   <Card title="@alfiz/core" icon="cube">
-    The **Client**: the evaluator. Grammar, catalog, typed keys, check shapes, closure caches, static verification, and the headless admin kit. Every capability is a pure function over provider-supplied data — no storage, no I/O of its own.
+    The **Client**: the evaluator. Grammar, catalog, typed keys, check shapes, closure caches, the headless permission tree, and the listing helpers. Every capability is a pure function over provider-supplied data — no storage, no I/O of its own.
   </Card>
   <Card title="@alfiz/application" icon="database">
     The **Application**: your local provider. Implements the provider contract against your own database through a storage seam. In standalone mode, it is the org root — the single authoritative home of all organizational data.
@@ -36,8 +36,10 @@ The full feature set, locally, with no external dependency:
 - **Roles** — named bundles of permission patterns; forward-inclusive wildcards absorb future keys automatically
 - **Reporting hierarchy** — a `reports-to` edge per user drives implicit groups (`directs:<id>`, `orgof:<id>`) usable as grant subjects and approval predicates
 - **Access requests with management-layer approvals** — requestable roles and scope types; multi-stage workflows; management-chain routing resolved against your locally-stored hierarchy
-- **Headless admin kit** — unstyled, composable components rendering from your catalog and speaking only the provider contract; build your own admin UI from the same primitives as Alfiz Cloud's hosted dashboard
-- **Clerk adapter** — a provider-agnostic identity interface with a first-class Clerk implementation for session verification and directory ingestion
+- **Sessions and view-as** — typed per-request sessions, plus admin preview that intersects the actor with the previewed identity and attributes denials to the actor
+- **Permission metrics** — an optional structured observation per check, an OpenTelemetry adapter, a local aggregator, and the revocation safeguard
+- **The headless permission tree** — `buildPermissionTree`, `toggleNode`, and `isNodeChecked`: the wildcard-aware selection logic behind any role editor or grant picker you build, rendering from your catalog with no markup of its own
+- **Listing helpers** — `grantedScopes` plus `planListing` and the SQL-fragment builders, so a permission-filtered list becomes one indexed query instead of a per-row check
 
 ## The Application is the org root
 
@@ -52,7 +54,7 @@ Regardless of where you go from here, this holds in every topology: every `can()
 ```ts
 // Checks are in-process. Nothing phones home.
 await alfiz.can({ userId }, "docs.files.read", "docs.doc:123");
-await alfiz.requirePermission({ userId }, "docs.files.update_file", "docs.doc:123");
+await alfiz.require({ userId }, "docs.files.update_file", "docs.doc:123");
 await alfiz.can.fresh({ userId }, "docs.files.delete", "docs.folder:9"); // bypass cache
 ```
 
@@ -161,7 +163,7 @@ await alfiz.can.fresh({ userId }, "docs.files.delete", "docs.folder:9"); // bypa
 Standalone is the right starting point for any organization with a single application. It is also the right answer for engineering teams who need full authorization capabilities today but do not yet need a non-engineer to administer access from a hosted dashboard.
 
 <Note>
-  The standalone tier is **free, MIT-licensed, forever**. The full feature set — every capability listed above — is available at no cost and with no external service dependency. You can self-assemble an admin UI using the headless kit without ever upgrading.
+  The standalone tier is **complete, forever**. Every capability listed above runs at no cost and with no external service dependency. You can build your own admin UI on the headless permission tree and the provider contract without ever upgrading.
 </Note>
 
 ## The growth path

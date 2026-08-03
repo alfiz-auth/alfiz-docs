@@ -1,19 +1,228 @@
 ---
 title: "Get Started with Alfiz: Install, Define, and Check"
 sidebarTitle: "Quickstart"
-description: "Install Alfiz, define your first permission catalog, wire a storage driver, and run your first can() check — all in under ten minutes."
+description: "Install Alfiz, define your first permission catalog, wire a storage driver, grant access, and run your first can() check — all in under ten minutes."
 ---
 
-Alfiz ships as two packages: `@alfiz/core` holds the evaluator — the catalog, grammar, closures, and check logic — and `@alfiz/application` wraps a storage driver into the full local provider. You define your permissions in TypeScript, wire up storage, and every `can()` check runs in-process against your own database with no external round-trips required.
+Alfiz ships as two packages you install today. `@alfiz/core` holds the evaluator — the catalog, grammar, closures, and check logic. `@alfiz/application` wraps a storage driver into the full local provider. You define your permissions in TypeScript, wire up storage, and every `can()` check runs in-process against your own database with no external round-trip.
+
+This page gets you from an empty project to a passing scoped check. It uses the in-memory driver so you can run it immediately; [swapping in Prisma](/api/storage-drivers) is a two-line change at the end.
+
+<Steps>
+  <Step title="Install the packages">
+    ```bash
+    npm install @alfiz/core @alfiz/application
+    ```
+
+    `@alfiz/application` already depends on `@alfiz/core`; installing both is
+    for the explicit import. Add the verifier as a dev dependency when you are
+    ready to enforce coverage in CI:
+
+    ```bash
+    npm install --save-dev @alfiz/verify
+    ```
+
+    Alfiz is ESM-only (`"type": "module"`), and `@alfiz/verify` needs
+    TypeScript 5.5 or newer.
+  </Step>
+
+  <Step title="Declare the catalog">
+    The catalog is the single source of truth for every permission key and
+    every scope type. Declare it once, in the codebase that enforces it.
+
+    ```ts src/alfiz.ts
+    import { defineCatalog } from "@alfiz/core";
+
+    export const catalog = defineCatalog({
+      namespaces: ["docs"],
+      permissions: {
+        "docs.files.read":        { scopes: ["docs.folder", "docs.doc"] },
+        "docs.files.update_file": { scopes: ["docs.folder", "docs.doc"] },
+        "docs.files.share":       { scopes: ["docs.folder", "docs.doc"] },
+        "docs.files.delete":      { destructive: true, scopes: ["docs.folder"] },
+      },
+      scopeTypes: {
+        "docs.folder": { parent: "docs.folder" }, // folders nest in folders
+        "docs.doc":    { parent: "docs.folder" }, // documents live in folders
+      },
+    });
+    ```
+
+    Permissions are declared by their **full dotted key** — the same notation
+    every check, grant, role pattern, and nav entry uses, so a key at a call
+    site greps straight back to its declaration. Group levels (`docs`,
+    `docs.files`) are inferred from the keys; you never declare them.
+
+    <Note>
+      `parent` is a commitment, not a hint. A type declared `parent: null` has
+      the ancestor chain `[scope, "*"]` **by declaration**, which is what lets
+      a snapshot check it synchronously. A type whose instances nest under
+      other instances of the same type names itself as its own parent, as
+      `docs.folder` does above.
+    </Note>
+  </Step>
+
+  <Step title="Create the Application">
+    The Application is the provider: your database, your hierarchy, resolved
+    by your code. `ancestry` is the seam where Alfiz asks *your* application
+    where a resource sits.
+
+    ```ts src/alfiz.ts
+    import { createApplication, memoryDriver } from "@alfiz/application";
+    import { parentPointerResolver } from "@alfiz/core";
+
+    // Stand-in for your own tables. In production this reads your rows.
+    const parents = new Map<string, string | null>([
+      ["docs.doc:123",   "docs.folder:42"],
+      ["docs.folder:42", null],
+    ]);
+
+    export const app = createApplication({
+      catalog,
+      storage: memoryDriver(),
+      ancestry: parentPointerResolver((scope) => parents.get(scope) ?? null),
+    });
+    ```
+
+    `parentPointerResolver` builds a resolver from a **synchronous**
+    parent-pointer lookup. When your parent lookup hits the database, write
+    the resolver directly instead — an `AncestryResolver` is any function from
+    a scope id to its ancestor chain, nearest-first, and it may be async:
+
+    ```ts
+    ancestry: async (scope) => db.ancestorChainOf(scope), // excludes scope itself
+    ```
+  </Step>
+
+  <Step title="Create the client">
+    The client binds the catalog to the provider and gives you typed checks.
+
+    ```ts src/alfiz.ts
+    import { createAlfizClient } from "@alfiz/core";
+
+    export const alfiz = createAlfizClient({ catalog, provider: app });
+    ```
+
+    Create it once at startup and share it across requests. Call
+    `alfiz.close()` on shutdown to detach from the provider's invalidation
+    stream.
+  </Step>
+
+  <Step title="Grant access">
+    Every form of access is one row. Grant to a user, a group, an org,
+    `everyone`, or a service — the shape does not change.
+
+    ```ts
+    await app.createGrant({
+      subject: "user:jane",       // or group:…, org:…, everyone, service:…
+      pattern: "docs.files.*",    // forward-inclusive: covers keys added later
+      scope: "docs.folder:42",    // omit for a global grant
+      provenance: { kind: "admin", actorUserId: "root" },
+    });
+    ```
+
+    `provenance` is required on every write and is validated before anything
+    is stored, so a written row can never be missing its audit entry.
+  </Step>
+
+  <Step title="Run your first check">
+    ```ts
+    // true — the grant on folder:42 covers the document inside it
+    await alfiz.can({ userId: "jane" }, "docs.files.read", "docs.doc:123");
+
+    // false — nothing grants Jane anything on this folder
+    await alfiz.can({ userId: "jane" }, "docs.files.read", "docs.folder:99");
+
+    // Throws AccessDeniedError instead of returning false
+    await alfiz.require({ userId: "jane" }, "docs.files.update_file", "docs.doc:123");
+
+    // Destructive actions bypass the caches
+    await alfiz.can.fresh({ userId: "jane" }, "docs.files.delete", "docs.folder:42");
+    ```
+
+    The grant was made once, at the folder. Alfiz never fans grants out to
+    descendants — the check walks *up* the ancestor chain instead, so adding a
+    document to a folder rewrites no rows.
+
+    <Warning>
+      `can` with **no scope** means the **global** scope — "may they do this
+      everywhere?", the strictest question, not "may they do this anywhere?".
+      The anywhere question is [`holds`](/api/granted-scopes), and it is never
+      a gate.
+    </Warning>
+  </Step>
+
+  <Step title="Take one snapshot per request">
+    Server-rendered pages make hundreds of conditional-UI checks inside
+    `.map()` callbacks and render helpers that cannot be async. Take one
+    snapshot per request and check synchronously:
+
+    ```ts
+    const snap = await alfiz.snapshot({ userId: "jane" }, { scopes: ["docs.doc:123"] });
+
+    snap.can("docs.files.read", "docs.doc:123"); // sync — safe inside .map()
+    snap.canAny("docs.files.*");                 // sync visibility
+    snap.holds("docs.files.share");              // "should this button exist at all"
+    snap.heldKeys;                               // every key held at any scope
+    ```
+
+    A snapshot is one consistent instant of the caches — a *stronger*
+    per-request guarantee than repeated `can` calls. Pre-resolve the
+    hierarchical scopes you intend to check with `{ scopes: [...] }`; for a
+    list page whose row ids are not known until after the query, extend it
+    with `await snap.resolve(rowScopes)`.
+  </Step>
+</Steps>
+
+## Moving to a real database
+
+`memoryDriver()` keeps everything in process and is for tests and local
+development. For production, merge the Prisma schema fragment into your own
+schema and swap the driver:
+
+```ts
+import { prismaDriver } from "@alfiz/prisma";
+
+export const app = createApplication({
+  catalog,
+  storage: prismaDriver(prisma),
+  ancestry: async (scope) => db.ancestorChainOf(scope),
+});
+```
+
+Nothing else changes — the catalog, the client, and every call site are
+identical. See [Storage drivers](/api/storage-drivers) for the schema fragment
+and the full setup.
+
+## Wire the deletion paths
+
+Grants key on subject and scope **strings**, not foreign keys, so deleting a
+user or a resource in your own tables does not clean up its access. Call these
+from the same code paths that do the delete, or a reused id inherits stranded
+access:
+
+```ts
+await app.deleteSubject("user:jane", provenance);   // when you delete a user
+await app.deleteScope("docs.doc:123", provenance);  // when you delete a resource
+await app.notifyScopeMoved("docs.doc:123");         // when you change a parent pointer
+```
 
 ## Next steps
 
 <CardGroup cols={2}>
   <Card title="Core Concepts" icon="book-open" href="/core-concepts">
-    Understand the five semantic building blocks — catalog, grants, scopes, subjects, and checks — and how they compose.
+    The five building blocks — catalog, grants, scopes, subjects, and checks — and the semantic rules that are fixed rather than configurable.
+  </Card>
+
+  <Card title="The four enforcement points" icon="shield-check" href="/enforcement/four-points">
+    Where checks belong: page, navigation, server action, and conditional UI — and which shape each one takes.
+  </Card>
+
+  <Card title="Static verification" icon="circle-check" href="/enforcement/static-verification">
+    Run `alfiz-verify` in CI so an ungated server action fails the build instead of shipping.
   </Card>
 
   <Card title="Per-request snapshots" icon="camera" href="/api/snapshot">
-    Take one provider round-trip per request and check synchronously inside `.map()` — the recommended pattern for server-rendered frameworks.
+    One provider round-trip per request, then synchronous checks — the recommended pattern for server-rendered frameworks.
   </Card>
 </CardGroup>

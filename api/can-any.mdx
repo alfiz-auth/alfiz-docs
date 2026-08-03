@@ -117,7 +117,7 @@ export async function GET(req: Request, { params }: { params: { docId: string } 
   const { userId } = await getSession(req);
 
   // Concrete gate — not canAny.
-  await alfiz.requirePermission(
+  await alfiz.require(
     { userId },
     "docs.files.read",
     `docs.doc:${params.docId}`,

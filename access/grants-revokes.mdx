@@ -189,15 +189,15 @@ Use `can.fresh({ userId }, key, scope)` for operations that follow a just-grante
 
 ## Listing a user's effective permissions
 
-Call `alfiz.effectiveKeys(principal)` to get every permission key the principal holds at any scope. This is the union of all grant-matched keys across the subject closure, filtered by global-scope revokes:
+Call `alfiz.heldKeys(principal)` to get every permission key the principal holds at any scope. This is the union of all grant-matched keys across the subject closure, filtered by global-scope revokes:
 
 ```ts
-const keys = await alfiz.effectiveKeys({ userId: "alice" });
+const keys = await alfiz.heldKeys({ userId: "alice" });
 // e.g. ["docs.files.read", "docs.files.update_file"]
 ```
 
 <Note>
-`effectiveKeys` answers "what can this person do anywhere?" It uses `keyHeldAnywhere` semantics: a scoped revoke narrows one subtree but does not erase a key held elsewhere. This is the right question for conditional UI — "should this button exist at all" — when the concrete scope is not yet known.
+`heldKeys` answers "what can this person do anywhere?" It uses `keyHeldAnywhere` semantics: a scoped revoke narrows one subtree but does not erase a key held elsewhere. This is the right question for conditional UI — "should this button exist at all" — when the concrete scope is not yet known.
 </Note>
 
 To understand *why* a specific check passed or failed, use `alfiz.explain(principal, key, scope?)`. It returns a `CheckExplanation` with the matched grants, matched revokes, and the final `allowed` verdict:

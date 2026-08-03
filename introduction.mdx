@@ -47,23 +47,29 @@ These are the decisions that make up the product. None of them is configurable.
 Two further semantics are worth knowing early, because they shape how you model access. Grants **nest**: one made at an enclosing scope covers everything within it, resolved by walking up ancestors at check time rather than fanning rows out to descendants. And the grant tuple and check shape are **identical in every topology** — standalone, linked, or federated — so growing your deployment never rewrites your call sites.
 </Note>
 
-## What's included in the open-source packages
+## What's included in the packages
 
-The Client (`@alfiz/core`) and Application (`@alfiz/application`) packages are MIT-licensed and free forever. Together they give you:
+The Client (`@alfiz/core`) and Application (`@alfiz/application`) are the whole system for one organization with one application. Nothing below is held back for a paid tier:
 
-- **Permission grammar, catalog, and typed keys** — catalog-derived template-literal types mean every call site is verified at compile time
-- **`can` / `canAny` / `can.fresh`** — in-process checks; `canAny` is a visibility affordance only, never a gate; `can.fresh` bypasses all caches for destructive actions
+- **Permission grammar, catalog, and typed keys** — catalog-derived template-literal types mean every literal call site is verified at compile time, and every runtime-string path is verified against the catalog before evaluation
+- **`can` / `require` / `canAny` / `can.fresh` / `holds`** — in-process checks; `canAny` and `holds` are visibility affordances only, never gates; `can.fresh` bypasses all caches for destructive actions
+- **Per-request snapshots** — one provider round-trip, then synchronous checks safe inside `.map()`
 - **Four enforcement points** — page, navigation visibility, server action, and conditional UI; the verifier catches surfaces that skip any of the four
-- **Static verification and catalog lints** — `alfiz-verify` warns on ungated leaves and fails the build on exported actions with no gate
-- **Scoped grants, revokes, expiry, and provenance** — every grant is one row: `(subject, pattern, scope, expiry?)` with a full provenance record
+- **Static verification and catalog lints** — `alfiz-verify` fails the build on an exported action with no gate, a visibility affordance used as a gate, an unknown key, and client-reachable service-key material
+- **Scoped grants, revokes, expiry, and provenance** — every grant is one row: `(subject, role-or-pattern, scope, expiry?)` with a full provenance record and an audit entry
 - **Groups, nested groups, roles, and reporting hierarchy** — union-only inheritance throughout; the single negative layer is the personal revoke
-- **Access requests and management-layer approvals** — requestable permissions flow through a built-in approval workflow
-- **Headless admin kit + unstyled reference assembly** — build your own admin UI from the same primitives the hosted dashboard uses
-- **Clerk adapter; provider-agnostic interface** — drop in Clerk or wire any identity provider through the open contract
+- **Access requests and management-layer approvals** — requestable roles and scope types flow through a built-in staged approval workflow, including manager-chain approval
+- **Sessions and view-as** — typed per-request sessions with admin preview that fails closed and never mis-attributes
+- **Permission metrics** — an optional observation per check, an OpenTelemetry adapter, a local aggregator, and the revocation safeguard
+- **The headless permission tree** — the wildcard-aware selection logic (`buildPermissionTree`, `toggleNode`, `isNodeChecked`) behind any role editor or grant picker you build, plus listing helpers that push a permission filter into your own SQL
 
 <Tip>
-The `@alfiz/prisma` package adds a Prisma storage driver and schema fragment so the Application layer slots straight into your existing Prisma setup.
+The `@alfiz/prisma` package adds a Prisma storage driver and schema fragment so the Application layer slots straight into your existing Prisma setup. `@alfiz/verify` ships the `alfiz-verify` CLI.
 </Tip>
+
+<Note>
+Alfiz does not issue or validate tokens, and ships no identity-provider adapter. You verify the session with your own provider — Clerk, Auth.js, or anything else — and pass the resulting user id to Alfiz. See [Sessions](/api/session) for the wiring.
+</Note>
 
 ## Alfiz Cloud
 
@@ -71,7 +77,7 @@ When a non-engineer needs to administer access, or when your second application 
 
 <CardGroup cols={2}>
   <Card title="Dashboard" icon="gauge">
-    The Dashboard — a hosted, styled, maintained UI for managing grants, approvals, and audit history. Add admin seats and your team uses it immediately; your Application stays the org root and the only writer. Fully replaceable by assembling the same surface from the headless kit.
+    The Dashboard — a hosted, styled, maintained UI for managing grants, approvals, and audit history. Add admin seats and your team uses it immediately; your Application stays the org root and the only writer, because every relayed write lands in the same provider methods your local code calls.
   </Card>
   <Card title="Federation" icon="diagram-project">
     When you need cross-application authorization, federation adds a central **catalog registry** (namespace ownership, versioning, tombstones), cross-namespace role composition, cross-application request aggregation, and service-principal credential management.

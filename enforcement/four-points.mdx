@@ -12,7 +12,7 @@ A surface is not done until all four enforcement points hold. This is not a guid
 
 ### Point 1 — The page
 
-Gate every page handler or server component at the top, before any data fetching. Use `requirePermission` with the concrete key for the page's primary action. For project root pages — where the right question is "does this user have _anything_ under this project?" — use `requireAny` to gate on the subtree pattern, but still call `requirePermission` for the page's own read:
+Gate every page handler or server component at the top, before any data fetching. Use `require` with the concrete key for the page's primary action. For project root pages — where the right question is "does this user have _anything_ under this project?" — use `requireAny` to gate on the subtree pattern, but still call `require` for the page's own read:
 
 ```ts
 // app/(portal)/drive/[id]/page.tsx
@@ -21,7 +21,7 @@ export default async function DocumentPage({ params }: { params: { id: string } 
   const scope = `docs.doc:${params.id}` as const;
 
   // Gate the page — throws AccessDeniedError → redirected by your error boundary
-  await alfiz.requirePermission({ userId: session.userId }, "docs.files.read", scope);
+  await alfiz.require({ userId: session.userId }, "docs.files.read", scope);
 
   const doc = await db.docs.findUniqueOrThrow({ where: { id: params.id } });
   // ...
@@ -80,7 +80,7 @@ Every server action and every route handler gates on a concrete permission befor
       const scope = `docs.doc:${docId}` as const;
 
       // Gate before any work
-      await alfiz.requirePermission(
+      await alfiz.require(
         { userId: session.userId },
         "docs.files.update_file",
         scope,
@@ -121,7 +121,7 @@ Every server action and every route handler gates on a concrete permission befor
       const scope = `docs.doc:${params.id}` as const;
 
       try {
-        await alfiz.requirePermission(
+        await alfiz.require(
           { userId: session.userId },
           "docs.files.update_file",
           scope,
@@ -253,7 +253,7 @@ export async function saveDocument(docId: string, data: { title: string; body: s
   const scope = `docs.doc:${docId}` as const;
 
   // Point 3 — gate the action before any work
-  await alfiz.requirePermission(
+  await alfiz.require(
     { userId: session.userId },
     "docs.files.update_file",
     scope,
@@ -312,7 +312,7 @@ All four points accept a `scope` argument wherever a concrete resource instance 
 |---|---|---|
 | Page | `snap.require(key, scope)` | The resource being rendered |
 | Navigation | `canAny(principal, pattern)` | Not applicable — visibility is scope-free |
-| Server action | `requirePermission(principal, key, scope)` | The resource being mutated |
+| Server action | `require(principal, key, scope)` | The resource being mutated |
 | Conditional UI | `snap.can(key, scope)` | The resource being displayed |
 
 For surfaces that operate globally (admin dashboards, org-level settings), omit the scope argument — a global grant satisfies every scoped check by definition.

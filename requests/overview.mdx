@@ -202,11 +202,18 @@ Under federation, the `AccessRequest` shape is identical against every provider 
   </Step>
 </Steps>
 
-## The headless admin surfaces
+## Building the request surfaces
 
-The headless admin kit exposes two ready-made request surfaces:
+Alfiz ships no request UI. What it ships is everything the UI needs, on the Application, so a request form and an approver queue are each a thin render over one call:
 
-- **Request form** — renders the justification prompts declared on the requestable role or scope type, validates required fields and select options before submission, and calls `submitRequest` for you.
-- **Approver queue** — shows each approver their pending decisions, with the proposed grant details and justification answers, and wires the approve/deny actions to `decideRequest`.
+| Surface | What you call | What you get |
+|---|---|---|
+| **Request form** | `catalog.scopeTypes.get(type)?.requestable`, or `requestable` on the `RoleRecord` | The `prompts` to render, plus `maxDurationMs` and `requireExpiry` to validate against before calling `submitRequest`. |
+| **Approver queue** | `app.listApproverQueue(approverUserId)` | Every pending request this user may decide right now, with the proposed grant and the justification answers, ready for `decideRequest`. |
+| **Requester's own list** | `app.listRequests({ requesterUserId })` | State and decision history for the requests a user submitted. |
 
-Both surfaces are headless: they own logic and state, not markup. Bring your own components.
+`submitRequest` validates the justification against the declared prompts server-side regardless of what your form did, so a hand-rolled client cannot skip a required answer.
+
+<Note>
+For the role editor and grant picker that sit alongside these, `@alfiz/core` ships the wildcard-aware permission tree — `buildPermissionTree`, `toggleNode`, `isNodeChecked`, `isNodeIndeterminate`, and `nodePattern`. It is selection logic and state, not markup: whole-group selection stores the `<group>.*` pattern, which is what makes forward-inclusion real rather than a snapshot.
+</Note>

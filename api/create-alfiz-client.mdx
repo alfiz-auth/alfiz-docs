@@ -11,15 +11,19 @@ description: "createAlfizClient(options) creates a typed AlfizClient bound to a 
 ```typescript
 function createAlfizClient<Cat extends AnyCatalog>(
   options: Omit<AlfizClientOptions, "catalog"> & { catalog: Cat },
-): AlfizClient<Cat["$key"], Cat["$pattern"]>
+): AlfizClient<Cat["$key"], Cat["$pattern"], Cat["$scope"]>
 ```
 
-The return type `AlfizClient<Cat["$key"], Cat["$pattern"]>` is equivalent to the `ClientOf<Cat>` type alias, which exists precisely so you can annotate a stored client without hand-writing the type parameters.
+The client carries **three** derived type parameters: the catalog's key union, its pattern union, and its scope-id union. `ClientOf<Cat>` is the alias for exactly that, so you can annotate a stored client without hand-writing any of them.
 
 ```typescript
 import { type ClientOf } from "@alfiz/core";
-// ClientOf<typeof catalog> ≡ AlfizClient<KeyOf<typeof catalog>, PatternOf<typeof catalog>>
+// ClientOf<typeof catalog> ≡ AlfizClient<
+//   KeyOf<typeof catalog>, PatternOf<typeof catalog>, ScopeOf<typeof catalog>
+// >
 ```
+
+Keys and patterns **gate**: a typo at a literal call site is a compile error. Scope ids **hint** (`LooseScopeId`): a literal scope autocompletes every declared `<scopeType>:` prefix, while an id built from a variable flows through unchanged, because the instance half of a scope id is runtime data.
 
 ## Options
 
@@ -31,9 +35,10 @@ import { type ClientOf } from "@alfiz/core";
 </ParamField>
 
 <ParamField body="provider" type="AlfizProvider" required>
-  The provider implementation — either the local `AlfizApplication` or the
-  managed `AlfizService`. The client attaches to the provider's invalidation
-  stream on construction and detaches when you call `client.close()`.
+  The provider implementation. In the open-source packages this is the
+  `AlfizApplication` returned by `createApplication`; Alfiz Cloud speaks the
+  same contract. The client attaches to the provider's invalidation stream on
+  construction and detaches when you call `client.close()`.
 </ParamField>
 
 <ParamField body="subjectCacheTtlMs" type="number" default="30000">
@@ -108,6 +113,17 @@ import { type ClientOf } from "@alfiz/core";
   either way.
 </ParamField>
 
+<ParamField body="metrics" type="MetricsOptions">
+  Emit a structured `CheckObservation` per evaluated check — shape, decision,
+  permission, scope type, principal, and the rows that decided it — to an
+  observer you supply. Off by default. Point it at
+  `otelMetricsObserver({ meter })`, `createMetricsAggregator()`, or
+  `createProviderMetricsSink(app)`. Observations are built only after the
+  `sampleRate` draw passes, observers are invoked fire-and-forget, and an
+  observer that throws can never fail a check. See
+  [Permission metrics](/api/metrics).
+</ParamField>
+
 <ParamField body="externalPermissions" type='"error" | "warn" | "allow"' default='"error"'>
   What to do with a check for a permission in a namespace this catalog neither owns nor [imports](/catalog/imports) — an *implicit* import. `"error"` throws `UnknownPermissionError`, as it always has; `"warn"` evaluates it and reports once per distinct permission; `"allow"` evaluates it silently.
 
@@ -128,31 +144,33 @@ import { type ClientOf } from "@alfiz/core";
 
 ## Return value
 
-<ResponseField name="AlfizClient<K, P>" type="object">
-  A fully initialized client. The type parameters `K` and `P` are the
-  catalog's derived key union and pattern union respectively, inferred at the
+<ResponseField name="AlfizClient<K, P, S>" type="object">
+  A fully initialized client. The type parameters `K`, `P`, and `S` are the
+  catalog's derived key, pattern, and scope-id unions, inferred at the
   `createAlfizClient` call site. Store this as `ClientOf<typeof catalog>` on
   your application context.
 
   <Expandable title="Members">
-    <ResponseField name="can" type="CanFn<K>">
-      The primary authorization gate. Returns `Promise<boolean>`. Also
-      exposes `can.fresh(...)` for cache-bypassing checks.
+    <ResponseField name="can" type="CanFn<K, S>">
+      The primary authorization gate: `can(principal, key, scope?, options?)`,
+      returning `Promise<boolean>`. **No scope means the global scope** — the
+      strictest question, not "anywhere". Also exposes `can.fresh(...)` for
+      cache-bypassing checks.
     </ResponseField>
     <ResponseField name="canAny" type="(principal, pattern: P) => Promise<boolean>">
       The visibility affordance. Tests whether the principal holds any
       permission matching a pattern. Never use as a gate.
     </ResponseField>
-    <ResponseField name="requirePermission" type="(principal, key: K | readonly K[], scope?) => Promise<void>">
+    <ResponseField name="require" type="(principal, key: K | readonly K[], scope?) => Promise<void>">
       Throwing form of `can`. Throws `AccessDeniedError` on denial.
     </ResponseField>
     <ResponseField name="requireAny" type="(principal, pattern: P) => Promise<void>">
       Throwing form of `canAny`. Throws `AccessDeniedError` when no matching
       permission is held.
     </ResponseField>
-    <ResponseField name="snapshot" type="(principal, options?) => Promise<AlfizSnapshot<K, P>>">
-      Fetches all closure data in one round-trip, returning a snapshot with
-      synchronous `can`/`canAny` methods.
+    <ResponseField name="snapshot" type="(principal, options?) => Promise<AlfizSnapshot<K, P, S>>">
+      Fetches all closure data in one round-trip, returning a snapshot whose
+      `can` / `canAny` / `require` / `holds` / `heldKeys` are synchronous.
     </ResponseField>
     <ResponseField name="explain" type="(principal, key, scope?) => Promise<CheckExplanation & ...>">
       Returns the full explanation of an authorization decision, including
@@ -162,11 +180,14 @@ import { type ClientOf } from "@alfiz/core";
       The listing primitive: returns the scopes at which a principal holds a
       permission.
     </ResponseField>
-    <ResponseField name="holdsAnywhere" type="(principal, key) => Promise<boolean>">
-      Returns `true` if the principal holds the key at any scope.
+    <ResponseField name="holds" type="(principal, key, options?) => Promise<boolean>">
+      Returns `true` if the principal holds the key at **any** scope. A
+      visibility affordance, never a gate — `alfiz-verify` errors on a `holds`
+      call inside a server action or route handler.
     </ResponseField>
-    <ResponseField name="effectiveKeys" type="(principal) => Promise<PermissionKey[]>">
-      Returns every catalog key the principal holds at some scope.
+    <ResponseField name="heldKeys" type="(principal, options?) => Promise<PermissionKey[]>">
+      Returns every catalog key the principal holds at some scope. O(catalog)
+      — call once per request, or take a snapshot and read `snap.heldKeys`.
     </ResponseField>
     <ResponseField name="close" type="() => void">
       Detaches from the provider's invalidation stream and clears all caches.
@@ -201,27 +222,29 @@ Unsubscribes from the provider's invalidation stream and clears the subject and 
 
 ```typescript
 import { defineCatalog, group, createAlfizClient } from "@alfiz/core";
-import { AlfizApplication } from "@alfiz/application";
+import { createApplication } from "@alfiz/application";
+import { prismaDriver } from "@alfiz/prisma";
 
 // 1. Define the catalog (once, at the module level).
 export const catalog = defineCatalog({
   namespaces: ["docs"],
-  permissions: group("docs.files", { scopes: ["docs.doc"] }, {
+  permissions: group("docs.files", { scopes: ["docs.folder", "docs.doc"] }, {
     "docs.files.read":        true,
     "docs.files.update_file": true,
-    "docs.files.delete":      { destructive: true },
+    "docs.files.delete":      { destructive: true, scopes: ["docs.folder"] },
   }),
   scopeTypes: {
-    "docs.doc": { parent: "docs.folder" },
     "docs.folder": { parent: null },
+    "docs.doc":    { parent: "docs.folder" },
   },
 });
 
-// 2. Construct the provider, wiring in the ancestry resolver.
-const app = new AlfizApplication({
-  db,
+// 2. Construct the provider, wiring in storage and the ancestry resolver.
+//    `ancestry` returns the chain nearest-first, EXCLUDING the scope itself.
+const app = createApplication({
   catalog,
-  resolveAncestors: (scope) => db.getAncestors(scope),
+  storage: prismaDriver(prisma),
+  ancestry: async (scope) => db.ancestorChainOf(scope),
 });
 
 // 3. Create the client and export it for use across the application.

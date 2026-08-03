@@ -1,5 +1,5 @@
 ---
-title: "grantedScopes() and holdsAnywhere() — Listing Utilities"
+title: "grantedScopes() and holds() — Listing Utilities"
 sidebarTitle: "grantedScopes()"
 description: "grantedScopes(principal, key) returns the set of scopes where a principal holds a permission — the primitive for building efficient listing queries."
 ---
@@ -153,16 +153,16 @@ async function listAccessibleDocs(userId: string) {
 
 ---
 
-## `client.holdsAnywhere(principal, key)`
+## `client.holds(principal, key)`
 
 ```typescript
-async holdsAnywhere(
+async holds(
   principal: PrincipalRef,
   key: LooseKey<K>,
 ): Promise<boolean>
 ```
 
-Returns `true` if the principal holds `key` at **any** scope — the single-key "does this button exist at all?" probe. Use `holdsAnywhere` for unscoped conditional UI where the concrete scope is not yet known: someone who holds `publish_file` on only a handful of folders should still see the publish button surface. The button's server action still gates with `can` at its concrete scope.
+Returns `true` if the principal holds `key` at **any** scope — the single-key "does this button exist at all?" probe. Use `holds` for unscoped conditional UI where the concrete scope is not yet known: someone who holds `publish_file` on only a handful of folders should still see the publish button surface. The button's server action still gates with `can` at its concrete scope.
 
 <ParamField body="principal" type="PrincipalRef" required>
   The principal to check.
@@ -181,7 +181,7 @@ Returns `true` if the principal holds `key` at **any** scope — the single-key 
 </ResponseField>
 
 <Warning>
-  `holdsAnywhere` is a visibility affordance, not an authorization gate.
+  `holds` is a visibility affordance, not an authorization gate.
   It answers "should this surface exist at all for this user?" A positive
   result does not authorize any action; every action behind the button still
   gates with `client.can` at the concrete resource scope.
@@ -189,10 +189,10 @@ Returns `true` if the principal holds `key` at **any** scope — the single-key 
 
 ---
 
-## `client.effectiveKeys(principal)`
+## `client.heldKeys(principal)`
 
 ```typescript
-async effectiveKeys(principal: PrincipalRef): Promise<PermissionKey[]>
+async heldKeys(principal: PrincipalRef): Promise<PermissionKey[]>
 ```
 
 Returns every concrete catalog key the principal holds somewhere — granted by an unexpired row at any scope, suppressed only by a global-scope revoke. This is the full "what can this user do?" list, and it is the right feed for unscoped conditional UI that needs to render multiple surfaces at once.
@@ -214,11 +214,11 @@ Returns every concrete catalog key the principal holds somewhere — granted by 
 
 ## Examples
 
-### `holdsAnywhere` for unscoped conditional UI
+### `holds` for unscoped conditional UI
 
 ```typescript
 // Show the "Publish" button only if the user holds publish_file anywhere.
-const canPublishSomewhere = await alfiz.holdsAnywhere(
+const canPublishSomewhere = await alfiz.holds(
   { userId },
   "docs.files.update_file",
 );
@@ -226,10 +226,10 @@ const canPublishSomewhere = await alfiz.holdsAnywhere(
 // The button action still gates with can() at the concrete doc scope.
 ```
 
-### `effectiveKeys` for a permissions summary page
+### `heldKeys` for a permissions summary page
 
 ```typescript
-const keys = await alfiz.effectiveKeys({ userId });
+const keys = await alfiz.heldKeys({ userId });
 
 return (
   <PermissionSummary

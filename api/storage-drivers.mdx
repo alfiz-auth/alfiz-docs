@@ -142,7 +142,7 @@ Pass the `PrismaClient` instance directly. Any Prisma client generated from a sc
 
 ### The delegate interface
 
-`prismaDriver` requires only the subset of the generated Prisma client it actually calls, expressed as the `AlfizPrismaDelegates` interface. The ten delegate properties map directly to the Alfiz schema models:
+`prismaDriver` requires only the subset of the generated Prisma client it actually calls, expressed as the `AlfizPrismaDelegates` interface. Ten delegate properties are required and map directly to the core Alfiz schema models; four more are **optional**, and a client generated without them still satisfies the interface:
 
 ```ts
 interface AlfizPrismaDelegates {
@@ -156,6 +156,12 @@ interface AlfizPrismaDelegates {
   alfizRequest: AlfizRequestDelegate;
   alfizCatalog: AlfizCatalogDelegate;
   alfizAudit: AlfizAuditDelegate;
+
+  // Optional — omit the model and the driver omits the matching methods.
+  alfizImports?: AlfizImportsDelegate;
+  alfizEpoch?: AlfizEpochDelegate;
+  alfizEvent?: AlfizEventDelegate;
+  alfizMetric?: AlfizMetricDelegate;
 }
 ```
 
@@ -292,6 +298,61 @@ model AlfizAudit {
 <Note>
   Timestamps (`createdAt`, `expiresAt`, `at`, etc.) are stored as `BigInt` (epoch milliseconds) for lossless round-tripping with the core types' `number` fields. IDs are opaque strings assigned by the Application — no `autoincrement` or `cuid()` is used. No Prisma relations or cascades are declared; referential integrity between Alfiz rows is enforced by the Application layer above the seam.
 </Note>
+
+### Optional models
+
+Four more models are additive. Leave them out and everything above still works; add one when you turn on the feature that needs it. Each corresponds to an optional delegate, and **the Application refuses loudly at construction** rather than silently degrading when you enable a feature whose model is missing.
+
+| Model | Enables | Without it |
+|---|---|---|
+| `AlfizImports` | `publishImports` / `getPublishedImports` | `capabilities().imports` is `false`; the import methods are absent |
+| `AlfizEpoch` + `AlfizEvent` | `events: { persist: true }` on the Application, and so `revalidateAfterMs` on the client | `createApplication` **throws** when `events.persist` is set |
+| `AlfizMetric` | `metrics: {}` on the Application, `getGrantUsage` and the other usage reads | `createApplication` **throws** when `metrics` is set |
+
+```prisma
+/// The consumed-vocabulary manifest — catalog.toImportManifest().
+model AlfizImports {
+  id       Int  @id @default(1)
+  version  Int
+  manifest Json
+}
+
+/// The invalidation-log head — a singleton (always id = 1). One tiny indexed
+/// read answers "did anything change anywhere?", which is the cross-process
+/// cache-freshness signal behind `revalidateAfterMs`.
+model AlfizEpoch {
+  id            Int    @id @default(1)
+  seq           BigInt
+  prunedThrough BigInt @default(0)
+}
+
+/// Persisted invalidation events, contiguous by `seq` — the same events the
+/// in-process stream carries, durable so other processes can replay them.
+model AlfizEvent {
+  seq     BigInt @id
+  type    String
+  payload Json
+  at      BigInt
+
+  @@index([at])
+}
+
+/// Rolling permission-usage counters: one row per counter per time bucket
+/// (daily by default), keyed by grant id, revoke id, role id, permission
+/// key, or scope type. Counters accumulate across app servers. Nothing here
+/// is access data — dropping the table loses metrics and changes no decision.
+model AlfizMetric {
+  bucket    BigInt
+  dimension String
+  subject   String
+  metric    String
+  count     BigInt
+
+  @@id([bucket, dimension, subject, metric])
+  @@index([dimension, subject])
+  @@index([bucket])
+}
+```
 
 ## Multi-node deployments
 

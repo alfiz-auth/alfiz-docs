@@ -4,7 +4,7 @@ sidebarTitle: "Permissions"
 description: "Learn Alfiz permission declarations: the three-level key convention, read vs. action kinds, destructive flags, and forward-inclusive wildcards."
 ---
 
-Every permission your application enforces must be declared in the catalog before any check can reference it. Alfiz will not evaluate a key it has never seen — passing an unknown key to `can()` or `requirePermission()` raises `UnknownPermissionError` at runtime and a type error at compile time. This section explains how to declare permissions correctly, name them consistently, and use wildcards safely.
+Every permission your application enforces must be declared in the catalog before any check can reference it. Alfiz will not evaluate a key it has never seen — passing an unknown key to `can()` or `require()` raises `UnknownPermissionError` at runtime and a type error at compile time. This section explains how to declare permissions correctly, name them consistently, and use wildcards safely.
 
 ## The three-level key convention
 

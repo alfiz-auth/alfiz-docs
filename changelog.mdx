@@ -1,63 +1,361 @@
 ---
-title: "Alfiz Changelog: All Releases from Version 0.8 to 1.0"
+title: "Alfiz Changelog: Every Release from 0.2.0 to 0.5.2"
 sidebarTitle: "Changelog"
-description: "Every Alfiz release, from 0.8 to 1.0. See what shipped, what changed, and what was fixed across the Client and Application packages."
+description: "Every Alfiz release, from 0.2.0 to 0.5.2. What shipped, what changed, and what broke across @alfiz/core, @alfiz/application, @alfiz/prisma, and @alfiz/verify."
 ---
 
-Alfiz moves deliberately — each release addresses a concrete gap in how authorization is modeled, checked, or maintained. The entries below cover every version from 0.8 to 1.0, with enough context to understand not just *what* changed but *why* it had to.
-
----
-
-## 1.0.0 — July 14, 2026
+Alfiz is pre-1.0 and moves deliberately. Each release addresses a concrete gap in how authorization is modeled, checked, or maintained. The entries below mirror the library's own `CHANGELOG.md` — what shipped and, where a release broke something, exactly what you have to change.
 
 <Note>
-  The Alfiz semantics are now **frozen**. Breaking changes to grammar, wildcard behavior, precedence rules, or the grant tuple shape will require a new major version. You can build on the 1.0 surface with confidence.
+  Alfiz is pre-1.0. Semantics are not frozen, and breaking changes ship under
+  minor and patch numbers when the change is worth more than the version
+  etiquette — 0.5.2 carries two of them. Read the **Breaking** section of every
+  entry between your version and your target before upgrading.
 </Note>
 
-Version 1.0 marks the point at which the core authorization model stops being negotiable. Union-only inheritance, negative-always-wins precedence, forward-inclusive wildcards, the naming floor, and the grant tuple shape are all locked. Template-literal key types derived from your catalog are now stable API — no more churn between minor versions.
-
-### What shipped
-
-**`can.fresh()`** — Destructive surfaces and time-bound elevations sometimes need a guarantee that the answer hasn't been served from a cache. Call `can.fresh()` to bypass any cached result and go straight to the source. This is especially useful on confirmation dialogs, irreversible mutations, and privilege-escalation flows.
-
-**Coverage linting now errors** — Previously, exporting a server action with no gate produced a warning. It now produces an error. If you ship a server action, Alfiz expects a gate to be present; a missing gate is a misconfiguration, not a style preference.
-
-**Per-scope-type grantability in `defineCatalog()`** — You can now declare which scope types a given permission is grantable within, directly in your catalog definition. This tightens the contract between catalog authors and the grant UI, making it impossible to offer a permission for grant in a context where it has no meaning.
+All four packages version together: `@alfiz/core`, `@alfiz/application`, `@alfiz/prisma`, and `@alfiz/verify`.
 
 ---
 
-## 0.9.2 — June 30, 2026
+## Unreleased — one name per question, on every surface
 
-Cycle detection existed before this release, but the errors it produced weren't actionable. A bare "cycle detected" message tells you something is wrong without telling you where to look. This release makes cycle errors unambiguous.
+The check surface asks the same set of questions it always did. What changed is that each question now has exactly one name, spelled identically wherever you ask it — on the client, the snapshot, the session, and the new session snapshot.
 
-### What shipped
+### Renames (breaking)
 
-**Full cycle paths in errors** — When an interactive edit would create a cycle in the group parentage graph, Alfiz now hard-rejects the operation and names the complete path. Errors read as `A → B → C → A` so you can see exactly which nodes form the loop.
+| Was | Now | Matches |
+|---|---|---|
+| `client.requirePermission` | `client.require` | `snapshot.require`, `session.require` |
+| `client.holdsAnywhere` | `client.holds` | `snapshot.holds` |
+| `client.effectiveKeys` | `client.heldKeys` | `snapshot.heldKeys` |
 
-**Auto-condensation of strongly connected components** — When you use directory imports, Alfiz now detects strongly connected components in the import graph and automatically condenses them into a virtual parent node. You receive a warning explaining what was condensed, so the graph remains navigable without requiring you to manually untangle cycles before import proceeds.
+Semantics are unchanged in all three cases. The verifier's `DEFAULT_GATE_NAMES` still recognizes `requirePermission`, so a host-app wrapper by that name keeps counting as a gate.
+
+### Session snapshots
+
+`session.snapshot(options?)` brings view-as into the one-snapshot-per-request pattern: one fetch per identity, then synchronous, preview-narrowed `can` / `canAny` / `require` / `requireAny` / `holds` / `heldKeys`, each the actor ∩ preview intersection, plus `resolve(scopes)` extending both identities at once. Render paths under view-as no longer fall back to a per-button `await`.
+
+Role previews evaluate synchronously with no extra resolution — role patterns are global-scope by construction — and unknown role ids fail closed. Denials thrown from a session snapshot name the **actor**, not the previewed identity: attribution never follows the preview. `SessionSnapshotOf<Cat>` completes the derived-type family.
+
+### Sharper edges
+
+- **`holds` is verifier-enforced as never-a-gate.** It joins `canAny` and `requireAny` in `DEFAULT_VISIBILITY_NAMES`, so a `holds` call inside a server action or route handler is a build error rather than a convention.
+- **`requireAny`'s one sanctioned use is stated on the method**: the page-top visibility guard on a page that still gates its own read. Never an action gate.
+- **`can` with no scope means the global scope** — "may they do this *everywhere*?", not "anywhere?". The anywhere question is `holds`.
 
 ---
 
-## 0.9.0 — June 11, 2026
+## 0.5.2 — imported permissions
 
-Organizational domains create a specific authorship problem: when data about your org structure can be written by multiple sources, enforcing a consistent hierarchy becomes impossible. This release establishes a single-writer model and provides the tooling to move an Application into — or out of — that model safely.
+<Warning>
+  A patch number carrying two breaking changes. `alfiz-verify` will report call
+  sites it previously passed in silence, and a hand-written provider needs one
+  new field.
+</Warning>
 
-### What shipped
+Every application announces its own catalog. Some also *interface* with another's. Until this release the library handled that case inconsistently, and in the worst possible direction: `alfiz-verify` silently dropped any literal outside your namespaces while `can()` threw for the same string. CI green, production 500.
 
-**Org root with audited handoff** — Organizational-domain data now has exactly one writer. The org root transfers ownership in both directions through an audited handoff, so there is always a clear record of who held write authority and when it changed.
+The cause was one field doing two jobs. `namespaces` answered both "which keys may I declare" and "which keys may I check", so referencing another application's permission meant claiming its namespace. Those are now split:
 
-**Promotion** — Promoting a standalone Application into the directory imports its groups, roles, and global grants through the existing directory-import validation path. Reporting hierarchies that can't be resolved automatically are surfaced for human review, because trees are not union-safe and cannot be merged without a decision.
+```ts
+defineCatalog({
+  namespaces: ["docs"],                       // what you OWN
+  permissions: { "docs.files.read": true },
+  imports: {                                  // what you REFERENCE
+    zoom: {
+      from: "registry:zoom@^3",
+      document: zoomDoc,                      // fetched in CI, committed
+      scopes: ["docs.folder"],                // YOUR scope types, never zoom's
+      permissions: { "zoom.host": true, "zoom.meetings.*": true },
+    },
+  },
+});
+```
 
-**Demotion** — Demoting an Application out of the directory snapshots its dataset back down with full provenance attached. You get a complete record of what the dataset looked like at the moment of demotion, not a reconstruction.
+Attaching the owner's `document` is the recommended shape, and the difference is concrete: with it, wildcards expand, `canAny` answers exactly, and `zoom.hostt` fails the build. Without it a wildcard is an **opaque region** — declared, grantable, and checkable, but approximated wherever an answer would need expanding a pattern into keys. Those approximations are fail-closed.
+
+Scope wiring is deliberately the importer's: the owner publishes vocabulary, and only you can resolve your own resources' ancestry. A foreign scope type is a build error. So is a pattern broader than what you imported — importing `zoom.meetings.*` does not make `zoom.*` storable, because that is a widening claim over a namespace you do not own.
+
+Checking a permission you neither own nor import is an **implicit** import. `alfiz-verify` reports it: an error where no import source is configured, a warning where one is. At runtime it still throws unless you opt in with `createAlfizClient({ externalPermissions: "warn" })`. Two cases never soften: a permission under a namespace you own, and one outside an import that knows its own keys.
+
+One new semantic joins the fixed-not-pluggable list: **a bare global `*` does not confer a permission no catalog declares.** Any narrower pattern names its namespace by construction and confers normally.
+
+### Also in this release
+
+- `alfiz-verify` gains per-line suppression: `// alfiz-verify-ignore-next-line <rule> <reason>` and its trailing `-line` form. The rule name is required, not optional.
+- `catalogFromDocument(document, { imports, documents })` rebuilds a catalog that knows its imports.
+- `alfiz-verify.config.json` gains `importManifest`, `imports`, `importSource`, `implicitImports`, and `implicitImportAllow`.
+- The permission tree gains a `region` node kind, so an imported subtree is tickable in a role editor.
+- `lintCatalog` skips imported entries — another application's keys answer to its conventions, not yours.
+- Optional provider surface: `publishImports` / `getPublishedImports`, gated by `capabilities().imports`, with an optional `AlfizImports` Prisma model and two new relay ops.
+
+### Breaking
+
+- `alfiz-verify` previously **skipped** foreign-namespace literals in silence, so a project already referencing them will see new findings. Declare the import, or set `"implicitImports": "off"`.
+- `ProviderCapabilities` gains a required `imports` field. A hand-written provider needs one line.
 
 ---
 
-## 0.8.4 — May 22, 2026
+## 0.5.1 — usage over time
 
-When an application stops publishing a permission key, that key may still be referenced by centrally-managed roles. Hard-deleting it silently rewrote what those roles meant — checks that had been passing would start passing for a different reason, or failing for none at all. This release replaces deletion with tombstoning.
+`getPermissionUsage` and `getScopeTypeUsage` now return a `buckets` array alongside their totals — the same per-bucket shape `RowUsage` has carried since 0.5.0:
 
-### What shipped
+```ts
+const [usage] = await app.getPermissionUsage({ ids: ["docs.files.delete"] });
+usage.gateAllow;                        // 1_284 — the total, unchanged
+usage.buckets.map((b) => b.gateAllow);  // [201, 173, 244, …] — day by day
+```
 
-**Tombstones, not deletes** — Alfiz no longer hard-deletes permission keys that an application stops publishing. Instead, it tombstones them. Tombstoned keys stop matching authorization checks immediately so they can't be used to grant access, but they remain visible in editors marked as deprecated. This makes the gap between the published catalog and the roles that reference it explicit rather than invisible.
+The store has always bucketed by day; only the read collapsed it, which left a usage-over-time chart with no source for the one dimension that carries denials. Totals are exactly the series summed. Buckets with no traffic are absent rather than zero-filled.
 
-**Drift reports** — The registry now emits a drift report whenever a role references permissions that are no longer published. The report names each affected role and the count of missing keys — for example, *"role X references 3 permissions no longer published"* — so you can resolve the gap deliberately rather than discovering it in production.
+Purely additive: a new field on a returned type, no contract method added, no storage change, nothing to migrate.
+
+---
+
+## 0.5.0 — permission metrics
+
+Two questions had no good answer from access data alone. *Which permissions are actually exercised?* — the one a product owner asks before deprecating a surface. And *if I revoke this grant, what breaks?* — the one an administrator asks with the delete button already under the cursor. Both are answerable at the only place that sees every check: the Client, in your own process.
+
+### The observation stream
+
+Every evaluated check can emit a structured `CheckObservation` — shape, decision, permission, scope type, principal, and the rows that decided it — to an observer you configure. It is off by default, synchronous, guarded, and fire-and-forget: an observer that throws, hangs, or falls over loses counts and never a decision.
+
+```ts
+const alfiz = createAlfizClient({
+  catalog,
+  provider: app,
+  metrics: {
+    observer: otelMetricsObserver({ meter: metrics.getMeter("alfiz") }),
+    sampleRate: { gate: 1, visibility: 0.02 },
+  },
+});
+```
+
+### Sampling
+
+`sampleRate` is evaluated with one random draw *inside the call*, before any observation is built — an unsampled check costs a comparison and allocates nothing. Gates and visibility traffic sample separately, because they differ by orders of magnitude: one server render fires hundreds of `canAny` and `holds` checks, while gates correspond one-to-one with user actions. Every observation carries the rate that kept it, so counts extrapolate honestly, and both figures survive — `observed` next to `estimated`.
+
+Sampling decides only whether a check is **counted**. It can never change an answer.
+
+### Reading them directly
+
+`createMetricsAggregator()` is a pure, windowed, bounded fold over the stream with a live `snapshot()` — a complete metrics API with no external system and no storage. Memory is fixed regardless of traffic: scope instances aggregate to scope *type* unless a type opts in, principals live in a bounded map with an overflow flag, and every counter map is capped.
+
+### Storing them, and the revocation safeguard
+
+`metrics: {}` on the Application adds one table of rolling daily counters keyed by grant, revoke, role, permission, and scope type. `createProviderMetricsSink(app)` wires the client to it. Delivery is batched, pre-aggregated, unawaited, and back-pressured — under load it drops batches rather than growing a queue.
+
+```ts
+revocationSafeguard((await app.getGrantUsage({ ids: [grantId] }))[0]);
+// → "This grant was the only thing allowing 1200 checks in the last 7 days."
+```
+
+The warning keys on **`soleMatch`** — checks where the row was the *sole* matcher — not raw participation. A grant fully shadowed by a broader one loses nothing when revoked, and a warning that cries wolf gets clicked through. When a grant shows no recent use, the copy says exactly that and stops: absence of use is not evidence that revoking is safe.
+
+### Also in this release
+
+- **`capabilities().metrics`** joins the provider contract, gating `reportMetrics` and the `get*Usage` methods exactly as `audit` gates the audit log.
+- **`StorageDriver.recordMetrics` / `readMetrics` / `pruneMetrics`** are optional, implemented by the memory and Prisma drivers. The Prisma fragment gains one model, `AlfizMetric`.
+- **`explain()` gains `impliedBy`** — the grants at a descendant scope behind an ancestor implication. `matchedGrants` keeps its exact meaning: rows matching *at this scope*.
+- **Check shapes take an optional `CheckOptions`** (`{ observe }`), and `snapshot()` an `observe` flag. View-as previews set it, so attribution never follows a preview.
+- **`require` and `requireAny` no longer delegate** to `can` / `canAny` internally. One call now produces one observation, named for the shape actually called.
+
+### The guarantee, restated
+
+The old sentence — "checks are unmeterable by construction" — was the stronger claim and, with this release, the false one. The durable one is about dependency, and it is unchanged: **Alfiz Cloud is never in the path of a check**, so it cannot see one, bill for one, or slow one down. Permission metrics are your counts of your checks, in your database. There is no uplink and no central metrics store.
+
+---
+
+## 0.4.0 — the catalog says what it means
+
+The catalog input was overcommitted to a shape the data model never had. `projects` → `groups` → `permissions` spelled out a three-level hierarchy in three different keywords, while the built catalog, the published document, and every consumer of both were already flat lists of leaves and groups. The key you check with was never the key you could grep for.
+
+Permissions are now declared by their **full dotted key** — the notation every check, grant, role pattern, and nav entry already used.
+
+```ts
+defineCatalog({
+  namespaces: ["docs"],
+  permissions: {
+    "docs.files.read": { kind: "read" },
+    "docs.files.delete": { destructive: true, scopes: ["docs.folder"] },
+  },
+});
+```
+
+Nothing about the permission grammar, the wire format, or evaluation changed. This is a source-level change to how a catalog is *written*.
+
+### Groups are inferred, and optional
+
+Every dotted prefix of a declared key is a group. Nothing declares them into existence, so depth costs nothing and a small catalog needs no grouping construct at all — ten keys in one flat map is a complete, idiomatic catalog.
+
+For catalogs big enough that a flat map becomes a wall, `group()` bundles one group's keys into a named, foldable unit carrying its label and scope defaults, and `permissions` accepts an array of blocks mixed freely with bare maps:
+
+```ts
+export const files = group("docs.files", { label: "Files", scopes: ["docs.folder"] }, {
+  "docs.files.read": { kind: "read" },
+  "docs.files.share": true,
+});
+
+defineCatalog({ namespaces: ["docs"], permissions: [files, reports] });
+```
+
+A key that does not start with its block's path is a **compile error** naming the fix. Because keys are absolute, blocks compose by concatenation — a large catalog splits into one file per feature, declared next to the code it gates, with no deep merge to reason about.
+
+- **`namespaces: [...]`** replaces `namespace` + `additionalNamespaces` (the first is primary).
+- **`groups: { … }`** is an optional metadata map for paths you did not write a block for.
+- Group children keep **declaration order** in pickers and role editors; only top-level maps are sorted.
+
+### Depth is a convention, not a boot error
+
+`defineCatalog` used to throw when a key was not exactly three levels deep. But a two-level integration catalog (`zoom.host`) is a house-style decision, not a structural error:
+
+```ts
+conventions: { depth: 3 }      // the default
+conventions: { depth: 2 }      // an integration catalog
+conventions: { depth: "any" }  // opt out
+```
+
+A deviation is now a `lintCatalog` error, failed by `alfiz-verify` in CI. Structural invalidity still fails at boot — and gains a check that flat keys make possible: a key that is also a group path (`docs.files` declared alongside `docs.files.read`) would be both a folder and a leaf, and is rejected.
+
+### Breaking: the nested shape is gone
+
+No compatibility shim. `projects`, `namespace`, `additionalNamespaces`, and `allowArbitraryDepth` are **removed** — `namespaces` and `permissions` are now required, and everything else about `CatalogInput` is optional.
+
+Every key, pattern, stored grant row, and published document is unchanged, so this is a source edit with no data migration. The conversion is mechanical: flatten each leaf to its full key. `CatalogDocument` gains an optional `conventions` field at the same `formatVersion: 1`.
+
+---
+
+## 0.3.0 — the relay seam, and caching that survives more than one process
+
+The staleness bound stops being "a TTL per process" and becomes "one revalidation window, any number of processes" — opt-in, with defaults byte-identical to 0.2.2, except two strict improvements: the object-chain cache is now bounded, and both client caches evict LRU.
+
+### The relay seam
+
+`@alfiz/application` ships the Application side of the Alfiz Cloud relay protocol. `createRelayHandler` mounts one bearer-authenticated POST endpoint (timing-safe secret check) whose ops mirror the provider contract one-to-one, plus the epoch reads, the org-snapshot ops that promotion and demotion ride on, and a health probe.
+
+Every relayed write lands in the same provider methods local code calls, so org-root gating, validation, graph integrity, and audit apply unchanged; typed errors survive the wire. `createRelayProvider` is the calling side: an `AlfizProvider` over `fetch`, with `ping` / `exportOrgSnapshot` / `applyOrgSnapshot` extras and `RelayTransportError` for transport failures. `onAuthorityChanged` tells the host to reconstruct its Application when an authority transfer flips the `orgRoot` flag.
+
+Runtime checks never traverse the relay. Nothing here is on any request path.
+
+### The event log
+
+- `events: { persist: true }` on the Application appends every invalidation event to a sequenced log before the write returns, exposed as `provider.epoch { head, since }`. Retention defaults to 7 days / 100 000 rows.
+- `revalidateAfterMs` on the client: past the window, one constant-cost head read — coalesced across concurrent checks — validates both caches for every principal. An unchanged head renews TTLs; a changed head replays only the missed events; a gap busts everything. Fail-closed: an unreachable epoch degrades to exactly the old TTL contract.
+- `ingestEvents` and `startEventPoller` give push-like invalidation for long-lived nodes.
+
+### The shared cache tier
+
+`CacheStore` — three string-valued methods, zero dependencies — acts as an L2. Read order is L1 → L2 → provider; entries are served only under exactly the current log head, or within the TTL when there is no epoch; every error is a miss. `respCacheStore` adapts node-redis and ioredis call shapes structurally.
+
+### The miss path, fixed
+
+`getSubjectAccess` no longer scans the entire group table per miss — the topology map is cached with `groupTopologyTtlMs` and busted synchronously by group writes — fetches each referenced role once via the optional `StorageDriver.getRoles`, and overlaps independent queries.
+
+### Client cache hygiene
+
+Object-chain cache bounded (`maxObjectCacheEntries`, 10 000); LRU eviction on both caches; O(affected) event busting via secondary indexes; in-flight coalescing for chain resolution. `notifyScopeMoved` now returns a promise that resolves when the move event is durable.
+
+---
+
+## 0.2.2 — typed end to end, errors that carry their fix
+
+No semantic changes: this release is developer experience. The derived types now cover every surface a human types a permission or scope into, and every error explains itself. Nothing breaks — new type parameters default to the old `string` behavior, and scope typing is a *hint*, not a gate.
+
+### The derived-type family grows a third member: scopes
+
+- **`ScopeOf<typeof catalog>`** — `"*" | "docs.folder:${string}" | …`, derived from the declared `scopeTypes` exactly as `KeyOf` and `PatternOf` derive from the keys. Carried by the client, snapshot, and session as a third type parameter.
+- Scope parameters are **hints, not gates** (`LooseScopeId`): literal call sites autocomplete `*` and every declared `<scopeType>:` prefix, while ids from variables and databases flow through unchanged. Keys and patterns remain strictly gated — a scope id's instance half is runtime data; a permission key never is.
+- **`scopeId(type, id)` narrows**, returning `` `${T}:${string}` ``, so ids built through the helper satisfy the derived scope union.
+
+### The write paths are typed
+
+`GrantInput`, `RevokeInput`, `RequestInput`, and `RoleInput` are generic over the catalog's pattern and scope unions. **`createApplication` now infers from the catalog** exactly as `createAlfizClient` does, so seeding scripts, data migrations, and admin actions autocomplete `pattern:` and `scope:` at the call site.
+
+### Autocomplete crosses the wire: codegen
+
+- **`alfiz-verify codegen --catalog <doc.json> [--out <file>] [--prefix <Name>]`** emits a dependency-free module of literal unions (`AlfizKey` / `AlfizPattern` / `AlfizScopeType` / `AlfizScopeId`) from a published `CatalogDocument`. Deterministic, so regeneration diffs are exactly the catalog change.
+- **`catalogFromDocument<K, P, S>(doc)`** pins the emitted unions back onto a document-built catalog, and `createAlfizClient` picks them up — consumers of a published catalog get the same typed `can` as the team that owns the source module.
+
+### Errors carry their fix
+
+- **Edit-distance "did you mean"** on every unknown-permission surface. `can(u, "docs.files.raed")` now says *did you mean "docs.files.read"?*, and a right-leaf-wrong-group string names the key under the group that actually declares it.
+- **Undeclared namespaces are called out**: `"stripe.charges.create"` reports that `stripe` is not a namespace of this catalog and lists the declared ones.
+- **`validateGrantableAt` says where the grant would be valid**: unknown scope types list the declared ones; non-grantable patterns list the scope types their matched leaves declare.
+- **`UnresolvedScopeError`** (new, typed) replaces the bare `Error` a snapshot threw for an unresolvable scope, carrying the scope, its type, whether it is declared, and the scopes the snapshot *can* evaluate.
+- **`AccessDeniedError` names the principal** when the throw site knew it, and points at `explain()` for the why.
+
+---
+
+## 0.2.1 — second field report
+
+### Checks are verified against the catalog (behavior change)
+
+Investigating a reported "`canAny("admin")` silently answers `false`" turned up its sibling on the **gate** path, in the dangerous direction: `*` matches any string, so `can(user, "docs.files.raed")` returned **true** for anyone holding a covering wildcard and `false` for everyone else. A misspelled gate key admitted exactly the broadly-privileged users who review and test it, while denying the users it was written for.
+
+Both are the same missing rule, now enforced at every check boundary:
+
+- An undeclared key or pattern raises **`UnknownPermissionError`** instead of being evaluated. It is a programming error — map it to 500, never 403. `isUnknownPermission(err)` narrows it.
+- Enforced on `can`, `canAny`, `require*`, `explain`, `grantedScopes`, `holds`, and every snapshot equivalent. Typed keys and `alfiz-verify` already covered literal call sites; this covers the runtime-string paths they cannot see — nav tables, config, generic wrappers.
+- `assertCanViewAs` now denies rather than raising when a catalog is built with `includeAlfizInternal: false`. Previews fail closed.
+
+<Warning>
+  **Upgrading:** a bare group path or a stale key in a runtime-string check path
+  now throws where it previously returned a quiet boolean. That is the bug
+  becoming visible. Fix the string, or declare the key.
+</Warning>
+
+### The ignore pragma follows JavaScript's own rule
+
+`// alfiz-verify-ignore-file <reason>` is now recognized anywhere in the file **header** — above *or below* a `"use server"` / `"use client"` directive, exactly as the language permits comments between directive-prologue statements. A misplaced pragma is no longer a silent no-op: it is reported as a warning naming its line. `ignoreFilePragma` is replaced by `findIgnorePragma`, which returns `{ reason, line, effective }`.
+
+### Provenance validated at the write path
+
+A provenance missing its `actorUserId` used to pass through every write and fail inside the audit writer. `validateProvenance` (exported from core) now checks the required fields per kind, and the Application asserts it at the **top of every public write** — not after the row is inserted, which would leave a written row with no audit entry.
+
+### Grant queries that don't scan
+
+- `listGrants({ roleId })` on the provider contract — "who holds this role" without reading every grant in the organization.
+- **`countGrants(filter)`** through the contract, the storage seam, and both drivers. *Breaking for third-party storage drivers:* implement `countGrants`.
+
+### Derived types and hierarchical list pages
+
+- **`SnapshotOf<Cat>`**, **`ClientOf<Cat>`**, and **`SessionOf<Cat>`** round out `KeyOf` and `PatternOf`.
+- **`snapshot.resolve(scopes)`** extends an existing snapshot's chains without a second closure fetch — the shape a hierarchical list page needs, since it cannot know its row ids until after it queries. The data instant and clock are unchanged, so the consistency guarantee holds.
+
+---
+
+## 0.2.0 — the alpha-feedback release
+
+Shaped by the first real migration: an existing application with a 97-key catalog, roughly 400 call sites, and a hand-rolled scoping layer. The theme — the semantics were right; the surface around adopting them needed to grow.
+
+### The request-scoped snapshot
+
+`client.snapshot(principal, { scopes?, fresh? })` returns an `AlfizSnapshot`: one provider round-trip, then **synchronous** `can` / `canAny` / `require` / `requireAny` / `explain` / `grantedScopes` / `holds` / `heldKeys`. This is the first-class pattern for server-rendered frameworks, where conditional-UI checks live in render helpers and `.map()` callbacks that cannot become async. A snapshot is one consistent instant — a stronger per-request guarantee than repeated `can` calls.
+
+Every scope in the principal's own grant and revoke rows is chain-resolved at snapshot time, so revoke suppression, `canAny`, and ancestor implication agree exactly with `client.can`. Hierarchical check targets are pre-resolved via `{ scopes: [...] }`; checking an unresolved hierarchical scope throws rather than evaluating a truncated chain, which would fail open on ancestor revokes.
+
+**Semantic tightening:** a scope type declared `parent: null` now commits to flat instances — chains are `[scope, "*"]` by declaration, which is what keeps scoped checks on top-level types synchronous. Types whose instances nest under the same type declare themselves as their own parent (`"docs.folder": { parent: "docs.folder" }`).
+
+### Referential cleanup and the missing write APIs
+
+- **`deleteSubject(subject, provenance)`** — grants key on subject strings, so deleting a principal in your own tables silently stranded its rows and a reused id inherited them. Sweeps every grant held by the subject; for users also revokes, the stored record, implicit-group grants, and pending requests.
+- **`deleteScope(scope, provenance)`** — the resource-deletion half: grants and revokes at the scope, plus cancellation of pending requests targeting it.
+- **`createGrants(inputs, provenance)`** — the bulk write migrations need: every input validated before any row is written, one audit entry, one invalidation event per distinct subject.
+- **Caller-supplied ids** on `createRole` and `createGroup`, so migration SQL and runtime agree on well-known ids. Collisions are conflicts, never overwrites.
+- **`updateGroup(groupId, { name, description }, provenance)`** — renames no longer detour through `importDirectory`.
+- **`setUserActive(userId, active, provenance)`** — the reversible offboarding switch. Creates the record when absent, so deactivating a never-provisioned principal sticks.
+- Storage seam, breaking for driver implementors: `deleteUser(userId)` added; the `listRevokes` filter gains `scope`.
+
+### The generated-client promise, pinned
+
+`@alfiz/prisma` narrows create-data JSON fields from `JsonValue` to `InputJsonValue`, declares optional properties Prisma-style so the structural match also holds under `exactOptionalPropertyTypes`, and adds `src/prisma-client-shape.ts` — a compile-only replica of the types `prisma generate` emits, with per-model assignability assertions. A delegate change that would break generated clients now fails this package's build rather than yours.
+
+### A verifier that can describe a real project
+
+- CLI config gains `gateNames`, `visibilityNames`, and `serverFilePatterns`. A project's own guard wrappers are the encouraged pattern, and without declaring them every wrapped action read as ungated. CLI lists are additive to the defaults; the programmatic options replace them, so spread `DEFAULT_GATE_NAMES` / `DEFAULT_VISIBILITY_NAMES` / `DEFAULT_SERVER_FILE_PATTERNS` in.
+- `// alfiz-verify-ignore-file <reason>` — the out-of-domain vocabulary for surfaces that authenticate outside the catalog by design.
+
+### Catalog ergonomics
+
+- **Group-level `scopes`** — declared once on a group, inherited by every leaf under it. Nearest declaration wins; a leaf's own `scopes`, including an explicit `[]`, overrides.
+- **`label` on leaves and groups** — the short picker name alongside the longer `description`, carried through the catalog document and the headless tree, so UI copy stops drifting into side tables.

@@ -119,7 +119,8 @@ Under the hood the evaluator:
 4. Checks whether any personal revoke for the user suppresses that grant.
 
 ```ts
-// Global check: does the user hold docs.files.read at any scope?
+// Global check: does the user hold docs.files.read at the GLOBAL scope —
+// "everywhere"? This is the strictest form, not "anywhere".
 await alfiz.can({ userId }, "docs.files.read");
 
 // Scoped check: a grant on the parent folder satisfies this.
@@ -128,7 +129,17 @@ await alfiz.can({ userId }, "docs.files.read", "docs.doc:123");
 // Visibility: does the user hold anything under docs.files.* at any scope?
 // Never use this as an authorization gate.
 await alfiz.canAny({ userId }, "docs.files.*");
+
+// The "anywhere" question for a single key — also never a gate.
+await alfiz.holds({ userId }, "docs.files.read");
 ```
+
+<Warning>
+  Omitting the scope means the **global** scope, not "any scope". `can(p, key)`
+  asks *may they do this everywhere?* — the strictest question there is. The
+  anywhere question is `holds`, and neither `holds` nor `canAny` may be used as
+  a gate; `alfiz-verify` makes that a build error.
+</Warning>
 
 **Forward-inclusive wildcards** mean that a stored `docs.files.*` grant matches `docs.files.read` today and will also match any new key you add under `docs.files` tomorrow, without touching any existing grant rows.
 

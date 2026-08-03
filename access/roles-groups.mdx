@@ -199,7 +199,7 @@ const showUserMgmt = await alfiz.canAny({ userId }, "alfiz_internal.*");
 ```
 
 <Warning>
-`canAny` is a **visibility affordance only** — never use it as an authorization gate. Every page and action must still call `alfiz.can(principal, key, scope)` or `alfiz.requirePermission(...)` with a concrete key. The static verifier (`alfiz-verify`) will error on `canAny` used in a gate position.
+`canAny` is a **visibility affordance only** — never use it as an authorization gate. Every page and action must still call `alfiz.can(principal, key, scope)` or `alfiz.require(...)` with a concrete key. The static verifier (`alfiz-verify`) will error on `canAny` used in a gate position.
 </Warning>
 
 ## Built-in `alfiz_internal` permissions

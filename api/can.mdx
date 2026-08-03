@@ -1,25 +1,27 @@
 ---
-title: "can() and requirePermission() — Authorization Gates"
+title: "can() and require() — Authorization Gates"
 sidebarTitle: "can()"
-description: "can(principal, key, scope?) returns a boolean authorization decision. requirePermission() is the throwing form. can.fresh() bypasses the closure cache."
+description: "can(principal, key, scope?) returns a boolean authorization decision. require() is the throwing form. can.fresh() bypasses the closure caches."
 ---
 
-`can` is the only gate shape in Alfiz. Every route handler, server action, and API endpoint that enforces access control calls `can` (or its throwing form `requirePermission`) on a concrete permission key at a concrete scope. The key is verified against your catalog before evaluation — a key the catalog does not declare raises `UnknownPermissionError`, which is a programming error, not a denial, and must never be mapped to a `403`.
+`can` is the only gate shape in Alfiz. Every route handler, server action, and API endpoint that enforces access control calls `can` (or its throwing form `require`) on a concrete permission key at a concrete scope. The key is verified against your catalog before evaluation — a key the catalog does not declare raises `UnknownPermissionError`, which is a programming error, not a denial, and must never be mapped to a `403`.
 
 ## `can(principal, key, scope?)`
 
 ```typescript
-interface CanFn<K extends string> {
+interface CanFn<K extends string, S extends string = string> {
   (
     principal: PrincipalRef,
     key: K | readonly K[],
-    scope?: ScopeId,
+    scope?: LooseScopeId<S>,
+    options?: CheckOptions,
   ): Promise<boolean>;
 
   fresh(
     principal: PrincipalRef,
     key: K | readonly K[],
-    scope?: ScopeId,
+    scope?: LooseScopeId<S>,
+    options?: CheckOptions,
   ): Promise<boolean>;
 }
 ```
@@ -41,12 +43,29 @@ interface CanFn<K extends string> {
   else.
 </ParamField>
 
-<ParamField body="scope" type="ScopeId">
+<ParamField body="scope" type="LooseScopeId<S>">
   Optional. A scope instance id of the form `<scopeType>:<instanceId>` — for
-  example `docs.doc:abc123` or `docs.folder:project-x`. Omit `scope` (or
-  pass `"*"`) for a global-scope check. When a scope is provided, the client
-  resolves its full ancestor chain and checks grants at the scope itself, at
-  every ancestor, and at `*`.
+  example `docs.doc:abc123` or `docs.folder:project-x`. When a scope is
+  provided, the client resolves its full ancestor chain and checks grants at
+  the scope itself, at every ancestor, and at `*`.
+
+  Scope ids **hint** rather than gate: a literal autocompletes every declared
+  `<scopeType>:` prefix, while an id built from a variable flows through
+  unchanged, because the instance half of a scope id is runtime data.
+
+  <Warning>
+    **Omitting `scope` means the global scope**, not "any scope". `can(p, key)`
+    asks *may they do this everywhere?* — the strictest question, and the one
+    only a global grant satisfies. The anywhere question is
+    [`holds`](/api/granted-scopes), and it is never a gate.
+  </Warning>
+</ParamField>
+
+<ParamField body="options" type="CheckOptions">
+  Optional. `{ observe }` controls whether this check emits a metrics
+  observation. Defaults to `true`, and is inert unless the client was
+  constructed with `metrics`. View-as previews pass `false`, so attribution
+  never follows the preview.
 </ParamField>
 
 ### Return value
@@ -56,7 +75,7 @@ interface CanFn<K extends string> {
   (directly or through a covering grant higher in the hierarchy), and `false`
   in every other case including inactive principals, expired grants, and
   suppressed grants. This method never throws for a denial — only
-  `requirePermission` throws.
+  `require` throws.
 </ResponseField>
 
 ---
@@ -69,7 +88,8 @@ interface CanFn<K extends string> {
 can.fresh(
   principal: PrincipalRef,
   key: K | readonly K[],
-  scope?: ScopeId,
+  scope?: LooseScopeId<S>,
+  options?: CheckOptions,
 ): Promise<boolean>
 ```
 
@@ -88,13 +108,14 @@ Use `can.fresh` in place of `can` for:
 
 ---
 
-## `requirePermission(principal, key, scope?)`
+## `require(principal, key, scope?)`
 
 ```typescript
-async requirePermission(
+async require(
   principal: PrincipalRef,
   key: K | readonly K[],
-  scope?: ScopeId,
+  scope?: LooseScopeId<S>,
+  options?: CheckOptions,
 ): Promise<void>
 ```
 
@@ -158,14 +179,14 @@ async function getDocument(userId: string, docId: string) {
 }
 ```
 
-### Using `requirePermission` in a server action
+### Using `require` in a server action
 
 ```typescript
 export async function updateDocument(docId: string, patch: DocPatch) {
   const { userId } = await getSession();
 
   // Throws AccessDeniedError if not permitted — caught by the framework.
-  await alfiz.requirePermission(
+  await alfiz.require(
     { userId },
     "docs.files.update_file",
     `docs.doc:${docId}`,
@@ -193,7 +214,13 @@ export async function deleteDocument(docId: string) {
   }
 
   await db.docs.delete(docId);
-  await app.notifyScopeMoved(`docs.doc:${docId}`); // clean up grants
+  // Grants key on the scope STRING, so deleting the row does not remove them.
+  // deleteScope sweeps grants and revokes at the scope and cancels pending
+  // requests targeting it. (notifyScopeMoved is for MOVES, not deletes.)
+  await app.deleteScope(`docs.doc:${docId}`, {
+    kind: "admin",
+    actorUserId: userId,
+  });
 }
 ```
 
