@@ -257,17 +257,62 @@ type AppPattern = PatternOf<typeof catalog>;
 // → "*" | AppKey | "docs.*" | "docs.files.*" | ...
 ```
 
-### `SessionOf<Cat>`
+### `ScopeOf<Cat>`
 
-The session type for a catalog (see [Sessions](/api/session)):
+Every scope id the catalog's declared `scopeTypes` can name, plus the global scope:
 
 ```ts
-import type { SessionOf } from "@alfiz/application";
+import type { ScopeOf } from "@alfiz/core";
 import { catalog } from "./alfiz.js";
 
-type AppSession = SessionOf<typeof catalog>;
-// → AlfizSession<KeyOf<typeof catalog>, PatternOf<typeof catalog>>
+type AppScope = ScopeOf<typeof catalog>;
+// → "*" | `docs.folder:${string}` | `docs.doc:${string}`
 ```
+
+<Note>
+Keys and patterns **gate**: a typo at a literal call site is a compile error. Scope ids **hint** (`LooseScopeId<S>` is `S | (string & {})`): a literal scope autocompletes every declared `<scopeType>:` prefix, while an id built from a variable or a database row flows through unchanged. The instance half of a scope id is runtime data by nature; a permission key never is.
+</Note>
+
+### The carrier aliases
+
+Four aliases exist so a value stored on a context object needs no hand-written type parameters. Each threads all three unions through:
+
+| Alias | Resolves to | Import from |
+|---|---|---|
+| `ClientOf<Cat>` | `AlfizClient<KeyOf<Cat>, PatternOf<Cat>, ScopeOf<Cat>>` | `@alfiz/core` |
+| `SnapshotOf<Cat>` | `AlfizSnapshot<KeyOf<Cat>, PatternOf<Cat>, ScopeOf<Cat>>` | `@alfiz/core` |
+| `SessionOf<Cat>` | `AlfizSession<KeyOf<Cat>, PatternOf<Cat>, ScopeOf<Cat>>` | `@alfiz/application` |
+| `SessionSnapshotOf<Cat>` | `AlfizSessionSnapshot<KeyOf<Cat>, PatternOf<Cat>, ScopeOf<Cat>>` | `@alfiz/application` |
+
+```ts
+import type { ClientOf, SnapshotOf } from "@alfiz/core";
+import type { SessionOf, SessionSnapshotOf } from "@alfiz/application";
+import { catalog } from "./alfiz.js";
+
+type RequestContext = {
+  alfiz:   ClientOf<typeof catalog>;
+  snap:    SnapshotOf<typeof catalog>;
+  session: SessionOf<typeof catalog>;
+};
+```
+
+### Types for the published document
+
+`defineCatalog` derives its unions from the catalog *literal*. Code that consumes the published `CatalogDocument` instead — a federated sibling, another repo — gets the same treatment through codegen:
+
+```bash
+alfiz-verify codegen --catalog alfiz-catalog.json --out alfiz.gen.ts
+```
+
+```ts
+import { catalogFromDocument } from "@alfiz/core";
+import type { AlfizKey, AlfizPattern, AlfizScopeId } from "./alfiz.gen.js";
+
+// TypedCatalog<K, P, S> — createAlfizClient picks the unions straight up.
+const catalog = catalogFromDocument<AlfizKey, AlfizPattern, AlfizScopeId>(doc);
+```
+
+An untyped `catalogFromDocument(doc)` returns a `string`-typed catalog, honestly, rather than pretending to a precision it does not have.
 
 ### `AlfizInternalKey`
 
