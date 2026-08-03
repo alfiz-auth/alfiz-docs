@@ -13,9 +13,10 @@ Alfiz Cloud bills for the work it performs. The dimensions are few, they are all
 | Admin seats | Standing | Authenticated Dashboard sessions — billing starts at first sign-in, not at invite. |
 | Linked applications | Standing | Applications registered and linked. Included at no cost — the seat, not the link, is the product. |
 | Federated applications | Standing | Member applications under the hosted org root. |
+| Provisioned connectors | Standing | Operating reconcilers for an external system — one per connector. |
 | Retained audit events | Counted | Events ingested into opt-in hosted retention. |
 | Catalog publishes | Guardrail | Publishes to the registry. |
-| Relay operations | Guardrail | Administrative operations forwarded over the relay. |
+| Org-root read-model sync | Guardrail | Snapshot pushes keeping a member application's read model current. |
 
 **Standing** dimensions bill for what exists — a seat, an application — at a monthly rate. **Counted** dimensions bill for what happened — events ingested. **Guardrail** dimensions are metered but carry generous included volumes; they exist to keep pathological automation visible, not to price ordinary use.
 

@@ -42,8 +42,8 @@ This page gets you from an empty project to a passing scoped check. It uses the 
         "docs.files.delete":      { destructive: true, scopes: ["docs.folder"] },
       },
       scopeTypes: {
-        "docs.folder": { parent: "docs.folder" }, // folders nest in folders
-        "docs.doc":    { parent: "docs.folder" }, // documents live in folders
+        "docs.folder": { parent: null },           // top-level: folders sit under *
+        "docs.doc":    { parent: "docs.folder" },  // documents live in folders
       },
     });
     ```
@@ -56,9 +56,11 @@ This page gets you from an empty project to a passing scoped check. It uses the 
     <Note>
       `parent` is a commitment, not a hint. A type declared `parent: null` has
       the ancestor chain `[scope, "*"]` **by declaration**, which is what lets
-      a snapshot check it synchronously. A type whose instances nest under
-      other instances of the same type names itself as its own parent, as
-      `docs.folder` does above.
+      a snapshot check it synchronously without consulting your resolver.
+      Omitting `parent` means exactly the same thing. If folders should nest
+      inside folders, name the type as its own parent —
+      `"docs.folder": { parent: "docs.folder" }` — and it becomes
+      hierarchical like `docs.doc`.
     </Note>
   </Step>
 
@@ -133,7 +135,8 @@ This page gets you from an empty project to a passing scoped check. It uses the 
     // false — nothing grants Jane anything on this folder
     await alfiz.can({ userId: "jane" }, "docs.files.read", "docs.folder:99");
 
-    // Throws AccessDeniedError instead of returning false
+    // The throwing form. This one passes — the same folder grant covers it —
+    // but on a denial it throws AccessDeniedError instead of returning false.
     await alfiz.require({ userId: "jane" }, "docs.files.update_file", "docs.doc:123");
 
     // Destructive actions bypass the caches

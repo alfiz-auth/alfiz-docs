@@ -89,15 +89,20 @@ Linking is a registration step — you associate your Application with an Alfiz 
 
     ```ts src/app/api/alfiz-relay/route.ts
     import { createRelayHandler } from "@alfiz/application";
-    import { app, storage } from "@/authz/app";
+    import { app } from "@/authz/app";
 
     export const POST = createRelayHandler({
       application: app,
-      storage,
       secret: process.env.ALFIZ_RELAY_SECRET!,
       applicationId: "docs",
     });
     ```
+
+    Note what is **not** here: `storage`. Passing it enables the two
+    org-snapshot ops, which write your org-domain dataset straight through the
+    driver without the Application's enforcement. Those exist for
+    [promotion](/cloud/promotion), and a linked deployment does not need them.
+    Add `storage` when you federate, not before.
 
     The [relay setup guide](/cloud/relay) covers the full flow — registration, the relay URL, the secret, and the connection health probe.
 

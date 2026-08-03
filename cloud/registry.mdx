@@ -64,6 +64,8 @@ The drift report above reads roles and grants. It cannot see **code** — an app
 
 Publishing the import manifest closes that gap. It is a separate artifact from the catalog on purpose: what you announce is vocabulary others may write grants against, what you consume is a dependency only others can warn you about.
 
+`publishImports` writes a versioned manifest to **your own Application's storage** — it posts nothing to the registry, and needs no network. Alfiz Cloud reads it back over the relay like any other provider operation. The op is optional: it needs a driver implementing `putImports` / `getImports` (the `AlfizImports` model in the Prisma fragment), and `capabilities().imports` reports whether yours has it.
+
 ```ts
 await app.publishImports(catalog.toImportManifest(), provenance);
 ```

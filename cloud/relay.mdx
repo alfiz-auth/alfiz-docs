@@ -28,18 +28,22 @@ The options are:
 
 | Option | Required | What it does |
 | --- | --- | --- |
-| `application` | yes | Your `AlfizApplication` — every relayed op runs through the same provider methods your local code calls. |
-| `storage` | yes for federation | Your `StorageDriver`. Required for the org-snapshot ops that promotion, demotion, and read-model sync ride on. A linked-only setup can omit it; snapshot ops then return `unsupported`. |
+| `application` | yes | Your `AlfizApplication`. Every relayed op except the two org-snapshot ops runs through the same provider methods your local code calls. |
+| `storage` | yes for federation | Your `StorageDriver`. Required for the org-snapshot ops that promotion, demotion, and read-model sync ride on — and passing it is what enables them. A linked-only setup should **omit** it; the snapshot ops then return `unsupported`. |
 | `secret` | yes | The relay secret minted at link time. Compared with the incoming `Authorization: Bearer` header in constant time. |
 | `applicationId` | yes | The application id you registered in the Dashboard. |
-| `onAuthorityChanged` | for promotion | Called with the new `orgRoot` value after Alfiz Cloud applies an authority-transfer snapshot. See [Handling authority transfer](#handling-authority-transfer). |
+| `auditOptIn` | for hosted audit | Enables the opt-in audit stream the linked tier retains and exports. Reported back on the health probe. |
+| `onAuthorityChanged` | for promotion | Called with the applied `authority` value after **every** `org.applySnapshot` — including a routine read-model sync, which passes `authority: false`. Branch on the value; do not treat the call itself as a transfer signal. See [Handling authority transfer](#handling-authority-transfer). |
+| `clock` / `ids` | no | Injectable time and id sources, for tests. |
 
 <Note>
-  Event persistence (`events: { persist: true }` on `createApplication`) is required for the relay. The relay's cache freshness rides the Application's epoch — without the durable event log, Alfiz Cloud has no signal for when its cached org reads have gone stale. See [cross-process invalidation](/api/create-application#cross-process-invalidation).
+  Event persistence (`events: { persist: true }` on `createApplication`) is **recommended**, not required. The relay works without it — the health probe simply reports `hasEpoch: false`, and Alfiz Cloud falls back to the TTL bounds for its cached org reads instead of revalidating against your log. Turn it on so those reads tighten to a revalidation window. See [caching and staleness](/enforcement/caching).
 </Note>
 
 <Warning>
-  Mount the route inside your network perimeter as appropriate. The secret authenticates Alfiz Cloud to your Application — and every relayed write still passes your Application's own enforcement, so possession of the secret never confers access your authorization model would refuse.
+  Mount the route inside your network perimeter as appropriate. The secret authenticates Alfiz Cloud to your Application, and every relayed write **that maps to a provider method** passes your Application's own enforcement — org-root gating, validation, graph integrity, and audit — so possession of the secret confers no access your authorization model would refuse.
+
+  The two org-snapshot ops are the exception, and they are why `storage` is opt-in. `org.applySnapshot` writes the org-domain dataset straight through the storage driver: no org-root gate, no provenance assertion, no transaction. Pass `storage` only when you are federating, and treat the secret as a credential that can rewrite your org data wholesale when you do.
 </Warning>
 
 ## Set up the connection
@@ -54,7 +58,7 @@ The options are:
   </Step>
 
   <Step title="Verify with the health probe">
-    Run the connection health probe from the application page — or read `GET /api/v1/orgs/{org}/applications/{app}`, which includes relay health and registry status. A healthy probe confirms the route is reachable, the secret matches, and the Application's epoch is flowing.
+    Run the connection health probe from the application page — or read `GET /api/v1/orgs/{org}/applications/{app}`, which includes relay health and registry status. The probe returns `{ protocol, application, orgRoot, hasEpoch, auditOptIn }`: it confirms the route is reachable and the secret matches, and reports whether an event log was configured. `hasEpoch` is a static fact about how the Application was constructed, not a liveness signal.
   </Step>
 </Steps>
 

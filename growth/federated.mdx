@@ -28,7 +28,7 @@ For instance-scoped grants — `docs.doc:123`, `billing.invoice:456` — the opp
 
 <CardGroup cols={2}>
   <Card title="Cross-namespace role composition" icon="arrows-merge">
-    Define a role like "Project Lead" that grants both `docs.files.*` and `zoom.host` in a single assignment. Cross-namespace composition requires the central catalog registry; it is not possible with independent applications. Each application declares the foreign slice it interfaces with as an [import](/catalog/imports), so those keys are typed and verified on its side too.
+    Define a role like "Project Lead" that grants both `docs.files.*` and `zoom.host` in a single assignment. A standalone Application can already do this — declare the foreign slice as an [import](/catalog/imports) and both patterns go in one role. What federation adds is the **registry** behind it: a published, versioned source for that foreign vocabulary, ownership enforcement so no application defines another's keys, and drift reports when a role still references a tombstoned key.
   </Card>
   <Card title="Catalog registry" icon="book-open" href="/cloud/registry">
     Each application's namespace is published as a versioned contract. The registry enforces namespace ownership (no application can define another's keys), tracks additions and tombstones, and makes published permission trees consumable across your organization.
@@ -52,7 +52,7 @@ For third-party systems that have no ability to call `can()` at runtime, Alfiz C
 An approved access request targeting a provisioned role (for example, `zoom.host`) writes the same grant row a direct admin action would. The reconciler enacts it in the external system on its next run.
 
 <Warning>
-  Provision-and-reconcile and gate-at-runtime have different enforcement guarantees. Runtime checks are enforced within the cache staleness bound (milliseconds to seconds). Provisioned permissions are enforced at reconcile cadence with drift detection. State both guarantees explicitly to your users.
+  Provision-and-reconcile and gate-at-runtime have different enforcement guarantees. Runtime checks are enforced within the cache staleness bound — 30 seconds for subject closures and 60 for object chains by default, or one revalidation window with the event log on. Provisioned permissions are enforced at reconcile cadence with drift detection. State both guarantees explicitly to your users.
 </Warning>
 
 When an integration publishes a new contract version, the adapter tombstones the old version. The registry produces a drift report: "Role X references 3 permissions no longer published by any application." Old grant rows are not silently rewritten — you review and migrate them.

@@ -25,9 +25,9 @@ Two things must be true before promotion can begin:
   </Step>
 
   <Step title="Flip authority atomically">
-    Authority transfers in one atomic step. There is no window in which both sides accept org-domain writes, and no window in which neither does. After the flip, your Application rejects local org-domain writes with `ProviderWriteRejectedError` (`not_org_root`).
+    Authority transfers as a single push, applied and then acknowledged: Alfiz Cloud sends one `org.applySnapshot` carrying `authority: true`, and your Application rejects local org-domain writes with `ProviderWriteRejectedError` (`not_org_root`) once it is rebuilt with the new flag. The snapshot is applied as a sequence of individual storage writes rather than inside a transaction, so run the transfer during a quiet window rather than under concurrent org-domain load.
 
-    Because `orgRoot` is a constructor commitment, the relay handler calls your `onAuthorityChanged(false)` hook so the host process can rebuild its Application with the new flag. Wire that hook before you start promotion — see [Handling authority transfer](/cloud/relay#handling-authority-transfer).
+    Because `orgRoot` is a constructor commitment, the relay handler calls your `onAuthorityChanged` hook with the applied `authority` value so the host process can rebuild its Application. The hook fires after **every** applied snapshot, including routine read-model syncs that pass `authority: false` — branch on the argument rather than treating the call itself as a transfer. Wire it before you start promotion; see [Handling authority transfer](/cloud/relay#handling-authority-transfer).
   </Step>
 
   <Step title="Push the read model down">

@@ -107,9 +107,11 @@ await alfiz.can.fresh({ userId }, "docs.files.delete", "docs.folder:9"); // bypa
     import { catalog } from "./catalog";
     import { db } from "../db";
 
+    export const storage = memoryDriver();  // swap for @alfiz/prisma in production
+
     export const app = createApplication({
       catalog,
-      storage: memoryDriver(),         // swap for @alfiz/prisma in production
+      storage,
       ancestry: parentPointerResolver((scope) => db.parentOf(scope)),
       orgRoot: true,                   // default — shown here for clarity
     });
