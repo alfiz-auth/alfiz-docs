@@ -98,7 +98,7 @@ One new semantic joins the fixed-not-pluggable list: **a bare global `*` does no
 
 ## 0.5.1 — usage over time
 
-`getPermissionUsage` and `getScopeTypeUsage` now return a `buckets` array alongside their totals — the same per-bucket shape `RowUsage` has carried since 0.5.0:
+`getPermissionUsage` and `getScopeTypeUsage` now return a `buckets` array alongside their totals — the same per-bucket *treatment* `RowUsage` has carried since 0.5.0, though the entries differ: a `RowUsage` bucket carries `matched` and `soleMatch`, a `PermissionUsage` bucket carries `gateAllow`, `gateDeny`, `visibilityAllow`, and `visibilityDeny`.
 
 ```ts
 const [usage] = await app.getPermissionUsage({ ids: ["docs.files.delete"] });
@@ -146,8 +146,9 @@ Sampling decides only whether a check is **counted**. It can never change an ans
 `metrics: {}` on the Application adds one table of rolling daily counters keyed by grant, revoke, role, permission, and scope type. `createProviderMetricsSink(app)` wires the client to it. Delivery is batched, pre-aggregated, unawaited, and back-pressured — under load it drops batches rather than growing a queue.
 
 ```ts
-revocationSafeguard((await app.getGrantUsage({ ids: [grantId] }))[0]);
-// → "This grant was the only thing allowing 1200 checks in the last 7 days."
+const safeguard = revocationSafeguard((await app.getGrantUsage({ ids: [grantId] }))[0]);
+// → { level: "warning", matched, soleMatch, days, headline, detail }
+//   headline: "This grant was the only thing allowing 1200 checks in the last 7 days."
 ```
 
 The warning keys on **`soleMatch`** — checks where the row was the *sole* matcher — not raw participation. A grant fully shadowed by a broader one loses nothing when revoked, and a warning that cries wolf gets clicked through. When a grant shows no recent use, the copy says exactly that and stops: absence of use is not evidence that revoking is safe.
@@ -295,7 +296,7 @@ Investigating a reported "`canAny("admin")` silently answers `false`" turned up 
 Both are the same missing rule, now enforced at every check boundary:
 
 - An undeclared key or pattern raises **`UnknownPermissionError`** instead of being evaluated. It is a programming error — map it to 500, never 403. `isUnknownPermission(err)` narrows it.
-- Enforced on `can`, `canAny`, `require*`, `explain`, `grantedScopes`, `holds`, and every snapshot equivalent. Typed keys and `alfiz-verify` already covered literal call sites; this covers the runtime-string paths they cannot see — nav tables, config, generic wrappers.
+- Enforced on `can`, `canAny`, `require*`, `explain`, `grantedScopes`, `holdsAnywhere` (renamed `holds` later — see Unreleased), and every snapshot equivalent. Typed keys and `alfiz-verify` already covered literal call sites; this covers the runtime-string paths they cannot see — nav tables, config, generic wrappers.
 - `assertCanViewAs` now denies rather than raising when a catalog is built with `includeAlfizInternal: false`. Previews fail closed.
 
 <Warning>

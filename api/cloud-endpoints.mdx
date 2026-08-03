@@ -47,18 +47,18 @@ Uniform across topologies: these gates are the `alfiz_internal.*` keys of the **
 | PATCH/DELETE | `/orgs/{org}/org/roles/{id}` | `alfiz_internal.access.manage_roles` | Update or delete a role. |
 | GET/POST | `/orgs/{org}/org/groups` | `alfiz_internal.access.read` / `alfiz_internal.access.manage_groups` | List or create groups. |
 | PATCH/DELETE | `/orgs/{org}/org/groups/{id}` | `alfiz_internal.access.manage_groups` | Update or delete a group. |
-| PUT | `/orgs/{org}/org/groups/{id}/parents` | `alfiz_internal.access.manage_groups` | Set group parentage — a cycle returns `GraphCycleError` with the full path. |
-| GET | `/orgs/{org}/org/groups/{id}/members` | `alfiz_internal.access.read` | Resolve group membership. |
+| PUT | `/orgs/{org}/org/groups/{id}/parents` | `alfiz_internal.access.manage_groups` | Set group parentage — a cycle is rejected with `ProviderWriteRejectedError`, `code: "graph_cycle"`, whose message names the full path. |
+| GET | `/orgs/{org}/org/groups/{id}/members` | `alfiz_internal.access.read` | List the users **directly** in this group. Membership through a child group is not expanded here — that is the subject closure's job. |
 | POST | `/orgs/{org}/org/groups/{id}/dissolve` | `alfiz_internal.access.manage_groups` | Dissolve a virtual parent: its grants copy down to each child, then the children drift freely. |
 | GET | `/orgs/{org}/org/users` | `alfiz_internal.access.read` | List users. |
 | PUT | `/orgs/{org}/org/users/{id}/membership` | `alfiz_internal.access.manage_groups` | Set a user's group memberships. |
-| PUT | `/orgs/{org}/org/users/{id}/active` | `alfiz_internal.access.manage_reporting` | Activate or deactivate a user. |
+| PUT | `/orgs/{org}/org/users/{id}/active` | `alfiz_internal.access.manage_grants` | Activate or deactivate a user. Deactivation is the reversible offboarding switch: an inactive principal evaluates to no access on every check shape. |
 | PUT | `/orgs/{org}/org/users/{id}/manager` | `alfiz_internal.access.manage_reporting` | Set the user's `reports-to` edge. |
 | GET | `/orgs/{org}/org/reporting-edges` | `alfiz_internal.access.read` | The full reporting hierarchy. |
 | GET | `/orgs/{org}/org/subject-access` | `alfiz_internal.access.read` | A subject's resolved access closure. |
 | GET | `/orgs/{org}/org/explain` | `alfiz_internal.access.read` | Explain a decision — which rows and paths produced it. |
 | DELETE | `/orgs/{org}/org/subjects/{subject}` | `alfiz_internal.access.manage_grants` | Remove all rows for a deleted subject. |
-| DELETE | `/orgs/{org}/org/scopes/{scope}` | `alfiz_internal.access.manage_grants` | Remove all rows for a deleted scope. |
+| DELETE | `/orgs/{org}/org/scopes/{scope}` | `alfiz_internal.access.manage_grants` | Remove the rows at exactly this scope id, and cancel pending requests targeting it. Descendants are separate rows — call it per deleted resource. |
 | GET | `/orgs/{org}/org/catalog` | Seat | The composed org catalog — what is grantable and requestable. |
 | GET | `/orgs/{org}/org/audit` | `alfiz_internal.audit.read` | The org-domain audit history. |
 | GET | `/orgs/{org}/org/epoch` | Seat | The current org epoch. |
