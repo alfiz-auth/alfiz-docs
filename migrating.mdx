@@ -1,0 +1,232 @@
+---
+title: "Migrating an Existing RBAC System to Alfiz"
+sidebarTitle: "Migrating"
+description: "Move a role-column or hand-rolled RBAC system onto Alfiz: map your tables onto the grant row, split the roles that grant globally, import in bulk, and wire the lifecycle paths."
+---
+
+Adopting Alfiz in an application that already has permissions is not a rewrite. Your keys usually survive, your assignments import in one call, and your call sites change shape rather than meaning. What *does* take deliberate work is one thing, and it is the step every migration underestimates: **splitting the roles that currently grant globally.**
+
+This page is the brownfield path. If you are starting fresh, the [quickstart](/quickstart) is shorter.
+
+## 1. Keep your keys
+
+If your existing permission strings already look like `<project>.<tab>.<permission>`, declare them as they are. Alfiz's [naming floor](/catalog/permissions) is a convention the linter enforces, not a structural law — and a migration that renames 400 call sites on day one is a migration that stalls.
+
+Where your depth genuinely differs, say so rather than fighting it:
+
+```ts
+conventions: { depth: 2 }      // a thin two-level catalog
+conventions: { depth: "any" }  // mixed depths, no check
+```
+
+## 2. Everything you are migrating becomes one table
+
+Alfiz has one atomic unit: the grant row `(subject, role-or-pattern, scope, expiry?)` with provenance. Map your existing concepts onto it before writing any code.
+
+| You have | It becomes |
+|---|---|
+| A role assignment table | Grant rows with `roleId`, subject `user:<id>` |
+| Group or team permissions | Grant rows with subject `group:<id>` |
+| API tokens with permission lists | Grant rows with subject `service:<id>` |
+| Public or anonymous access flags | Grant rows with subject `everyone` |
+| Per-resource ACL rows (`FolderMember`, …) | Grant rows with a `scope` |
+| Temporary elevations | Grant rows with `expiresAt` |
+
+If a concept does not fit this table, stop and reread it. In every migration so far, the row absorbed it.
+
+## 3. The crux: a global grant satisfies every scoped check
+
+The global scope `*` is in **every** object closure. So `can(user, "docs.files.share", "docs.folder:9")` passes for anyone holding `docs.files.share` at `*` — a global grant is authority *everywhere*, including every scope you will ever create.
+
+Obvious once stated. Its consequence is the part that bites: **your existing roles grant resource-level permissions globally**, because a scopeless RBAC system has nowhere else to put them. Import "Editor = may share documents" as a global role, then start writing scoped grants, and *scoping changes nothing* — every editor still passes every scoped check through the global grant.
+
+<Warning>
+Splitting those roles **is** the migration. Until it is done, adding scopes has no effect on who can do what.
+</Warning>
+
+Cut each role that mixes org-wide authority with per-resource authority into two:
+
+```ts
+// BEFORE (the imported shape): one role, granted globally to all editors.
+//   "Editor": may browse the workspace, AND may share/update/delete files.
+// Granted at *, the share/update half is effective at EVERY folder.
+
+// AFTER: the global half stays global…
+await app.createRole(
+  {
+    id: "role_editor_base",
+    name: "Editor (base)",
+    patterns: ["docs.files.read", "docs.reports.read"],
+  },
+  provenance,
+);
+
+// …and the per-folder half becomes a role you grant AT a folder.
+await app.createRole(
+  {
+    id: "role_folder_editor",
+    name: "Folder editor",
+    patterns: ["docs.files.*"], // update_file, share, …
+  },
+  provenance,
+);
+
+await app.createGrant({
+  subject: "user:jane",
+  roleId: "role_editor_base",
+  provenance,
+});
+await app.createGrant({
+  subject: "user:jane",
+  roleId: "role_folder_editor",
+  scope: "docs.folder:9",  // Jane's authority exists only where she works
+  provenance,
+});
+```
+
+<Tip>
+Rule of thumb while cutting: for each pattern in an old role, ask *"should a holder be able to do this at a resource they have no relationship with?"* Yes → the global half. No → the scoped half.
+</Tip>
+
+## 4. A role's meaning depends on where it is granted
+
+The same role definition confers **different key sets at different grant sites**. A scoped grant is restricted to the leaves that declare that scope type; a global grant confers everything the patterns match.
+
+```ts
+group("docs.files", { scopes: ["docs.folder"] }, {  // inherited default for the group
+  "docs.files.read":     true,                       // scopes: ["docs.folder"] (inherited)
+  "docs.files.share":    true,                       //           "
+  "docs.files.manage_workspace": { scopes: [] },     // global-only: no scoped grant confers it
+})
+```
+
+One role, two grant sites:
+
+```ts
+await app.createRole(
+  { id: "role_folder_editor", name: "Folder editor", patterns: ["docs.files.*"] },
+  provenance,
+);
+```
+
+| Check | Granted at `*` | Granted at `docs.folder:9` |
+|---|---|---|
+| `can(u, "docs.files.read", "docs.folder:9")` | ✅ | ✅ |
+| `can(u, "docs.files.read", "docs.folder:10")` | ✅ | ❌ |
+| `can(u, "docs.files.manage_workspace")` | ✅ | ❌ — declares no `docs.folder` scope, so a folder-site grant cannot confer it |
+
+This is what makes one "Folder editor" role safe to hand out per folder: the **catalog**, not the role author's restraint, bounds what a scoped grant site can confer. It also means "grant role R" is an incomplete sentence during a migration. Always say *where*.
+
+`catalog.appliesAt(key, grantScope)` answers the same question programmatically, if you are building a picker that must show what a grant at a given site would actually confer.
+
+## 5. Import assignments in bulk, with your own ids
+
+Migrating N existing assignments is one `createGrants` call, not N `createGrant` calls. Every input is validated **before** any row is written — one bad assignment rejects the whole batch instead of half-importing a tenant — then one audit entry records the batch and one invalidation event fires per distinct subject.
+
+```ts
+await app.createGrants(
+  assignments.map((a) => ({
+    subject: `user:${a.userId}`,
+    roleId: a.roleId,
+    scope: a.folderId ? `docs.folder:${a.folderId}` : undefined,
+  })),
+  { kind: "import", source: "legacy-rbac-2026-07" },
+);
+```
+
+Where a SQL data migration must reference a role or group by id, pass the id yourself — `createRole({ id: "role_folder_editor", … })`, `createGroup({ id: "editors", … })` — so migration SQL and runtime agree on identity with no name-resolution cache. A taken id is a conflict, never an overwrite.
+
+## 6. Wire the lifecycle paths, not just the checks
+
+Grants key on subject and scope **strings**, not foreign keys. Alfiz cannot see your `users` or `folders` tables, so deleting a row there strands the grant rows here — silently. If an id is ever reused, the new principal inherits the old one's access.
+
+| In the code path that… | Call |
+|---|---|
+| Deletes a user, API token, or service account | `app.deleteSubject("user:<id>", provenance)` |
+| Deletes a scoped resource (a folder, a document) | `app.deleteScope("docs.folder:<id>", provenance)` |
+| Moves a resource (its parent pointer changes) | `app.notifyScopeMoved("<type>:<id>")` |
+
+`deleteSubject` on a `user:` also removes their revokes, their stored record, grants held by their implicit-group subjects (`directs:` / `orgof:`), and cancels their pending requests. `deleteScope` sweeps one scope id — descendants are separate rows, so call it per deleted resource when removing a subtree.
+
+For offboarding that must be **reversible**, deactivate instead: `app.setUserActive(userId, false, provenance)`. An inactive principal evaluates to no access on every check shape. Delete only when the id itself is being retired.
+
+## 7. Put the render path on a snapshot
+
+A server-rendered page performs hundreds of conditional-UI checks inside `.map()` callbacks and render helpers that cannot be async. Take [one snapshot per request](/api/snapshot) and check synchronously:
+
+```ts
+const snap = await alfiz.snapshot({ userId }, { scopes: [`docs.folder:${folderId}`] });
+
+snap.require("docs.files.read", `docs.folder:${folderId}`);
+const canShare = snap.can("docs.files.share", `docs.folder:${folderId}`);
+```
+
+For a hierarchical list page, you cannot know your row ids until after the query — so extend the snapshot once the query returns:
+
+```ts
+const rows = await db.docs.findMany({ … });
+await snap.resolve(rows.map((r) => `docs.doc:${r.id}`));
+```
+
+For large result sets, push the filter into the database instead with [`grantedScopes`](/api/granted-scopes) rather than resolving every row.
+
+## 8. Turn the verifier on last, and configure it for your wrappers
+
+Your codebase gates through its own wrappers (`assertCanEditFile`, `gateDestructiveAction`, …) — the conventions encourage exactly that. Tell the verifier, or every wrapped action reads as ungated:
+
+```json
+{
+  "catalog": "alfiz-catalog.json",
+  "include": ["src", "app"],
+  "gateNames": ["assertCanEditFile", "gateDestructiveAction"],
+  "serverFilePatterns": ["app/actions/"]
+}
+```
+
+CLI name lists are **added** to the built-ins, so you never need to restate `can` and `require`. Surfaces that authenticate outside the catalog by design opt out in the file header, with a reason. See [static verification](/enforcement/static-verification).
+
+## 9. Runtime strings are checked against the catalog
+
+Typed keys and the verifier cover every literal call site. The paths they cannot see — nav tables, config, generic wrappers taking `permission: string` — are checked at runtime instead. A key or pattern the catalog does not declare raises `UnknownPermissionError`, a **programming error** your framework should map to 500, never 403.
+
+This is not strictness for its own sake. Both silent behaviours it replaces were wrong in ways that were nearly impossible to notice:
+
+| Call | Before | Now |
+|---|---|---|
+| `can(u, "docs.files.raed")` | **`true`** for anyone holding `*` or `docs.*` — the typo admitted exactly the privileged users who review and test it, and denied everyone else | Throws, naming the key and the nearest match |
+| `canAny(u, "docs")` | `false` — a whole nav section vanishes, with no error to search for | Throws: *did you mean `"docs.*"`?* |
+
+Two consequences worth planning for:
+
+- **A bare group path is never a valid check.** For visibility, the subtree pattern is `docs.*`. For a gate, groups are folders — gate on a leaf.
+- **Keys must exist in the compiled-in catalog.** A shared component checking a key from a namespace this application neither owns nor [imports](/catalog/imports) will say so instead of quietly denying.
+
+Provenance is validated the same way, at the write path: a missing `actorUserId` is rejected as a `validation` write rejection before any row is written, rather than failing later inside the audit writer.
+
+## The checklist
+
+<Steps>
+  <Step title="Catalog">
+    Keys unchanged, `namespaces` and `conventions: { depth }` set to match reality, scope types declared — `parent: null` only if instances are truly flat — and group-level `scopes` on scoped groups.
+  </Step>
+  <Step title="Roles imported split">
+    Global halves and scoped halves, per the crux above. This is the step that makes scoping real.
+  </Step>
+  <Step title="Assignments imported">
+    One `createGrants` call under an `import` provenance, with well-known ids supplied by you.
+  </Step>
+  <Step title="Lifecycle paths wired">
+    Every delete path paired with `deleteSubject` / `deleteScope`, every move path with `notifyScopeMoved`, offboarding with `setUserActive`.
+  </Step>
+  <Step title="Render path on snapshot">
+    Hierarchical list pages resolve after the query or push the filter down; actions gate on `can` and `can.fresh`.
+  </Step>
+  <Step title="Runtime-string paths audited">
+    Bare group paths fixed, and `UnknownPermissionError` mapped to 500 rather than 403.
+  </Step>
+  <Step title="alfiz-verify in CI">
+    Your wrappers configured, out-of-domain files pragma'd in the header, and the remaining error count at zero.
+  </Step>
+</Steps>
+
+After that, the capabilities your old system lacked — group grants, time-bound elevation, [access requests](/requests/overview), per-resource roles — are single grant rows away, not features to build.

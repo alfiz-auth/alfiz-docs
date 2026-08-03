@@ -20,7 +20,7 @@ async snapshot(
   human user or `{ serviceId: string }` for a machine principal.
 </ParamField>
 
-<ParamField body="options.scopes" type="readonly ScopeId[]">
+<ParamField body="options.scopes" type="readonly LooseScopeId<S>[]">
   Scope instances to pre-resolve for synchronous scoped checks. You only
   need to list scopes for **hierarchical** scope types — those whose catalog
   declaration has a non-null `parent`. Flat, top-level scope types (declared

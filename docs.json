@@ -35,7 +35,8 @@
             "pages": [
               "introduction",
               "quickstart",
-              "core-concepts"
+              "core-concepts",
+              "migrating"
             ]
           },
           {
