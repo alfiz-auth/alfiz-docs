@@ -10,14 +10,17 @@ This page is the brownfield path. If you are starting fresh, the [quickstart](/q
 
 ## 1. Keep your keys
 
-If your existing permission strings already look like `<project>.<tab>.<permission>`, declare them as they are. Alfiz's [naming floor](/catalog/permissions) is a convention the linter enforces, not a structural law — and a migration that renames 400 call sites on day one is a migration that stalls.
+Declare your existing permission strings as they are. The only structural requirement is that each key's first segment is a namespace you declare — everything else about the shape is [house convention](/catalog/permissions), configurable in one line. A migration that renames 400 call sites on day one is a migration that stalls.
 
-Where your depth genuinely differs, say so rather than fighting it:
+Set the conventions to match your keys:
 
 ```ts
 conventions: { depth: 2 }      // a thin two-level catalog
-conventions: { depth: "any" }  // mixed depths, no check
+conventions: { depth: 4 }      // a deeper feature tree
+conventions: { depth: "any" }  // mixed depths — no check at all
 ```
+
+`"any"` is a perfectly good permanent answer. Nothing in evaluation depends on how many segments a key has.
 
 ## 2. Everything you are migrating becomes one table
 
@@ -207,7 +210,7 @@ Provenance is validated the same way, at the write path: a missing `actorUserId`
 
 <Steps>
   <Step title="Catalog">
-    Keys unchanged, `namespaces` and `conventions: { depth }` set to match reality, scope types declared — `parent: null` only if instances are truly flat — and group-level `scopes` on scoped groups.
+    Keys unchanged, `namespaces` declared, `conventions: { depth }` set to match your keys (or `"any"`), scope types declared — `parent: null` only if instances are truly flat — and group-level `scopes` on scoped groups.
   </Step>
   <Step title="Roles imported split">
     Global halves and scoped halves, per the crux above. This is the step that makes scoping real.

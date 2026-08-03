@@ -85,7 +85,7 @@ Server files are identified by a `"use server"` directive or by path patterns ma
 
 | Finding | Severity |
 |---|---|
-| A key whose depth is not **exactly** `conventions.depth` (default 3) | Error |
+| A key whose depth is not **exactly** `conventions.depth` (default 3) | Error — [set or disable `depth`](#key-depth) |
 | An empty group — declared but with no permissions under it | Error |
 | A group below the naming floor: no `read` or `read_<thing>` leaf | Error |
 | A nav `permission` that is not a valid key or pattern, or references nothing in the catalog | Error |
@@ -98,9 +98,21 @@ Server files are identified by a `"use server"` directive or by path patterns ma
 ⚠ [catalog] docs.files.Publish — actions are named `<verb>_<noun>` in snake_case (destructive actions may stand alone, e.g. `delete`)
 ```
 
-<Note>
-Depth is checked for **exact equality**, not as a minimum. A four-level key fails against the default `depth: 3` exactly as a two-level one does — declare `conventions: { depth: 2 }` or `conventions: { depth: "any" }` if that is your house style.
-</Note>
+#### Key depth
+
+Depth is the one lint rule that is purely a naming preference, and the one most likely to fire on a codebase that was not written with Alfiz in mind. It is checked for **exact equality**, not as a minimum: a four-level key fails against the default `depth: 3` exactly as a two-level one does.
+
+Set it to whatever your keys already are, or turn it off:
+
+```ts
+conventions: { depth: 2 }      // an integration catalog: zoom.host
+conventions: { depth: 4 }      // a deeper feature tree
+conventions: { depth: "any" }  // no depth check at all
+```
+
+<Tip>
+  If depth findings are the only thing standing between you and a green build, set `{ depth: "any" }` and keep the rules that catch real problems — an ungated action, a visibility affordance used as a gate, a key no gate references. Nothing about evaluation, grants, or wildcards depends on how many segments your keys have.
+</Tip>
 
 Lint findings are reported over **owned** entries only. Another application's imported keys answer to its conventions, not yours, and a finding your codebase cannot act on is the wrong kind of finding.
 

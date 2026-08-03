@@ -1,14 +1,16 @@
 ---
 title: "Declaring Alfiz Permissions: Keys, Kinds, and Wildcards"
 sidebarTitle: "Permissions"
-description: "Learn Alfiz permission declarations: the three-level key convention, read vs. action kinds, destructive flags, and forward-inclusive wildcards."
+description: "Learn Alfiz permission declarations: dotted keys, read vs. action kinds, destructive flags, scope wiring, and forward-inclusive wildcards."
 ---
 
 Every permission your application enforces must be declared in the catalog before any check can reference it. Alfiz will not evaluate a key it has never seen — passing an unknown key to `can()` or `require()` raises `UnknownPermissionError` at runtime and a type error at compile time. This section explains how to declare permissions correctly, name them consistently, and use wildcards safely.
 
-## The three-level key convention
+## Key shape
 
-Alfiz permission keys follow the shape `<project>.<tab>.<permission>`:
+A permission key is a dotted string whose **first segment is a namespace your application owns**. That is the only structural requirement — `defineCatalog` rejects a key whose first segment is not in `namespaces`, and accepts any depth beyond it.
+
+Most application catalogs settle on three segments because the middle one is a useful place to put the feature area:
 
 ```
 docs.files.read
@@ -23,19 +25,23 @@ admin.users.invite_user
 admin.users.delete
 ```
 
-- **project** is the namespace your application owns (`docs`, `billing`, `admin`). It must appear in the catalog's `namespaces`.
-- **tab** is a logical section or feature area — what your UI might call a page or a module.
-- **permission** is the leaf — the concrete thing someone may or may not do.
+- The **first** segment is the namespace — declared, and enforced.
+- The **middle** segments are feature areas. Use as many as you find useful, or none.
+- The **last** segment is the leaf: the concrete thing someone may or may not do.
 
 The group levels (`admin`, `admin.users`) are **inferred**: every dotted prefix of a declared key is a group. You never declare them into existence, which is why depth costs nothing. Because a group is a folder and a permission is a leaf, one key can never be both — declaring `admin.users` alongside `admin.users.read` is a boot-time error.
 
-This three-level shape is the default **convention**, enforced by `alfiz-verify` rather than by `defineCatalog`. A catalog with a different house style declares it and builds:
+Depth is a **house-style setting**, not a rule. `conventions.depth` defaults to `3`, and `lintCatalog` is the only thing that reads it — `defineCatalog` never checks it, and neither does any check at runtime. If your keys are shaped differently, say so in one line rather than renaming to match a default:
 
 ```ts
-conventions: { depth: 3 }      // the default
-conventions: { depth: 2 }      // a thin integration catalog: zoom.host
-conventions: { depth: "any" }  // mixed depths, no check
+conventions: { depth: 2 }      // an integration catalog: zoom.host
+conventions: { depth: 4 }      // a deeper feature tree
+conventions: { depth: "any" }  // mixed depths — turn the check off
 ```
+
+<Tip>
+  Adopting Alfiz in an existing codebase? Set `depth` to whatever your keys already are, or `"any"`, and move on. Renaming 400 call sites to satisfy a lint default is the wrong first day.
+</Tip>
 
 ## Declaring permissions: `PermissionLeafInput`
 
@@ -89,7 +95,7 @@ export interface PermissionLeafInput {
 
 ## The naming floor
 
-Every group that declares permissions must meet the naming floor, enforced by `alfiz-verify`:
+The naming floor is Alfiz's suggested house style, checked by `lintCatalog` and reported by `alfiz-verify`. Only the first rule is an error; the rest are warnings that do not fail a build. Adopt what suits you:
 
 1. **Every tab needs at least one `read` permission.** Name it `read` for general access to the section, or `read_<thing>` for a more specific read (e.g. `read_history`, `read_exports`).
 2. **Action permissions are named `<verb>_<noun>`** in `snake_case` — `invite_user`, `export_report`, `publish_file`. A short list of common standalone verbs (`create`, `update`, `delete`, `manage`, `approve`, `publish`, `archive`, `export`, `import`, `issue`, `revoke`, `view_as`) are allowed without a noun. Anything else — a single-word action like `share` — is a `lintCatalog` **warning**, not an error, so it does not fail the build; rename it `share_file` if you want a clean run.

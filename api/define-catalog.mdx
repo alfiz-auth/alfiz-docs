@@ -81,9 +81,9 @@ function defineCatalog<const C extends CatalogInput>(input: C): Catalog<C>
 </ParamField>
 
 <ParamField body="conventions" type='{ depth?: number | "any" }' optional>
-  House conventions the linter enforces. `depth` is the blessed key depth, defaulting to `3` (`project.tab.permission`); set `2` for a thin integration catalog (`zoom.host`), another number for a deeper tree, or `"any"` to opt out.
+  House conventions the linter enforces. `depth` is the key depth `lintCatalog` checks for, defaulting to `3`; set `2` for a thin integration catalog (`zoom.host`), another number for a deeper tree, or `"any"` to opt out.
 
-  This is a **convention, not a structural rule**: a key at the wrong depth is a `lintCatalog` error failed by `alfiz-verify` in CI, never a boot-time throw.
+  This is a **naming preference, not a rule of the system**. Nothing about evaluation, grants, patterns, or types reads it — `lintCatalog` is the only consumer, and a deviation is a CI finding rather than a boot-time throw. Set it to match your keys instead of renaming them to match it.
 </ParamField>
 
 <ParamField body="includeAlfizInternal" type="boolean" default="true" optional>

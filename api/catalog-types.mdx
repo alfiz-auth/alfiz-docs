@@ -61,7 +61,7 @@ The top-level object passed to `defineCatalog`.
 </ParamField>
 
 <ParamField body="conventions" type='{ depth?: number | "any" }' optional>
-  House conventions enforced by `lintCatalog` and `alfiz-verify`. `depth` is the blessed key depth, defaulting to `3` (`project.tab.permission`); set another number for a different house style, or `"any"` to opt out.
+  House conventions enforced by `lintCatalog` and `alfiz-verify`. `depth` is the key depth `lintCatalog` checks for, defaulting to `3`; set another number for a different house style, or `"any"` to opt out.
 
   Deviations are **lint errors, not boot errors** — a two-level integration catalog builds and CI reports it.
 </ParamField>

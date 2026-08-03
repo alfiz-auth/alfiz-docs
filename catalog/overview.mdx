@@ -17,13 +17,9 @@ The catalog is not an enum of strings. It is a structured description of four th
 
 None of this is inferred from call sites. Nothing is configured in a dashboard. Every structural fact is in code, at the top of your authorization module, readable by any engineer and provable by CI.
 
-## The namespace and the three-level key convention
+## Keys and namespaces
 
-Every permission key follows the convention `<project>.<tab>.<permission>`:
-
-- **project** — the top-level namespace your application owns, declared in `namespaces`.
-- **tab** — the logical section or feature area (a "group" in the catalog's data model).
-- **permission** — the leaf action or read.
+A permission key is a dotted string. Only one thing about its shape is structural: **the first segment must be a namespace your application owns**, declared in `namespaces`. Everything after that is yours to organize.
 
 ```
 docs.files.read
@@ -31,13 +27,18 @@ docs.files.update_file
 docs.files.delete
 
 billing.invoices.read
-billing.invoices.export
 billing.subscriptions.manage
+
+zoom.host
 ```
 
-You declare permissions using exactly these strings — the catalog is written in the same notation as every check, grant, role pattern, and nav entry. The group levels (`docs`, `docs.files`) are **inferred** from the keys: every dotted prefix of a declared key is a group, so nothing declares them and depth costs nothing.
+You declare permissions using exactly these strings — the catalog is written in the same notation as every check, grant, role pattern, and nav entry, so a key at a call site greps straight back to its declaration.
 
-Three levels is the default **convention**, checked by `alfiz-verify` rather than by `defineCatalog`. A thin integration catalog (`zoom.host`) or a deeper feature tree declares its own house style with `conventions: { depth: 2 }` — or `{ depth: "any" }` — and builds.
+The intermediate levels are **inferred**: every dotted prefix of a declared key is a group. Nothing declares them into existence, which is why depth costs nothing and why a two-segment key like `zoom.host` and a four-segment one are both perfectly ordinary catalogs.
+
+<Note>
+  `conventions: { depth }` is a **house-style setting**, not a rule of the system. It defaults to `3`, which is what most application catalogs land on naturally — but it is one line to change, and `lintCatalog` is the only thing that reads it. Set `{ depth: 2 }`, `{ depth: 4 }`, or `{ depth: "any" }` to match how you already name things, rather than renaming to match a default.
+</Note>
 
 ## `defineCatalog()` — function signature and minimal example
 
@@ -82,7 +83,7 @@ export const catalog = defineCatalog({
 - Keys outside the declared namespaces
 - References to undeclared scope types
 
-Convention violations — key depth, the naming floor, action naming style, nav reference validity — are reported by `lintCatalog` and enforced at build time by `alfiz-verify`, not at boot. The split is deliberate: what is structurally broken fails at boot, what is merely off-convention fails in CI.
+House conventions — key depth, the naming floor, action naming style, nav reference validity — are reported by `lintCatalog` and surfaced in CI by `alfiz-verify`, never at boot. The split is deliberate: what is structurally broken fails at boot, what is merely off-convention is a CI finding you can configure or switch off.
 
 ## Derived template-literal types
 
