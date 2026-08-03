@@ -107,7 +107,10 @@ A [per-request snapshot](/api/snapshot) reads the same caches `can` does, so it 
 
 ## What is never cached
 
-- **The decision.** Always re-evaluated.
-- **Grant expiry.** Evaluated against the clock at check time.
-- **Active status.** An inactive principal evaluates to no access on every check shape, immediately.
+- **The decision.** Always re-evaluated, against whatever closure data is in hand.
+- **Grant expiry.** Evaluated against the clock at check time, so a grant that expires mid-window stops matching at its expiry rather than at the end of the window.
 - **Anything outside your infrastructure.** There is no Alfiz-operated cache. Every layer described here is a map in your process, or a cache service you point at and operate.
+
+<Warning>
+A principal's **active** flag is *not* in that list. It arrives with the subject closure, so `setUserActive(userId, false, …)` is bounded by exactly the same window as a revocation: immediate in the process that wrote it, `subjectCacheTtlMs` elsewhere unless you have the event log on. Where deactivation has to bite at once — an offboarding kill switch — pair it with `can.fresh`.
+</Warning>
