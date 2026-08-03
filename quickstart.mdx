@@ -1,152 +1,10 @@
 ---
 title: "Get Started with Alfiz: Install, Define, and Check"
-sidebarTitle: Quickstart
-description: Install Alfiz, define your first permission catalog, wire a storage driver, and run your first can() check — all in under ten minutes.
+sidebarTitle: "Quickstart"
+description: "Install Alfiz, define your first permission catalog, wire a storage driver, and run your first can() check — all in under ten minutes."
 ---
 
 Alfiz ships as two packages: `@alfiz/core` holds the evaluator — the catalog, grammar, closures, and check logic — and `@alfiz/application` wraps a storage driver into the full local provider. You define your permissions in TypeScript, wire up storage, and every `can()` check runs in-process against your own database with no external round-trips required.
-
-<Steps>
-
-### Install the packages
-
-Install the core client and the application provider. If you are targeting a production Postgres, MySQL, or SQLite database, also install the Prisma driver.
-
-<CodeGroup>
-
-```bash Core + Application
-npm install @alfiz/core @alfiz/application
-```
-
-```bash With Prisma driver
-npm install @alfiz/core @alfiz/application @alfiz/prisma
-```
-
-</CodeGroup>
-
-<Note>
-  `memoryDriver()` (bundled with `@alfiz/application`) is a complete, correct in-memory implementation — perfect for tests and local development. Swap in `@alfiz/prisma` before going to production so grants survive restarts.
-</Note>
-
-### Define the catalog
-
-The catalog is your single source of truth for every permission and scope type in the system. Call `defineCatalog` with your `namespaces`, your `permissions`, and the `scopeTypes` your resources belong to. Permissions are declared by their full dotted key — the same string you check with — and `defineCatalog` throws at boot if anything is structurally invalid.
-
-```ts catalog.ts
-import { defineCatalog } from "@alfiz/core";
-
-export const catalog = defineCatalog({
-  namespaces: ["docs"],
-  permissions: {
-    "docs.files.read":        { scopes: ["docs.folder", "docs.doc"] },
-    "docs.files.update_file": { scopes: ["docs.folder", "docs.doc"] },
-    "docs.files.delete":      { scopes: ["docs.folder"] }, // destructive: stands alone
-  },
-  scopeTypes: {
-    "docs.folder": { parent: null },          // top-level; no parent
-    "docs.doc":    { parent: "docs.folder" }, // doc lives inside a folder
-  },
-});
-```
-
-The group levels (`docs`, `docs.files`) are inferred from the keys — you never declare them. Once your catalog outgrows a single flat map, [`group()` blocks](/catalog/permissions#organizing-a-large-catalog) let you fold it into named units without changing a single key.
-
-Every key in the catalog — `docs.files.read`, `docs.files.update_file`, `docs.files.delete` — becomes a compile-time–verified string. Pass the wrong key to `can()` and TypeScript catches it before your tests run.
-
-### Create the application
-
-The application is the local provider: it connects your storage driver and your resource hierarchy (the ancestry resolver) to Alfiz's evaluation engine.
-
-```ts app.ts
-import { parentPointerResolver } from "@alfiz/core";
-import { createApplication, memoryDriver } from "@alfiz/application";
-import { catalog } from "./catalog";
-import { db } from "./db"; // your own database client
-
-export const app = createApplication({
-  catalog,
-  storage: memoryDriver(), // swap for prismaDriver(prismaClient) in production
-  ancestry: parentPointerResolver((scope) => db.parentOf(scope)),
-});
-```
-
-The `ancestry` option tells Alfiz how to walk up your object hierarchy — so a grant on a folder covers every document inside it. Omit it if all your scopes are flat (`parent: null`).
-
-### Create the client
-
-The client wraps the application with typed check methods. Pass your catalog literal so TypeScript can derive the exact union of valid keys and patterns at every call site.
-
-```ts alfiz.ts
-import { createAlfizClient } from "@alfiz/core";
-import { catalog } from "./catalog";
-import { app } from "./app";
-
-export const alfiz = createAlfizClient({ catalog, provider: app });
-```
-
-### Grant a permission
-
-Write a grant row using `app.createGrant`. Every grant records a `provenance` — who made the change and why — which feeds the audit log automatically.
-
-```ts
-await app.createGrant({
-  subject: "user:alice",          // or group:…, everyone, org:…, service:…
-  pattern: "docs.files.read",     // a concrete key, or docs.files.* for the whole tab
-  scope: "docs.folder:42",        // omit for a global grant (covers every scope)
-  provenance: { kind: "admin", actorUserId: "admin" },
-});
-```
-
-<Tip>
-  Grant the full tab wildcard `docs.files.*` to a group for bulk access, and then use concrete keys for narrower individual grants. Forward-inclusive wildcards mean a `docs.files.*` grant will also cover new permissions you add to the `files` tab in the future.
-</Tip>
-
-### Check a permission
-
-Call `alfiz.can(principal, key)` for a global check, or pass a scope ID to check against a specific resource. Both forms return a `Promise<boolean>`.
-
-```ts
-// Global: does alice hold docs.files.read at any scope?
-const canRead = await alfiz.can({ userId: "alice" }, "docs.files.read");
-
-// Scoped: does alice hold docs.files.read specifically at docs.doc:123?
-// (A grant on its parent folder docs.folder:42 also satisfies this.)
-const canReadDoc = await alfiz.can(
-  { userId: "alice" },
-  "docs.files.read",
-  "docs.doc:123",
-);
-```
-
-Use `alfiz.requirePermission` when you want to throw an `AccessDeniedError` instead of branching on a boolean — useful in server actions and route handlers:
-
-```ts
-// Throws AccessDeniedError (map to 403) if alice lacks the permission.
-await alfiz.requirePermission(
-  { userId: "alice" },
-  "docs.files.update_file",
-  "docs.doc:123",
-);
-```
-
-### Use `can.fresh` for destructive actions
-
-Standard `can()` checks draw from cached subject closures (default 30-second TTL) and cached ancestor chains (default 60-second TTL). For destructive or irreversible actions, bypass those caches entirely with `can.fresh`:
-
-```ts
-// Bypasses all caches — use for deletes, purges, and just-in-time elevations.
-const canDelete = await alfiz.can.fresh(
-  { userId: "alice" },
-  "docs.files.delete",
-  "docs.folder:42",
-);
-```
-
-<Warning>
-  Always pair `can.fresh` with destructive actions. A revocation that landed in the last 30 seconds may not yet be reflected by a cached check — `can.fresh` is the escape hatch that makes the bound irrelevant where it matters.
-</Warning>
-
-</Steps>
 
 ## Next steps
 
@@ -154,6 +12,7 @@ const canDelete = await alfiz.can.fresh(
   <Card title="Core Concepts" icon="book-open" href="/core-concepts">
     Understand the five semantic building blocks — catalog, grants, scopes, subjects, and checks — and how they compose.
   </Card>
+
   <Card title="Per-request snapshots" icon="camera" href="/api/snapshot">
     Take one provider round-trip per request and check synchronously inside `.map()` — the recommended pattern for server-rendered frameworks.
   </Card>
