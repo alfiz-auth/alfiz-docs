@@ -54,6 +54,7 @@
             "pages": [
               "enforcement/check-shapes",
               "enforcement/four-points",
+              "enforcement/caching",
               "enforcement/static-verification",
               "enforcement/metrics"
             ]

@@ -1,0 +1,113 @@
+---
+title: "Caching and Staleness: What Your Revocation Bound Actually Is"
+sidebarTitle: "Caching & staleness"
+description: "Alfiz caches closures, never decisions. Learn the default TTL bounds, how to tighten them across processes with the event log, and when to reach for can.fresh."
+---
+
+Every authorization system that caches has a window in which a revocation has not taken effect yet. Most of them do not tell you how wide it is. Alfiz states the bound, gives you the knobs to narrow it, and provides one escape hatch that ignores it entirely.
+
+## Closures are cached; decisions are not
+
+This is the rule the rest of the page follows from.
+
+Alfiz caches two things, both of them *inputs* to a decision:
+
+- **The subject closure** — every subject string that applies to a principal right now: their user id, their groups and the groups above those, their org, `everyone`, and their implicit manager-chain subjects.
+- **The object ancestor chain** — the path from a scope instance up to `*`, as your ancestry resolver reports it.
+
+It never caches the answer. Every `can()` re-evaluates the grant rows, the revokes, and the expiry clock against whatever closure data it has. That is why a grant expiring at 14:03:00 stops working at 14:03:00 and not at the end of some cache window — expiry is evaluated, not cached.
+
+## The default bounds
+
+| What | Default | Option |
+|---|---|---|
+| Subject closure | 30 s | `subjectCacheTtlMs` |
+| Object ancestor chain | 60 s | `objectCacheTtlMs` |
+| Subject cache size | 10 000 principals, LRU | `maxSubjectCacheEntries` |
+| Object cache size | 10 000 chains, LRU | `maxObjectCacheEntries` |
+| Group topology (Application side) | 30 s | `groupTopologyTtlMs` |
+
+**The subject TTL is your revocation propagation bound.** Revoke a grant, and within `subjectCacheTtlMs` every process is evaluating against the new rows.
+
+Two things cut that short in the process that made the write: the provider's invalidation stream busts the affected entries immediately, and object chains bust the moment you report a move.
+
+<Warning>
+The in-process stream only reaches the process that wrote the event. On a second node, or a second serverless invocation, the TTL alone is the bound — until you turn on the event log below.
+</Warning>
+
+## Moves are your responsibility to report
+
+Alfiz does not own your hierarchy, so it cannot observe a move. Call `notifyScopeMoved` from the same code path that changes a parent pointer:
+
+```ts
+await db.docs.update({ where: { id }, data: { folderId: newFolderId } });
+await app.notifyScopeMoved(`docs.doc:${id}`);
+```
+
+The promise resolves when the move event is durable. The 60-second object TTL exists to bound staleness for the moves that were never reported — it is a backstop, not the design.
+
+## Tightening the bound across processes
+
+Multi-node and serverless deployments opt into a durable invalidation log. Turn it on at the Application, then set a revalidation window on the client:
+
+```ts
+const app = createApplication({
+  catalog,
+  storage: prismaDriver(prisma),
+  ancestry,
+  events: { persist: true },          // two extra tables: AlfizEpoch, AlfizEvent
+});
+
+export const alfiz = createAlfizClient({
+  catalog,
+  provider: app,
+  revalidateAfterMs: 5_000,           // the new cross-process bound
+  cacheStore: respCacheStore(redis),  // optional L2 for cold starts
+});
+```
+
+Past the window, the next check performs **one** read of the log head — coalesced across every concurrent check, and constant-cost regardless of organization size. An unchanged head proves nothing changed anywhere, so entry TTLs are *renewed* rather than expired. A changed head replays only the missed events through the same busting logic the live stream feeds.
+
+### What each mode costs you
+
+| Mode | Cross-process staleness bound | Steady-state cost per check |
+|---|---|---|
+| TTL only (default) | Subject / object TTL (30 s / 60 s) | 0 queries warm; full closure fetch per TTL expiry |
+| \+ event log and `revalidateAfterMs` | The revalidation window (e.g. 5 s) plus one request | 0 queries warm; **one** single-row read per window, amortized over every principal |
+| \+ `cacheStore` (L2) | Same as above | Cold starts read one cache entry and one head read, instead of the full closure fan-out |
+| Epoch unreachable | Falls back to the TTL bounds | Fail-closed to the database — stale data is never served past its window |
+
+<Note>
+Both features are opt-in and independent. `revalidateAfterMs` is silently inert against a provider with no `epoch`, and every L2 failure — error, timeout, unparseable or version-mismatched envelope — is a **miss**, never an answer.
+</Note>
+
+An L2 entry is served only when provably fresh: with epoch revalidation on, only when it was written under exactly the current log head. Any intervening write anywhere discards it. That is strict, and still a hit whenever writes are quiet — which is the common case.
+
+<Warning>
+The cache store holds closure data inside your server trust boundary. Point it only at authenticated, private cache infrastructure.
+</Warning>
+
+## The escape hatch
+
+`can.fresh` bypasses both caches — fresh closure supply, fresh ancestry — on every call. Pair it with the surfaces where the bounded staleness of the cached path is not acceptable:
+
+```ts
+await alfiz.can.fresh({ userId }, "docs.files.delete", "docs.folder:9");
+```
+
+- **Destructive actions**, where acting on a stale "yes" is irreversible. This is why destructive permissions are declared as their own leaf: the fresh check pays for one surface, not the whole page.
+- **Just-in-time elevations**, where the expiry boundary matters at the second rather than the minute.
+- Any endpoint where a revocation has to be visible immediately rather than within the TTL.
+
+`snapshot(principal, { fresh: true })` applies the same posture to every check on a snapshot, and `snap.resolve()` inherits the freshness the snapshot was taken with.
+
+## Why a snapshot is stronger, not weaker
+
+A [per-request snapshot](/api/snapshot) reads the same caches `can` does, so it inherits the same cross-request bounds. Within the request it is *stronger*: every check sees one subject-data instant and one evaluation clock, so the caches cannot tick over mid-render and produce a page where the button rendered but the action denied.
+
+## What is never cached
+
+- **The decision.** Always re-evaluated.
+- **Grant expiry.** Evaluated against the clock at check time.
+- **Active status.** An inactive principal evaluates to no access on every check shape, immediately.
+- **Anything outside your infrastructure.** There is no Alfiz-operated cache. Every layer described here is a map in your process, or a cache service you point at and operate.
