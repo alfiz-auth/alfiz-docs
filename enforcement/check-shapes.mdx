@@ -172,7 +172,7 @@ const snap = await alfiz.snapshot({ userId }, { fresh: true });
 ```
 
 <Note>
-Flat scope types (declared with `parent: null`) are always synchronously resolvable from a snapshot. Hierarchical scope types require pre-resolution — either via `client.snapshot(principal, { scopes: [...] })` up front, or `await snap.resolve([...])` once the IDs are known. Checking an unresolved hierarchical scope throws, rather than silently evaluating a truncated chain.
+Flat scope types — declared `parent: null` **and** not `multiParent` — are always synchronously resolvable from a snapshot. Hierarchical scope types require pre-resolution — either via `client.snapshot(principal, { scopes: [...] })` up front, or `await snap.resolve([...])` once the IDs are known. Checking an unresolved hierarchical scope throws, rather than silently evaluating a truncated chain.
 </Note>
 
 ---
@@ -182,6 +182,6 @@ Flat scope types (declared with `parent: null`) are always synchronously resolva
 | Cache layer | Default TTL | Bust mechanism |
 |---|---|---|
 | Subject closures | 30 s | Provider `user`, `subject`, `role`, `catalog`, or `all` invalidation event |
-| Object ancestor chains | 60 s | Provider `scope` event; or `app.notifyScopeMoved(scope)` from your code |
+| Object ancestor chains | 60 s | Provider `scope` event for any scope in the chain, or a `catalog` / `all` event; `app.notifyScopeMoved(scope)` from your code emits the `scope` event |
 
 `can.fresh` bypasses both layers. For moves your application makes in its own tables, call `app.notifyScopeMoved(scope)` from the same code path that changes the parent pointer — the TTL is the backstop, not the primary mechanism.

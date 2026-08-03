@@ -91,10 +91,10 @@ For a document at `docs.doc:123` in `docs.folder:9` in `docs.folder:2`, the obje
 ["docs.doc:123", "docs.folder:9", "docs.folder:2", "*"]
 ```
 
-A grant anywhere in that list covers the target. The cost is O(depth) — one resolver call per ancestor level.
+A grant anywhere in that list covers the target. Alfiz calls your `AncestryResolver` **once** per closure — it hands over the target scope and receives the whole chain back. The O(depth) cost is inside your resolver, which is why `parentPointerResolver` (walking one pointer per level) and a materialized-path or closure-table lookup (one query) differ so much at depth.
 
 <Tip>
-Scope types with `parent: null` in the catalog are flat by declaration. Their object closure is always `[scope, "*"]` — Alfiz can check them synchronously without consulting the resolver at all. Use `parent: null` for scope types whose instances don't nest (individual projects, top-level resources).
+Scope types declared `parent: null` are flat by declaration: their object closure is always `[scope, "*"]`. That is what lets a [snapshot](/api/snapshot) check them synchronously without consulting the resolver — the async `client.can` path still goes through the resolver. The shortcut also requires `multiParent: false`: a type declared `{ parent: null, multiParent: true }` is treated as hierarchical.
 </Tip>
 
 ## The listing problem
