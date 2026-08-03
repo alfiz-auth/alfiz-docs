@@ -61,17 +61,17 @@ export interface NavItemInput {
 
 ```ts
 // ✅ Correct: canAny decides whether the nav section renders
-const showAdminSection = await alfiz.canAny(actor, "admin.*");
+const showSharingSection = await alfiz.canAny(actor, "docs.sharing.*");
 
 // ✅ Correct: can (or require) is the gate at the doorway
-export default async function AdminPage() {
-  await alfiz.require(actor, "admin.users.read");
+export default async function SharingPage() {
+  await alfiz.require(actor, "docs.sharing.read");
   // ...
 }
 
 // ❌ Wrong: canAny is not a gate
-export async function deleteUser(id: string) {
-  if (!await alfiz.canAny(actor, "admin.*")) throw new Error("Forbidden");
+export async function removeCollaborator(docId: string, userId: string) {
+  if (!await alfiz.canAny(actor, "docs.sharing.*")) throw new Error("Forbidden");
   // alfiz-verify will error on this file
 }
 ```
@@ -100,18 +100,18 @@ navigation: [
     ],
   },
   {
-    label: "Admin",
-    href: "/admin",
-    permission: "admin.*",               // show if user holds anything admin-related
+    label: "Reports",
+    href: "/reports",
+    permission: "docs.reports.*",        // show if user holds anything under reports
     children: [
       {
-        label: "Users",
-        href: "/admin/users",
-        permission: "admin.users.read",
+        label: "Usage",
+        href: "/reports/usage",
+        permission: "docs.reports.read",
       },
       {
-        label: "Roles",
-        href: "/admin/roles",
+        label: "Access",
+        href: "/reports/access",
         permission: "alfiz_internal.access.read",
       },
     ],
