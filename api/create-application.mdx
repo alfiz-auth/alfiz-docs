@@ -11,8 +11,12 @@ description: "createApplication wires catalog, storage, and ancestry into the Al
 ```ts
 import { createApplication } from "@alfiz/application";
 
-function createApplication(options: ApplicationOptions): AlfizApplication
+function createApplication<Cat extends AnyCatalog>(
+  options: Omit<ApplicationOptions, "catalog"> & { catalog: Cat },
+): AlfizApplication<Cat["$pattern"], Cat["$scope"]>
 ```
+
+Like `createAlfizClient`, the factory is generic over the catalog: it threads the catalog's derived pattern and scope-id unions onto the returned Application, so the **write** paths autocomplete too. `createGrant`, `createRevoke`, `createRole`, `submitRequest`, and `notifyScopeMoved` all take typed `pattern` and `scope` arguments at the call site — which is what makes seeding scripts and data migrations catch a typo'd pattern at compile time. Construct with `new AlfizApplication(...)` and you lose that inference.
 
 ## Parameters
 
@@ -195,11 +199,20 @@ export const catalog = defineCatalog({
   },
 });
 
+// Stand-in for your own tables — in production this reads your rows.
+const parents = new Map<string, string | null>([
+  ["docs.doc:123", "docs.folder:42"],
+  ["docs.folder:42", null],
+]);
+
 const app = createApplication({
   catalog,
   storage: memoryDriver(),
-  // No ancestry needed for flat global-only use; supply a resolver once you
-  // have real scope instances.
+  // `docs.doc` declares a parent, so it IS hierarchical — omitting `ancestry`
+  // installs a resolver that returns no ancestors, and a check at
+  // `docs.doc:123` would then miss a grant on its folder. Omit `ancestry`
+  // only when every scope type is `parent: null`.
+  ancestry: parentPointerResolver((scope) => parents.get(scope) ?? null),
 });
 
 export const alfiz = createAlfizClient({ catalog, provider: app });

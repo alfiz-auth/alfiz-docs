@@ -12,9 +12,9 @@ A session is the typed, per-request object your server code calls `can()` on. It
 import { createSession } from "@alfiz/application";
 
 async function createSession<K extends string, P extends string, S extends string>(
-  client: AlfizClient<K, P>,
+  client: AlfizClient<K, P, S>,
   options: SessionOptions,
-): Promise<AlfizSession<K, P>>
+): Promise<AlfizSession<K, P, S>>
 ```
 
 ### `SessionOptions`
@@ -35,7 +35,7 @@ async function createSession<K extends string, P extends string, S extends strin
 
 ### Return value
 
-<ResponseField name="AlfizSession" type="AlfizSession<K, P>">
+<ResponseField name="AlfizSession" type="AlfizSession<K, P, S>">
   A session object with `can`, `canAny`, `require`, and `requireAny` methods. All checks are preview-narrowed: a view-as session can only see access that both the actor **and** the previewed subject hold. A preview can narrow what is shown; it can never escalate privileges.
 </ResponseField>
 
@@ -108,7 +108,7 @@ which completes the derived-type family alongside `ClientOf`, `SnapshotOf`, and
 
 ## Derived session type
 
-Use `SessionOf<typeof catalog>` to type session variables without writing out the `K` and `P` type parameters by hand:
+Use `SessionOf<typeof catalog>` to type session variables without writing out the `K`, `P`, and `S` type parameters by hand:
 
 ```ts
 import type { SessionOf } from "@alfiz/application";
@@ -209,8 +209,8 @@ If you need to check preview eligibility independently (for example, to show or 
 ```ts
 import { assertCanViewAs } from "@alfiz/application";
 
-async function assertCanViewAs<K extends string, P extends string>(
-  client: AlfizClient<K, P>,
+async function assertCanViewAs<K extends string, P extends string, S extends string>(
+  client: AlfizClient<K, P, S>,
   actorUserId: string,
 ): Promise<void>
 ```

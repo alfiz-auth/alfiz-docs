@@ -35,8 +35,10 @@ The following methods are optional. Custom drivers can omit them and keep compil
 |---|---|---|
 | `getRoles(ids)` | Batched role fetch on the closure-supply path — one call per miss instead of one per referenced role | Parallel `getRole` per id |
 | `appendEvents`, `headSeq`, `eventsSince`, `pruneEvents` | The Application's `events: { persist: true }` option — a persisted invalidation log for cross-process cache revalidation | Construction throws when `events.persist` is on without them |
+| `putImports`, `getImports` | `publishImports` / `getPublishedImports`, and the drift report that names roles still referencing a tombstoned key | `capabilities().imports` reports `false`; the methods are absent |
+| `recordMetrics`, `readMetrics`, `pruneMetrics` | The Application's `metrics: {}` option — stored usage counters and the revocation safeguard | Construction throws when `metrics` is on without them |
 
-Both bundled drivers (`memoryDriver` and `prismaDriver`) implement every optional method.
+`memoryDriver` implements all ten. `prismaDriver` includes each group only when the corresponding delegate is present on the client you hand it — so if you merged only the ten core models and generated your client, `events: { persist: true }` and `metrics: {}` will still throw at construction. Add the [optional models](#optional-models), migrate, and regenerate first.
 
 ## `memoryDriver()`
 
@@ -375,4 +377,7 @@ export function myCustomDriver(): StorageDriver {
 }
 ```
 
-Every method that returns a deleted row returns `null` (not `undefined`, not a thrown error) when the row is absent — the memory driver and Prisma driver both follow this convention and your implementation should too.
+Two conventions a custom driver has to get right, because nothing type-checks them:
+
+- **Absent rows return `null`** — not `undefined`, and never a thrown error. Both bundled drivers follow this.
+- **`listAudit({ limit })` returns the NEWEST `limit` events**, not the oldest. The obvious `SELECT … ORDER BY at ASC LIMIT n` returns the wrong end of the log and silently makes every audit view show the beginning of time. The memory driver slices from the end (`rows.slice(-limit)`); the Prisma driver orders ascending and takes `-limit`.
