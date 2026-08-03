@@ -32,6 +32,15 @@ metrics?: {
   traffic (`canAny`, `requireAny`, `holds`, `heldKeys`) separately. Evaluated
   with one `Math.random()` inside the call, before any observation is built.
   Values are clamped to `[0, 1]`.
+
+  <Warning>
+    In the object form, `gate` defaults to `1` but `visibility` defaults to
+    **the resolved gate rate**, not to `1`. So `{ gate: 0.1 }` samples
+    visibility traffic at `0.1` too. Set both explicitly whenever you set
+    either — `{ gate: 1, visibility: 0.02 }` is the shape you usually want,
+    because one render fires hundreds of visibility checks and gates
+    correspond one-to-one with user actions.
+  </Warning>
 </ParamField>
 
 <ParamField body="random" type="() => number" default="Math.random">
@@ -70,9 +79,17 @@ interface CheckObservation {
   implied: boolean;
   fresh: boolean;
   snapshot: boolean;
+  externalPermission?: boolean;
   sampleRate: number;
 }
 ```
+
+<ParamField body="externalPermission" type="boolean">
+  Present and `true` when this check named a permission admitted by
+  `externalPermissions: "warn"` or `"allow"` — one no catalog declares. This
+  is how you count what still needs an `imports` declaration, from the same
+  stream that counts everything else.
+</ParamField>
 
 <ParamField body="gate" type="boolean">
   `true` for `can` and `require` — the shapes that authorize an action.

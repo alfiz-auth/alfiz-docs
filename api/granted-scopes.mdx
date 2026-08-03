@@ -4,7 +4,7 @@ sidebarTitle: "grantedScopes()"
 description: "grantedScopes(principal, key) returns the set of scopes where a principal holds a permission — the primitive for building efficient listing queries."
 ---
 
-`grantedScopes` is the database-query primitive for permission-filtered lists. Instead of loading every resource and checking `can` per row — an O(N) pattern that defeats the purpose of database indexes — you call `grantedScopes` once, obtain the set of scope instance IDs where the principal holds the key, and push that filter into your query. Alfiz's companion listing helpers (`planListing`) generate the SQL predicate for you from the granted and revoked sets.
+`grantedScopes` is the database-query primitive for permission-filtered lists. Instead of loading every resource and checking `can` per row — an O(N) pattern that defeats the purpose of database indexes — you call `grantedScopes` once, obtain the set of scope instance IDs where the principal holds the key, and push that filter into your query. Alfiz's companion listing helpers turn those two sets into a query: `planListing` reduces them to a `ListingPlan` — one of `{ mode: "all" }`, `{ mode: "none" }`, `{ mode: "all_except", exclude }`, or `{ mode: "scoped", include, exclude }` — and `matPathCondition`, `closureTableCondition`, and `prismaMatPathWhere` build the actual predicate from it.
 
 ## `client.grantedScopes(principal, key)`
 
@@ -30,10 +30,20 @@ async grantedScopes(
 ### Return value
 
 <ResponseField name="granted" type="Set<ScopeId>">
-  The set of scope instance IDs at which the principal holds an unexpired,
-  non-revoked grant for `key`. This includes scopes granted via role
-  membership and via wildcard patterns that match `key`. For an inactive
-  principal, this set is always empty.
+  The scopes of the principal's unexpired grant **rows** that match `key` —
+  including grants conferred through a role and through wildcard patterns.
+  For an inactive principal, this set is always empty.
+
+  <Warning>
+    `granted` is **not** revoke-filtered. Revokes are returned separately, in
+    `revoked`, and it is the caller's job to subtract them. Applying only
+    `granted` fails **open**.
+  </Warning>
+
+  These are the scopes the grants were *made at*, which in a hierarchical
+  deployment are usually ancestors — `docs.folder:42`, not the `docs.doc:*`
+  ids on your rows. Match rows by ancestry (a closure table or a
+  materialized path), not by scope-id equality.
 </ResponseField>
 
 <ResponseField name="revoked" type="Set<ScopeId>">
@@ -57,7 +67,7 @@ The pattern has three steps:
 <CodeGroup>
 
 ```typescript Closure table (recommended)
-import { grantedScopes } from "./alfiz.js";
+import { alfiz } from "./alfiz.js";
 
 async function listAccessibleDocs(userId: string) {
   const { granted, revoked } = await alfiz.grantedScopes(
@@ -88,31 +98,37 @@ async function listAccessibleDocs(userId: string) {
 ```
 
 ```typescript Materialized path
+import { planListing, matPathCondition } from "@alfiz/core";
+
 async function listAccessibleDocs(userId: string) {
   const { granted, revoked } = await alfiz.grantedScopes(
     { userId },
     "docs.files.read",
   );
 
-  if (granted.size === 0) return [];
+  const plan = planListing({ granted, revoked });
+  if (plan.mode === "none") return [];          // provably nothing — never query
 
-  // Materialized path: docs.path stores '/root/folder/doc'.
-  // A GIN index on a tsvector of path segments makes LIKE queries fast.
-  const grantedPaths  = await db.scopePaths([...granted]);
-  const revokedPaths  = await db.scopePaths([...revoked]);
+  const opts = { pathColumn: "path", placeholder: "$" as const };
+  const clauses: string[] = [];
+  const params: unknown[] = [];
 
-  return db.query(
-    `
-    SELECT * FROM docs
-    WHERE (
-        ${grantedPaths.map((_, i) => `path LIKE $${i + 1} || '%'`).join(" OR ")}
-      )
-      AND NOT (
-        ${revokedPaths.map((_, i) => `path LIKE $${i + grantedPaths.length + 1} || '%'`).join(" OR ")}
-      )
-    `,
-    [...grantedPaths, ...revokedPaths],
-  );
+  if (plan.mode === "scoped") {
+    const inc = matPathCondition(plan.include, { ...opts, startParam: 1 });
+    clauses.push(inc.sql);
+    params.push(...inc.params);
+  }
+  if (plan.mode === "scoped" || plan.mode === "all_except") {
+    const exc = matPathCondition(plan.exclude, {
+      ...opts,
+      startParam: params.length + 1,
+    });
+    clauses.push(`NOT ${exc.sql}`);             // FALSE when exclude is empty
+    params.push(...exc.params);
+  }
+
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  return db.query(`SELECT * FROM docs ${where}`, params);
 }
 ```
 
@@ -123,21 +139,21 @@ async function listAccessibleDocs(userId: string) {
     "docs.files.read",
   );
 
-  if (granted.size === 0) return [];
+  // planListing folds every case — including a global REVOKE, which means
+  // provably nothing however broad the grants are.
+  const plan = planListing({ granted, revoked });
+  if (plan.mode === "none") return [];
 
-  // Global grant (*) means the user can access all docs —
-  // fall through to a simpler query.
-  if (granted.has("*")) {
-    if (revoked.size === 0) {
-      return db.docs.findMany(); // unrestricted
-    }
-    // Still exclude revoked subtrees.
-    const revokedPaths = await db.scopePaths([...revoked]);
-    return db.docs.findManyExcluding(revokedPaths);
+  // A global grant and no revokes: no filter needed at all.
+  if (plan.mode === "all") return db.docs.findMany();
+
+  // A global grant minus revoked subtrees.
+  if (plan.mode === "all_except") {
+    return db.docs.findManyExcluding(await db.scopePaths(plan.exclude));
   }
 
-  // Scoped grant path (closure table or materialized path as above).
-  return listByScopedGrants(granted, revoked);
+  // Scoped: include the granted subtrees, minus the revoked ones.
+  return listByScopedGrants(plan.include, plan.exclude);
 }
 ```
 
