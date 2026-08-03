@@ -52,7 +52,7 @@ const alfiz = createAlfizClient({
 });
 ```
 
-Four instruments arrive in your existing stack, alongside your existing application metrics:
+Five instruments arrive in your existing stack, alongside your existing application metrics:
 
 | Instrument | Attributes | What it counts |
 | --- | --- | --- |
@@ -60,6 +60,7 @@ Four instruments arrive in your existing stack, alongside your existing applicat
 | `alfiz.grant.matched` | `grant_id` | Checks a grant participated in allowing |
 | `alfiz.grant.sole_match` | `grant_id` | Checks a grant was the **only** row allowing |
 | `alfiz.revoke.matched` | `revoke_id` | Checks a revoke suppressed |
+| `alfiz.role.matched` | `role_id` | Checks a role conferred — which roles are actually load-bearing |
 
 Principals are omitted by default — unbounded cardinality, and PII-adjacent. Turn them on with `principals: true` only if you know your backend can take it.
 

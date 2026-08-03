@@ -12,6 +12,7 @@ description: "canAny(principal, pattern) tests whether a principal holds any per
 async canAny(
   principal: PrincipalRef,
   pattern: P,
+  options?: CheckOptions,
 ): Promise<boolean>
 ```
 
@@ -50,10 +51,11 @@ async canAny(
 async requireAny(
   principal: PrincipalRef,
   pattern: P,
+  options?: CheckOptions,
 ): Promise<void>
 ```
 
-The throwing form of `canAny`. Throws `AccessDeniedError` (with `reason: "forbidden"` or `reason: "inactive"`) when no matching permission is held. Use this for project-root visibility checks — for example, to guard the project settings page against users with no access to the project at all, without requiring a specific leaf key.
+The throwing form of `canAny`. Throws `AccessDeniedError` with `reason: "forbidden"` when no matching permission is held — always that reason, including for an inactive principal, whose check simply evaluates to `false` before any row is read. Use this for project-root visibility checks — for example, to guard the project settings page against users with no access to the project at all, without requiring a specific leaf key.
 
 <Warning>
   `requireAny` is still a visibility affordance, not a gate. Use it to block

@@ -10,7 +10,7 @@ The catalog is not just a list of permissions — it also carries the navigation
 
 Navigation visibility is evaluated by `canAny()`. When a user loads your application, each nav item's `permission` field is tested against what the user actually holds. Items for which the user holds nothing under the declared pattern simply do not render.
 
-This evaluation happens client-side — it is a **display optimization**, not a security gate. The page the nav item points to must gate itself independently with `require` on a concrete key. Visibility and access are separate concerns, enforced separately.
+This evaluation happens on your server, like every other check — `canAny` reads your own database through the provider, and the synchronous form is `snapshot.canAny`, taken once per request. What makes it a **display optimization** rather than a security gate is not where it runs but what it answers: whether the user holds *anything* under the pattern. The page the nav item points to must gate itself independently with `require` on a concrete key.
 
 <Warning>
   Navigation visibility is **not** a security gate. A user who knows a URL can navigate directly to a page regardless of whether the nav item rendered for them. Every page, server action, and route handler must gate itself with `require` on a concrete key. `alfiz-verify` errors when it finds `canAny()` used as a gate in a server action or route handler.

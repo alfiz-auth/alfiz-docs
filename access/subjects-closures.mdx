@@ -132,7 +132,7 @@ Groups only widen access — they never revoke. The only negative layer in Alfiz
 
 ### Group nesting
 
-A group may declare parent groups. It inherits the union of all its ancestors' access. The parent relationship is a DAG — Alfiz enforces acyclicity transactionally at every edge write. Attempts to insert a cycle throw a `GraphCycleError` naming the full cycle path:
+A group may declare parent groups. It inherits the union of all its ancestors' access. The parent relationship is a DAG — Alfiz enforces acyclicity transactionally at every edge write. Attempts to insert a cycle reject the write with a `ProviderWriteRejectedError` whose `code` is `"graph_cycle"`, naming the full path:
 
 ```ts
 await app.setGroupParents(

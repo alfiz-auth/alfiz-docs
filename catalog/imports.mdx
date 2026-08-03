@@ -41,10 +41,13 @@ export const catalog = defineCatalog({
 From here the catalog behaves as it always does. `zoom.host` is a typed key, `alfiz-verify` checks call sites that use it, and a role can bundle it with your own:
 
 ```ts
-await app.createRole({
-  name: "Project Lead",
-  patterns: ["docs.files.*", "zoom.host"],
-});
+await app.createRole(
+  {
+    name: "Project Lead",
+    patterns: ["docs.files.*", "zoom.host"],
+  },
+  { kind: "admin", actorUserId: "root" },
+);
 ```
 
 ## Attach the published document

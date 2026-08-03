@@ -46,7 +46,7 @@ Commit `alfiz-catalog.json` to source control and regenerate it whenever the cat
 
 ### 1. Typed keys
 
-Permission keys in Alfiz are template-literal types derived from the catalog definition. Every `can(principal, key)` call site is checked at compile time by the TypeScript compiler — passing a string that is not a declared leaf is a type error. This check happens during your normal `tsc` step; `alfiz-verify` does not duplicate it.
+Permission keys in Alfiz are template-literal types derived from the catalog definition, so `tsc` already rejects a misspelled key at a literal call site. `alfiz-verify` checks the same literals **again**, against the catalog document, and `unknown-pattern` is its most-fired error rule. That is deliberate: the compiler only sees call sites whose key is a literal in a file it type-checks, while the verifier reads the published catalog and catches the wrapped, re-exported, and generated call sites that never present a literal to the compiler.
 
 ```ts
 await alfiz.can({ userId }, "docs.files.reed"); // TS error: not assignable to KeyOf<typeof catalog>
@@ -61,13 +61,13 @@ await alfiz.can({ userId }, "docs.files.read"); // OK
 - **Error (`ungated-action`)** — an exported `async` function in a `"use server"` file that contains no gate at all.
 
 ```
-⚠ [unreferenced-leaf] <catalog>:0 — "docs.files.read_history" is declared but referenced by no gate or nav item — dead permission, or missing enforcement?
+⚠ [unreferenced-leaf] <catalog> — "docs.files.read_history" is declared but referenced by no gate or nav item — dead permission, or missing enforcement?
 ✖ [ungated-action] app/actions/export.ts:14 — exported server action "exportDocument" contains no gate — every action gates on a concrete permission before doing work
 ```
 
 ### 3. Gate-shape linting
 
-`alfiz-verify` errors whenever a visibility affordance — `canAny` or `requireAny` — appears inside a server action or route handler. Visibility affordances answer "should this section exist?" — they are never authorization gates.
+`alfiz-verify` errors whenever a visibility affordance — `canAny`, `requireAny`, or `holds` — appears inside a server action or route handler. Visibility affordances answer "should this section exist?"; they are never authorization gates. The rule fires on **any** call to one of these names inside a server file, not only on calls that appear to guard something.
 
 ```
 ✖ [visibility-as-gate] app/api/drive/route.ts:12 — canAny() is a visibility affordance, never a gate — server actions and route handlers gate on a concrete permission (can/require*)
@@ -77,16 +77,28 @@ Server files are identified by a `"use server"` directive or by path patterns ma
 
 ### 4. Catalog linting
 
-Catalog structural rules are checked alongside code coverage — one command covers the full checklist:
+`lintCatalog` runs over the loaded catalog document alongside the code scan, so one command covers the full checklist. It reports six things, and each carries its own severity — a warning does not fail the build:
 
-- Tabs that fall below the naming floor (`<project>.<tab>.<permission>` minimum depth)
-- Scope-type violations (e.g., a scope type whose declared parent does not exist)
-- Requestable declarations without a resolvable policy
-- Namespace collisions with the reserved `alfiz_internal` namespace
+| Finding | Severity |
+|---|---|
+| A key whose depth is not **exactly** `conventions.depth` (default 3) | Error |
+| An empty group — declared but with no permissions under it | Error |
+| A group below the naming floor: no `read` or `read_<thing>` leaf | Error |
+| A nav `permission` that is not a valid key or pattern, or references nothing in the catalog | Error |
+| A `requestable` declaration with no resolvable policy (zero approval stages) | Error |
+| A read leaf not named `read` / `read_<thing>`, an action not named `<verb>_<noun>`, or a nav pattern that currently matches no keys | Warning |
 
 ```
-✖ [catalog] <catalog>:0 — docs.admin: tab has no "read" permission — every tab requires a read leaf
+✖ [catalog] docs.files — below the naming floor: every tab defines at least one read permission (`read` or `read_<thing>`)
+✖ [catalog] docs.files.sharing.read — is 4 levels deep; this catalog's convention is 3
+⚠ [catalog] docs.files.Publish — actions are named `<verb>_<noun>` in snake_case (destructive actions may stand alone, e.g. `delete`)
 ```
+
+<Note>
+Depth is checked for **exact equality**, not as a minimum. A four-level key fails against the default `depth: 3` exactly as a two-level one does — declare `conventions: { depth: 2 }` or `conventions: { depth: "any" }` if that is your house style.
+</Note>
+
+Lint findings are reported over **owned** entries only. Another application's imported keys answer to its conventions, not yours, and a finding your codebase cannot act on is the wrong kind of finding.
 
 ---
 
@@ -123,7 +135,7 @@ Catalog structural rules are checked alongside code coverage — one command cov
 </ParamField>
 
 <ParamField body="visibilityNames" type="string[]">
-  Additional function names to treat as visibility affordances. **Added to** the built-in defaults (`canAny`, `requireAny`). Functions in this list trigger `visibility-as-gate` errors when found in server files.
+  Additional function names to treat as visibility affordances. **Added to** the built-in defaults (`canAny`, `requireAny`, `holds`). Functions in this list trigger `visibility-as-gate` errors when found in server files. (`heldKeys` is a property access rather than a call, so it cannot read as a gate and is not in the list.)
 </ParamField>
 
 <ParamField body="serverFilePatterns" type="string[]">
@@ -242,7 +254,7 @@ Every issue is printed to `stderr` in the format:
 A sample run with errors:
 
 ```
-⚠ [unreferenced-leaf] <catalog>:0 — "docs.files.read_history" is declared but referenced by no gate or nav item — dead permission, or missing enforcement?
+⚠ [unreferenced-leaf] <catalog> — "docs.files.read_history" is declared but referenced by no gate or nav item — dead permission, or missing enforcement?
 ✖ [ungated-action] app/actions/export.ts:14 — exported server action "exportDocument" contains no gate — every action gates on a concrete permission before doing work
 ✖ [visibility-as-gate] app/api/drive/route.ts:12 — canAny() is a visibility affordance, never a gate — server actions and route handlers gate on a concrete permission (can/require*)
 alfiz-verify: 47 file(s), 1 ignored, 2 error(s), 1 warning(s)

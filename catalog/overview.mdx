@@ -89,14 +89,16 @@ Convention violations — key depth, the naming floor, action naming style, nav 
 When you pass a literal object to `defineCatalog`, TypeScript derives a union of every valid key from your input shape. Those unions flow into the typed properties `catalog.$key` and `catalog.$pattern`, and Alfiz's check methods are typed against them:
 
 ```ts
-// Resolves to "docs.files.read" | "docs.files.update_file" | "docs.files.delete"
+// "docs.files.read" | "docs.files.update_file" | "docs.files.delete"
+//   — plus the twelve built-in alfiz_internal.* keys, unless the catalog
+//     was built with includeAlfizInternal: false.
 type MyKey = typeof catalog.$key;
 
 // Every key is checked at compile time:
 await alfiz.can(actor, "docs.files.read");          // ✅
-await alfiz.can(actor, "docs.files.reead");         // ✅ TypeScript error
+await alfiz.can(actor, "docs.files.reead");         // ✖ TypeScript error
 await alfiz.canAny(actor, "docs.files.*");          // ✅ wildcard pattern
-await alfiz.canAny(actor, "docs.typo.*");           // ✅ TypeScript error
+await alfiz.canAny(actor, "docs.typo.*");           // ✖ TypeScript error
 ```
 
 Two utility types let you reference these unions by name without re-declaring them:

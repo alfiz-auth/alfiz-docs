@@ -104,28 +104,31 @@ Because stages reference a layer count rather than a resolved person, they survi
     Attach an approval policy directly to a role's `requestable` block using `createRole`. The policy applies to every request for that role, regardless of scope.
 
     ```typescript
-    await app.createRole({
-      name: "Docs Editor",
-      patterns: ["docs.files.*"],
-      requestable: {
-        prompts: [
-          {
-            id: "reason",
-            label: "Why do you need this access?",
-            required: true,
-          },
-        ],
-        stages: [
-          // Stage 0: auto-approve members of the trusted-editors group
-          {
-            kind: "auto",
-            predicate: { type: "in_group", groupId: "trusted-editors" },
-          },
-          // Stage 1 (fallthrough): content owner decides
-          { kind: "named_approvers", roleId: "content-owner" },
-        ],
+    await app.createRole(
+      {
+        name: "Docs Editor",
+        patterns: ["docs.files.*"],
+        requestable: {
+          prompts: [
+            {
+              id: "reason",
+              label: "Why do you need this access?",
+              required: true,
+            },
+          ],
+          stages: [
+            // Stage 0: auto-approve members of the trusted-editors group
+            {
+              kind: "auto",
+              predicate: { type: "in_group", groupId: "trusted-editors" },
+            },
+            // Stage 1 (fallthrough): content owner decides
+            { kind: "named_approvers", roleId: "content-owner" },
+          ],
+        },
       },
-    });
+      { kind: "admin", actorUserId: "root" },
+    );
     ```
   </Tab>
   <Tab title="On a scope type">
@@ -166,52 +169,55 @@ Because stages reference a layer count rather than a resolved person, they survi
 This policy uses all three stage types in order: first try to auto-approve, then fall through to a named application owner, and finally escalate to a skip-level manager.
 
 ```typescript
-await app.createRole({
-  name: "Project Admin",
-  patterns: ["projects.admin.*"],
-  requestable: {
-    prompts: [
-      {
-        id: "project_id",
-        label: "Which project do you need admin access for?",
-        required: true,
-      },
-      {
-        id: "justification",
-        label: "Why do you need admin access?",
-        required: true,
-      },
-      {
-        id: "duration",
-        label: "How long do you need it?",
-        kind: "select",
-        options: ["1 week", "1 month", "Permanent"],
-        required: true,
-      },
-    ],
-    stages: [
-      // Stage 0: auto-approve if the requester already holds a covering pattern
-      // (e.g. they are an existing admin on a parent project)
-      {
-        kind: "auto",
-        predicate: {
-          type: "holds_pattern",
-          pattern: "projects.admin.*",
+await app.createRole(
+  {
+    name: "Project Admin",
+    patterns: ["projects.admin.*"],
+    requestable: {
+      prompts: [
+        {
+          id: "project_id",
+          label: "Which project do you need admin access for?",
+          required: true,
         },
-      },
-      // Stage 1: any subject holding the "project-owner" role may approve
-      {
-        kind: "named_approvers",
-        roleId: "project-owner",
-      },
-      // Stage 2: the requester's manager's manager (skip-level) also approves
-      {
-        kind: "management",
-        layers: 2,
-      },
-    ],
+        {
+          id: "justification",
+          label: "Why do you need admin access?",
+          required: true,
+        },
+        {
+          id: "duration",
+          label: "How long do you need it?",
+          kind: "select",
+          options: ["1 week", "1 month", "Permanent"],
+          required: true,
+        },
+      ],
+      stages: [
+        // Stage 0: auto-approve if the requester already holds a covering pattern
+        // (e.g. they are an existing admin on a parent project)
+        {
+          kind: "auto",
+          predicate: {
+            type: "holds_pattern",
+            pattern: "projects.admin.*",
+          },
+        },
+        // Stage 1: any subject holding the "project-owner" role may approve
+        {
+          kind: "named_approvers",
+          roleId: "project-owner",
+        },
+        // Stage 2: the requester's manager's manager (skip-level) also approves
+        {
+          kind: "management",
+          layers: 2,
+        },
+      ],
+    },
   },
-});
+  { kind: "admin", actorUserId: "root" },
+);
 ```
 
 In this flow:
@@ -219,9 +225,11 @@ In this flow:
 2. **Stage 1** — any user holding the `project-owner` role sees this request in their approver queue and may approve or deny it.
 3. **Stage 2** — only after stage 1 approves does the skip-level manager receive the request. Their approval writes the grant row.
 
-## Nearest-ancestor resolution
+## Requestability does not inherit
 
-When a requestability policy is attached to a **namespace node** in the hierarchy, it governs every request under that node unless a nearer node declares its own policy. This applies to scope-type policies: a policy on a parent scope type does not propagate to child scope types — each scope type declares its own `requestable` block independently.
+`requestable` exists in exactly two places: on a scope type (`ScopeTypeInput.requestable`, whose policy lives under a `policy` key) and on a role (`RoleInput.requestable`, whose stages sit directly on the block). There is no third place, and there is no inheritance of any kind.
+
+A policy on `docs.folder` does **not** propagate to `docs.doc`, even though documents nest inside folders. Each scope type declares its own `requestable` block or is not requestable at all. Nothing is requestable by default.
 
 <Note>
   A requestable scope type must declare at least one approval stage. A `policy` with an empty `stages` array is a validation error, surfaced by `lintCatalog` at build time and by `assertPolicyResolvable` at request submission.

@@ -45,19 +45,22 @@ Nothing is requestable by default. You opt in at the catalog level, either on a 
 
 <CodeGroup>
 ```typescript Requestable role
-await app.createRole({
-  name: "Docs Editor",
-  patterns: ["docs.files.*"],
-  requestable: {
-    prompts: [
-      { id: "reason", label: "Why do you need this access?", required: true },
-    ],
-    stages: [
-      { kind: "auto", predicate: { type: "in_group", groupId: "editors" } },
-      { kind: "named_approvers", roleId: "content-owner" },
-    ],
+await app.createRole(
+  {
+    name: "Docs Editor",
+    patterns: ["docs.files.*"],
+    requestable: {
+      prompts: [
+        { id: "reason", label: "Why do you need this access?", required: true },
+      ],
+      stages: [
+        { kind: "auto", predicate: { type: "in_group", groupId: "editors" } },
+        { kind: "named_approvers", roleId: "content-owner" },
+      ],
+    },
   },
-});
+  { kind: "admin", actorUserId: "root" },
+);
 ```
 
 ```typescript Requestable scope type (catalog)
@@ -198,7 +201,7 @@ Under federation, the `AccessRequest` shape is identical against every provider 
     await app.cancelRequest("req-abc", "user-42");
     ```
 
-    Cancelled requests do not appear in approver queues. Alfiz also cancels all pending requests automatically when you call `deleteSubject` or `deleteScope`.
+    Cancelled requests do not appear in approver queues. Alfiz cancels pending requests automatically on the two deletion paths, each narrowly: `deleteSubject` on a `user:` subject cancels the requests that user filed, and `deleteScope` cancels the pending requests targeting that scope. Deleting a `group:` or `service:` subject cancels nothing, because neither files requests.
   </Step>
 </Steps>
 

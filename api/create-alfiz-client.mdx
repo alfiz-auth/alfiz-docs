@@ -103,9 +103,11 @@ Keys and patterns **gate**: a typo at a literal call site is a compile error. Sc
 
 <ParamField body="cacheStoreTtlMs" type="number">
   Storage TTL for L2 entries. With `revalidateAfterMs` set, this only
-  bounds storage growth (freshness comes from the sequence check) — defaults
-  to 10 minutes. Without an epoch, this is the freshness bound and defaults
-  to the corresponding L1 TTL.
+  bounds storage growth (freshness comes from the sequence check) and
+  defaults to 10 minutes. Without an epoch it *is* the freshness bound, and
+  defaults to a single value — the larger of the two L1 TTLs,
+  `Math.max(subjectCacheTtlMs, objectCacheTtlMs)`, so 60 000 ms at the
+  defaults.
 </ParamField>
 
 <ParamField body="onCacheStoreError" type="(error: unknown) => void">
@@ -216,7 +218,7 @@ type AppContext = {
 client.close(): void
 ```
 
-Unsubscribes from the provider's invalidation stream and clears the subject and object caches. Call this when the server is shutting down or when you hot-reload the client (e.g., after a catalog republish). After `close()` is called, the client is unusable — construct a new one.
+Unsubscribes from the provider's invalidation stream, clears the subject and object caches, and cancels any in-flight fetches. Call this when the server is shutting down, or when you hot-reload the client after a catalog republish. There is no closed flag: a check made after `close()` still evaluates correctly, it has simply lost event-driven invalidation and falls back to TTL-only freshness. Construct a new client rather than relying on that.
 
 ## Complete initialization example
 

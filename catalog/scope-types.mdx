@@ -61,7 +61,7 @@ export interface ScopeTypeInput {
 <ParamField body="parent" type="ScopeType | null">
   The expected parent scope type for instances of this type. Use `null` for top-level types whose instances parent directly to `*`. This is a **commitment**, not a hint: declaring `parent: null` means the ancestor chain for every instance of this type is exactly `[instance, "*"]` — which lets the runtime check these synchronously without an async ancestry lookup.
 
-  For recursive hierarchies (folders inside folders), set the parent to the same type: `{ parent: "docs.folder" }`. Leave `parent` undefined when you want to defer the parent declaration — but note that the default is `null`.
+  For recursive hierarchies (folders inside folders), set the parent to the same type: `{ parent: "docs.folder" }`. There is no "undeclared" state: omitting `parent` is identical to writing `parent: null`, and so carries the same flat-instance commitment. Declare it explicitly.
 </ParamField>
 
 <ParamField body="multiParent" type="boolean" default="false">
@@ -145,6 +145,7 @@ await app.createGrant({
   subject: "user:alice",
   pattern: "docs.files.delete",
   scope: "docs.folder:42",
+  provenance: { kind: "admin", actorUserId: "root" },
 });
 
 // ❌ docs.files.update_file is declared with scopes: ["docs.doc"]
@@ -153,6 +154,7 @@ await app.createGrant({
   subject: "user:alice",
   pattern: "docs.files.update_file",
   scope: "docs.folder:42",   // error: update_file is not grantable at docs.folder
+  provenance: { kind: "admin", actorUserId: "root" },
 });
 ```
 

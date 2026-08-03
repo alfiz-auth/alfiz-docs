@@ -47,7 +47,12 @@ const principal = { userId: session.userId };
 const navItems = await Promise.all(
   catalog.navigation.map(async (item) => ({
     ...item,
-    visible: await alfiz.canAny(principal, item.permission),
+    // `permission` is a pattern OR an any-of array of keys. `canAny` takes a
+    // single pattern, so fan the array out and OR the results.
+    visible: Array.isArray(item.permission)
+      ? (await Promise.all(item.permission.map((k) => alfiz.holds(principal, k))))
+          .some(Boolean)
+      : await alfiz.canAny(principal, item.permission),
   }))
 );
 
@@ -56,7 +61,7 @@ const visibleItems = navItems.filter((item) => item.visible);
 ```
 
 <Note>
-`canAny` is the only valid shape for navigation visibility checks. It answers the broad "does this principal hold anything under this pattern?" question. Do not use `can` for nav visibility — it requires a concrete scope that the navigation layer does not have. Do not use `canAny` as a gate anywhere else.
+`canAny` is the right shape for a nav item wired to a **pattern**; `holds` is the right shape for one wired to a concrete key. Do not use `can` for nav visibility: its scope argument is optional, but omitting it makes it the *global* check — "may they do this everywhere?" — which hides the item from everyone whose access is scoped, exactly the users nav visibility exists for. And do not use `canAny` or `holds` as a gate anywhere else.
 </Note>
 
 ### Point 3 — Server action or route handler
@@ -318,5 +323,5 @@ All four points accept a `scope` argument wherever a concrete resource instance 
 For surfaces that operate globally (admin dashboards, org-level settings), omit the scope argument — a global grant satisfies every scoped check by definition.
 
 <Note>
-`alfiz-verify` checks coverage across all four points at build time. Run it in CI to catch ungated server actions, misused `canAny()` calls, and catalog keys that no gate references. See [Static Verification](/enforcement/static-verification) for configuration details.
+`alfiz-verify` does not have a rule per point. What it enforces is Point 3 directly — `ungated-action` fires on an exported async function in a server file with no gate — plus `visibility-as-gate` anywhere in a server file, `unknown-pattern` at every literal call site, and `unreferenced-leaf` across the catalog. Points 1 and 4 have no dedicated rule: a page or a button with no check is caught indirectly, as the `unreferenced-leaf` warning on the key nothing references. See [Static Verification](/enforcement/static-verification).
 </Note>

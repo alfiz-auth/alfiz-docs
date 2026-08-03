@@ -35,7 +35,7 @@ Permissions are declared by their **full dotted key** — the same notation ever
 
 **Template-literal types** flow from the catalog literal to every call site. The type `KeyOf<typeof catalog>` resolves to the union `"docs.files.read" | "docs.files.update_file" | "docs.files.delete"` — plus the built-in `alfiz_internal.*` keys. Pass a misspelled key to `alfiz.can()` and TypeScript reports a compile-time error. The runtime evaluator also verifies every key before evaluating it, which closes the hole where a runtime-string path could pass for anyone holding a covering wildcard.
 
-The **naming floor** is enforced at build time by `@alfiz/verify`: every tab must have at least one `read` permission; actions follow `<verb>_<noun>` in snake_case; destructive actions (`delete`, `delete_*`) stand alone as their own leaf; and keys match the catalog's declared depth convention (three levels by default).
+The **naming floor** is checked by `lintCatalog`, and failed in CI by `@alfiz/verify`. Two of its rules are errors that fail the build: every group must have at least one `read` permission, and every key must match the catalog's declared depth convention **exactly** (three levels by default). Two are warnings: read leaves named other than `read` / `read_<thing>`, and actions not named `<verb>_<noun>` in snake_case. Standing destructive actions alone is a convention the catalog *supports* — `destructive` is inferred for `delete` and `delete_*`, and the action-naming rule explicitly permits a bare destructive verb — but no lint rule enforces the split.
 
 ---
 

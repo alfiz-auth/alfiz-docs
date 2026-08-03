@@ -103,7 +103,8 @@ const editors = await app.createGroup(
   { kind: "admin", actorUserId: "root" },
 );
 
-// Add a user to a group
+// Set a user's group memberships. This REPLACES the full list — it is not
+// an add. Read the current list first if you mean to append.
 await app.setGroupMembership(
   "alice",
   ["group_editors"],
@@ -114,11 +115,11 @@ await app.setGroupMembership(
 const members = await app.getGroupMembers("group_editors");
 ```
 
-Group membership is stored on the user record as `groupIds: string[]`. At subject-closure computation time, every group in that list — and every ancestor of those groups — joins the closure.
+Group membership is stored on the user record as `groupIds: string[]`, and `setGroupMembership` overwrites that array wholesale after de-duplicating it. At subject-closure computation time, every group in the list — and every ancestor of those groups — joins the closure.
 
 ### Group nesting (the inheritance DAG)
 
-A group may declare parent groups. It inherits the union of all its parents' access. The parent graph must be a DAG — Alfiz enforces this transactionally at every `setGroupParents` call. Attempting to create a cycle throws a `GraphCycleError` with the full cycle path named:
+A group may declare parent groups. It inherits the union of all its parents' access. The parent graph must be a DAG — Alfiz enforces this transactionally at every `setGroupParents` call. Attempting to create a cycle rejects the write with a `ProviderWriteRejectedError` whose `code` is `"graph_cycle"` and whose message names the full path:
 
 ```ts
 await app.setGroupParents(
