@@ -18,34 +18,6 @@ All four packages version together: `@alfiz/core`, `@alfiz/application`, `@alfiz
 
 ---
 
-## Unreleased — one name per question, on every surface
-
-The check surface asks the same set of questions it always did. What changed is that each question now has exactly one name, spelled identically wherever you ask it — on the client, the snapshot, the session, and the new session snapshot.
-
-### Renames (breaking)
-
-| Was | Now | Matches |
-|---|---|---|
-| `client.requirePermission` | `client.require` | `snapshot.require`, `session.require` |
-| `client.holdsAnywhere` | `client.holds` | `snapshot.holds` |
-| `client.effectiveKeys` | `client.heldKeys` | `snapshot.heldKeys` |
-
-Semantics are unchanged in all three cases. The verifier's `DEFAULT_GATE_NAMES` still recognizes `requirePermission`, so a host-app wrapper by that name keeps counting as a gate.
-
-### Session snapshots
-
-`session.snapshot(options?)` brings view-as into the one-snapshot-per-request pattern: one fetch per identity, then synchronous, preview-narrowed `can` / `canAny` / `require` / `requireAny` / `holds` / `heldKeys`, each the actor ∩ preview intersection, plus `resolve(scopes)` extending both identities at once. Render paths under view-as no longer fall back to a per-button `await`.
-
-Role previews evaluate synchronously with no extra resolution — role patterns are global-scope by construction — and unknown role ids fail closed. Denials thrown from a session snapshot name the **actor**, not the previewed identity: attribution never follows the preview. `SessionSnapshotOf<Cat>` completes the derived-type family.
-
-### Sharper edges
-
-- **`holds` is verifier-enforced as never-a-gate.** It joins `canAny` and `requireAny` in `DEFAULT_VISIBILITY_NAMES`, so a `holds` call inside a server action or route handler is a build error rather than a convention.
-- **`requireAny`'s one sanctioned use is stated on the method**: the page-top visibility guard on a page that still gates its own read. Never an action gate.
-- **`can` with no scope means the global scope** — "may they do this *everywhere*?", not "anywhere?". The anywhere question is `holds`.
-
----
-
 ## 0.6.0 — the provider seam, made explicit
 
 <Warning>
@@ -334,7 +306,7 @@ Investigating a reported "`canAny("admin")` silently answers `false`" turned up 
 Both are the same missing rule, now enforced at every check boundary:
 
 - An undeclared key or pattern raises **`UnknownPermissionError`** instead of being evaluated. It is a programming error — map it to 500, never 403. `isUnknownPermission(err)` narrows it.
-- Enforced on `can`, `canAny`, `require*`, `explain`, `grantedScopes`, `holdsAnywhere` (renamed `holds` later — see Unreleased), and every snapshot equivalent. Typed keys and `alfiz-verify` already covered literal call sites; this covers the runtime-string paths they cannot see — nav tables, config, generic wrappers.
+- Enforced on `can`, `canAny`, `require*`, `explain`, `grantedScopes`, `holdsAnywhere` (later renamed `holds`), and every snapshot equivalent. Typed keys and `alfiz-verify` already covered literal call sites; this covers the runtime-string paths they cannot see — nav tables, config, generic wrappers.
 - `assertCanViewAs` now denies rather than raising when a catalog is built with `includeAlfizInternal: false`. Previews fail closed.
 
 <Warning>
