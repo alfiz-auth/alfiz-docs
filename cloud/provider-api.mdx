@@ -40,6 +40,26 @@ The whole API follows from the contract being method-shaped, so the API is too �
 
 The version in the path (`/v1/`) increments only on a wire break; additive changes ride on the object-body convention instead.
 
+## The non-JS check path: `POST /v1/check`
+
+The one deliberate exception to "the API is administrative traffic": a service that cannot run the TypeScript client — Go, Python, Java, anything — may POST a check and have the **serving Application** evaluate it in-process, against the same catalog, rows, resolver, and closure caches every local check uses.
+
+```bash
+curl -s -X POST "$ALFIZ_BASE/v1/check" \
+  -H "Authorization: Bearer $TOKEN" -H "content-type: application/json" \
+  -d '{
+    "principal": { "userId": "u_42" },
+    "key": ["docs.files.read", "docs.admin.read"],
+    "scope": "docs.doc:123",
+    "fresh": false
+  }'
+# → { "allowed": true }
+```
+
+Semantics are exactly `can`: an array key is any-of, no scope means the global scope, `fresh: true` bypasses the serving side's caches. Unknown keys answer with the typed-error envelope (`UnknownPermissionError` — a programming error, map it to 500), and keys declared [`requiresCondition: true`](/enforcement/conditions) answer with `MissingConditionError` rather than a half-checked yes — conditions are in-process predicates over resource state and cannot cross a wire.
+
+What this does **not** change: "runtime checks never leave the application" survives intact, because the serving side *is* the Application, in your infrastructure — nothing Alfiz operates is on the path, and nothing here is metered. The caller pays a network hop instead of an in-process call, which is the honest cost of not being in the process. Keep latency-sensitive polyglot callers close to the Application, and let TypeScript services keep using the in-process client.
+
 ## Mount the handler
 
 The handler ships in `@alfiz/application`. Operations arrive at per-operation paths, so mount it as a **catch-all** POST route wherever your Application runs:
@@ -69,7 +89,7 @@ The options are:
 | `clock` / `ids` | no | Injectable time and id sources, for tests. |
 
 <Note>
-  Event persistence (`events: { persist: true }` on `createApplication`) is **recommended**, not required. The connection works without it — the health probe simply reports `hasEpoch: false`, and Alfiz Cloud falls back to the TTL bounds for its cached org reads instead of revalidating against your log. Turn it on so those reads tighten to a revalidation window. See [caching and staleness](/enforcement/caching).
+  Event persistence is on by default since 0.7.0 whenever the storage driver supports it, so the health probe reports `hasEpoch: true` on an ordinary deployment. Without it (`events: { persist: false }`, or a driver with no event methods) the connection still works — the probe reports `hasEpoch: false` and Alfiz Cloud falls back to the TTL bounds for its cached org reads instead of revalidating against your log. See [caching and staleness](/enforcement/caching).
 </Note>
 
 <Warning>

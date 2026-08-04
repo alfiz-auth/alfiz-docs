@@ -54,9 +54,11 @@
             "pages": [
               "enforcement/check-shapes",
               "enforcement/four-points",
+              "enforcement/conditions",
               "enforcement/caching",
               "enforcement/static-verification",
-              "enforcement/metrics"
+              "enforcement/metrics",
+              "enforcement/audit"
             ]
           },
           {
@@ -65,7 +67,8 @@
               "access/grants-revokes",
               "access/subjects-closures",
               "access/scopes-hierarchy",
-              "access/roles-groups"
+              "access/roles-groups",
+              "access/separation-of-duties"
             ]
           },
           {
@@ -81,6 +84,15 @@
               "growth/standalone",
               "growth/linked",
               "growth/federated"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "operations/access-reviews",
+              "operations/sync-reconciliation",
+              "operations/multi-tenancy",
+              "operations/performance"
             ]
           },
           {

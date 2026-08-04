@@ -1,0 +1,58 @@
+---
+title: "Multi-Tenancy: The Topologies and Their Trade-offs, Honestly"
+sidebarTitle: "Multi-tenancy"
+description: "Alfiz has no tenant primitive by design. This page gives you the two supported topologies for serving many customer organizations, and the honest costs of each."
+---
+
+Alfiz deliberately has no tenant object: **one Application serves one organization.** That is not a gap so much as a stance — a tenant boundary is an isolation requirement, and isolation faked in a shared table is the kind that leaks. If your product serves many customer organizations, you have two supported shapes.
+
+## Topology A: one Application per tenant (blessed)
+
+Instantiate an `AlfizApplication` per tenant, each over tenant-scoped storage — separate schemas, databases, or row partitions your driver enforces:
+
+```ts
+const appFor = memoize((tenantId: string) =>
+  createApplication({
+    catalog,                       // one catalog: the product's, shared
+    storage: prismaDriver(prismaForTenant(tenantId)),
+    ancestry: ancestryForTenant(tenantId),
+  }),
+);
+
+const client = createAlfizClient({ catalog, provider: appFor(tenantId) });
+```
+
+What you get for the ceremony:
+
+- **Isolation by construction.** No query can cross tenants, because no Application can see two. Group graphs, closures, audit logs, epochs, and metrics are per-tenant by existence, not by `WHERE` clause discipline.
+- **The full feature set per tenant** — each is its own org root: its own groups, hierarchy, approval routing, audit log, SoD report.
+- **Per-tenant blast radius**: a corrupted epoch, a bad import, or a runaway sweep touches one tenant.
+
+The costs, stated: one client (and its caches) per active tenant per process — bound memory with an LRU over clients, and note each entry is small (closure caches are per-principal, and most tenants are idle); advisory-lock keys are per-database, so tenants on a shared database need the driver's lock key prefixed per tenant; and cross-tenant admin views are yours to aggregate, because nothing in Alfiz will.
+
+This is the topology to default to. It matches how the rest of the system reasons (`§10.1`'s serialization, the org-root model, promotion/demotion) and how Alfiz Cloud models organizations.
+
+## Topology B: tenant-prefixed scopes (one Application, shared org)
+
+Encode the tenant into the scope tree: a `tenant` scope type at the top, everything else under it.
+
+```
+scopeTypes: { "app.tenant": { parent: null → actually root }, "app.project": { parent: "app.tenant" }, … }
+grant:  (subject, "app.projects.read", "app.tenant:acme")
+check:  can(user, "app.projects.read", "app.project:p1")   // chain ends …→ app.tenant:acme → *
+```
+
+This works mechanically — chains are cheap, grants at the tenant scope express tenant-wide access — but read the costs before choosing it, because they are structural:
+
+- **Organizational data is shared.** Groups, roles, the reporting hierarchy, and global-scope grants have *one* home. Two tenants cannot each have their own "Admins" group, their own manager tree, or their own approval routing without you name-spacing all of it by convention.
+- **`*` means every tenant.** A global grant, a `*`-scoped revoke, `setUserActive` — all cross-tenant by definition. One mistaken global grant is a cross-tenant leak; under Topology A the same mistake is bounded to one tenant.
+- **Everything operational is shared too**: one audit log (filter discipline required for tenant-scoped export), one epoch (every tenant's writes revalidate every tenant's caches), one SoD report, one drift report.
+- **The verifier and the catalog cannot help you** — tenancy-by-prefix is a runtime convention, invisible to every tool that makes Alfiz safe.
+
+Legitimate uses exist: B2C products where "tenant" is really just a container resource with no organizational identity of its own, or thousands of tiny tenants where per-tenant Applications are genuinely uneconomic. If tenants have *users with roles and managers*, they are organizations, and Topology A is the answer.
+
+## What about one database?
+
+Topology A does not require one database per tenant — it requires **tenant-scoped storage**. A Prisma driver over a shared database with a `tenantId` discriminator your wrapper injects satisfies it, provided the wrapper is the only path to the tables and the advisory-lock key carries the tenant. The isolation guarantee is then exactly as strong as that wrapper, which is the honest statement of where the trust moved.
+
+Alfiz Cloud's Federation tier models each customer organization as its own org root — Topology A at the managed layer — so a standalone deployment choosing A stays aligned with the growth path.

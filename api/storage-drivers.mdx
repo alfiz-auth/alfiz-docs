@@ -308,7 +308,8 @@ Four more models are additive. Leave them out and everything above still works; 
 | Model | Enables | Without it |
 |---|---|---|
 | `AlfizImports` | `publishImports` / `getPublishedImports` | `capabilities().imports` is `false`; the import methods are absent |
-| `AlfizEpoch` + `AlfizEvent` | `events: { persist: true }` on the Application, and so `revalidateAfterMs` on the client | `createApplication` **throws** when `events.persist` is set |
+| `AlfizEpoch` + `AlfizEvent` | Event persistence (the 0.7.0 default) and so client revalidation | Persistence silently stays off under the auto default; an explicit `events: { persist: true }` **throws** |
+| `AlfizCatalogVersion` | Catalog history per publish — `listCatalogVersions`, `listWildcardDrift` | Drift answers `unsupported` |
 | `AlfizMetric` | `metrics: {}` on the Application, `getGrantUsage` and the other usage reads | `createApplication` **throws** when `metrics` is set |
 
 ```prisma
@@ -377,7 +378,24 @@ export function myCustomDriver(): StorageDriver {
 }
 ```
 
-Two conventions a custom driver has to get right, because nothing type-checks them:
+Conventions a custom driver has to get right — and since 0.7.0, a published conformance suite that checks them for you:
+
+```ts
+// my-driver.test.ts — the whole file
+import { test } from "vitest"; // or any runner; the cases use node:assert
+import {
+  driverContractCases,
+  eventLogContractCases,
+  metricsContractCases,
+} from "@alfiz/application/driver-suite";
+
+for (const c of driverContractCases) test(c.name, () => c.run(makeDriver()));
+```
+
+The suite covers the row round-trips, the audit ordering and filters below, catalog history, and — the case that matters most for correctness — **`runExclusive` serialization**, which is what keeps graph-cycle detection sound under concurrency. A driver that fails it is unsound multi-node, not merely non-conforming.
+
+The conventions the suite pins:
 
 - **Absent rows return `null`** — not `undefined`, and never a thrown error. Both bundled drivers follow this.
-- **`listAudit({ limit })` returns the NEWEST `limit` events**, not the oldest. The obvious `SELECT … ORDER BY at ASC LIMIT n` returns the wrong end of the log and silently makes every audit view show the beginning of time. The memory driver slices from the end (`rows.slice(-limit)`); the Prisma driver orders ascending and takes `-limit`.
+- **Audit order is (`at`, then `id`)**, and `listAudit({ limit })` returns the NEWEST `limit` events in that order, not the oldest — while `listAudit({ cursor })` returns the first `limit` strictly *after* the cursor, ascending, for export paging. The memory driver slices from the end; the Prisma driver orders ascending and takes `-limit`.
+- **Catalog history is optional but honest**: implement `getCatalogVersion`/`listCatalogVersions` (and retain a row per `putCatalog`) to enable the [wildcard-drift report](/operations/access-reviews#wildcard-drift-what-changed-since-you-certified); omit them and the report answers `unsupported` rather than wrongly.

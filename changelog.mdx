@@ -1,7 +1,7 @@
 ---
-title: "Alfiz Changelog: Every Release from 0.2.0 to 0.6.0"
+title: "Alfiz Changelog: Every Release from 0.2.0 to 0.7.0"
 sidebarTitle: "Changelog"
-description: "Every Alfiz release, from 0.2.0 to 0.6.0. What shipped, what changed, and what broke across @alfiz/core, @alfiz/application, @alfiz/prisma, and @alfiz/verify."
+description: "Every Alfiz release, from 0.2.0 to 0.7.0. What shipped, what changed, and what broke across @alfiz/core, @alfiz/application, @alfiz/prisma, and @alfiz/verify."
 ---
 
 Alfiz is pre-1.0 and moves deliberately. Each release addresses a concrete gap in how authorization is modeled, checked, or maintained. The entries below mirror the library's own `CHANGELOG.md` — what shipped and, where a release broke something, exactly what you have to change.
@@ -15,6 +15,46 @@ Alfiz is pre-1.0 and moves deliberately. Each release addresses a concrete gap i
 </Note>
 
 All four packages version together: `@alfiz/core`, `@alfiz/application`, `@alfiz/prisma`, and `@alfiz/verify`.
+
+---
+
+## 0.7.0 — the enterprise release: safe by default, reviewable by construction
+
+<Warning>
+  Two defaults flip to their safe settings — event persistence on the
+  Application and epoch revalidation on the Client — and a failing **final**
+  `auto` approval stage now **denies** instead of stranding the request.
+  Each change has a one-line opt-out restoring the old behavior; read the
+  Breaking section.
+</Warning>
+
+The theme throughout this release: things that were possible are now *declared*, things that were the integrator's silent obligation are now *detected*, and the safe configuration is now the *default* one.
+
+**Licensing, finally coherent.** Every package ships `"license": "MIT"` and a `LICENSE` file — the previous `UNLICENSED` marker contradicted the pricing page's "MIT, forever", and the marker was the error. A `SECURITY.md` with a disclosure contact ships in the repository.
+
+**Safe caching by default.** With a driver that can persist events (both bundled drivers can), the Application persists them by default, and a Client attached to an epoch-bearing provider revalidates by default (5 s window). The default cross-process revocation bound drops from the blind 30 s TTL to the revalidation window. New: `strict: true` on the client — the incident switch that makes every check bypass both cache tiers. See [Caching & staleness](/enforcement/caching).
+
+**Separation of duties.** Catalog-declared exclusion constraints (`constraints.sod`), a detective report (`listSodViolations`), and opt-in preventive rejection at grant time — with `can()` never consulting a constraint. See [Separation of duties](/access/separation-of-duties).
+
+**The condition seam.** `requiresCondition: true` on a permission makes every gate carry an application predicate, enforced at runtime (`MissingConditionError`) and in CI (`missing-condition`). Alfiz still evaluates no attributes. See [Conditions](/enforcement/conditions).
+
+**Reviewability.** `exportEntitlements()` (the per-user effective-access rollup an IGA ingests), catalog **version history** per publish, and `listWildcardDrift({ sinceVersion })` — which grants absorbed which keys since the version you certified. See [Access reviews](/operations/access-reviews).
+
+**Audit, specified.** `listAuditEvents` gains `actor`/`action`/`from`/`to` filters and (`at`, `id`) cursor paging for export; optional tamper-evidence via `audit: { hashChain: true }` and `verifyAuditChain`. Retention is stated plainly: Alfiz never prunes audit. See [Audit log](/enforcement/audit).
+
+**Deprovisioning and reconciliation.** `importDirectory(snapshot, source, { authoritative: true })` deactivates vanished users, sweeps directory-group memberships, and clears unasserted reporting edges; `reconcileRows()` finds (and optionally sweeps) rows referencing users, orgs, scopes, groups, or roles that no longer exist. See [Sync & reconciliation](/operations/sync-reconciliation).
+
+**The non-JS check path.** `POST /v1/check` on the Provider API: a Go/Python/Java service posts principal, key(s), and scope; the serving *Application* evaluates in-process. Nothing Alfiz operates is on the path. See [Provider API](/cloud/provider-api).
+
+**A published performance envelope** (`npm run bench`, numbers and methodology in [Performance](/operations/performance)), a **multi-tenancy page** ([Multi-tenancy](/operations/multi-tenancy)), and the **driver conformance suite** published as `@alfiz/application/driver-suite`.
+
+### Breaking
+
+- A failing **final** `auto` stage auto-denies (recorded, `decidedBy: "auto"`) instead of leaving the request pending at a stage nobody can decide. Non-final auto stages still abstain and fall through. Want human escalation on an unmet predicate? End the policy with a `named_approvers` or `management` stage.
+- `events.persist` defaults **on** when the driver implements the event methods; opt out with `events: { persist: false }`.
+- `revalidateAfterMs` defaults to `5_000` against an epoch-bearing provider; its type widens to `number | false`, and `false` restores TTL-only caching.
+- Audit log order is now (`at`, `id`) in every driver; same-millisecond entries order by id. `AlfizAudit` gains `prevHash`/`hash` columns and an `@@index([at, id])`; `AlfizCatalogVersion` is a new optional model — merge the updated schema fragment and migrate.
+- `putCatalog` takes an optional third `publishedAt` parameter; two optional history methods join the storage interface. Existing drivers compile unchanged; without them, drift answers `unsupported`.
 
 ---
 

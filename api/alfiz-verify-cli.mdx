@@ -132,6 +132,7 @@ Errors when an identifier you have named in `forbidClientIdentifiers` appears in
 | `unknown-import` | Error | A reach beyond what an import actually covers |
 | `implicit-import` | Error, or warning with an import source | A permission in a namespace you neither own nor import |
 | `visibility-as-gate` | Error | `canAny`, `requireAny`, or `holds` used as a gate in a server file |
+| `missing-condition` | Error | A gate for a `requiresCondition` key with no visible `condition` in its options |
 | `ungated-action` | Error | An exported server action containing no gate at all |
 | `client-reachable-secret` | Error | A forbidden identifier in a `"use client"` module |
 | `unreferenced-leaf` | Warning | A catalog leaf no gate or nav item references |

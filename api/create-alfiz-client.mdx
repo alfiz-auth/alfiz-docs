@@ -69,17 +69,30 @@ Keys and patterns **gate**: a typo at a literal call site is a compile error. Sc
   to match your active-scope working set.
 </ParamField>
 
-<ParamField body="revalidateAfterMs" type="number">
-  Cross-process revalidation window in milliseconds. When set against a
-  provider that persists its invalidation log (see the Application's
-  `events.persist` option), the client validates its caches with one
-  constant-cost read of the log head per window — shared across every
+<ParamField body="revalidateAfterMs" type="number | false" default="5000 (with an epoch)">
+  Cross-process revalidation window in milliseconds. Against a provider
+  that persists its invalidation log (the Application's `events.persist`,
+  itself on by default since 0.7.0), the client validates its caches with
+  one constant-cost read of the log head per window — shared across every
   concurrent check. An unchanged head renews TTLs; a changed head replays
   only the missed events through the same busting logic the live stream
   feeds. Effective cross-process staleness becomes this window rather than
-  the blind TTL. Fail-closed: an unreachable epoch degrades to the pre-epoch
-  TTL contract, never below it. Off by default. `5000` is a good starting
-  point for most deployments.
+  the blind TTL. Fail-closed: an unreachable epoch degrades to the
+  pre-epoch TTL contract, never below it.
+
+  **On by default (5 000 ms) when the provider exposes an epoch** — the
+  safe configuration is the default one since 0.7.0. Pass a number to
+  choose the window, or `false` to opt out and return to TTL-only caching.
+  Inert against a provider with no epoch.
+</ParamField>
+
+<ParamField body="strict" type="boolean" default="false">
+  The incident switch: `true` makes **every** check on every surface bypass
+  both cache tiers — fresh closure supply, fresh ancestry, per check —
+  exactly as if each call were `can.fresh`. Propagation bounds collapse to
+  zero; every check pays provider round-trips. Wire it to an environment
+  variable and flip it during a security incident, then flip it back. See
+  the [incident runbook](/enforcement/caching#the-incident-switch).
 </ParamField>
 
 <ParamField body="cacheStore" type="CacheStore">
@@ -272,7 +285,7 @@ process.on("SIGTERM", () => {
 
 ## Cross-process caching (multi-node and serverless)
 
-The in-process invalidation stream only reaches the process that wrote the event, so in a multi-node or serverless deployment the TTLs alone bound how quickly a revocation on one instance takes effect on another. `revalidateAfterMs` tightens that bound to a configurable window by validating the caches against a durable event log the Application maintains (`events: { persist: true }`).
+The in-process invalidation stream only reaches the process that wrote the event, so in a multi-node or serverless deployment the TTLs alone would bound how quickly a revocation on one instance takes effect on another. `revalidateAfterMs` tightens that bound to a window by validating the caches against the durable event log the Application maintains — and since 0.7.0 **both halves are on by default**: the Application persists events whenever its driver can, and the client revalidates whenever its provider exposes an epoch. The example below spells the options out anyway; against the bundled drivers it is what you get with no options at all.
 
 Turn on the log on the Application, then set a revalidation window on the client:
 
@@ -285,7 +298,7 @@ const app = createApplication({
   catalog,
   storage: prismaDriver(prisma),
   ancestry,
-  events: { persist: true }, // durable invalidation log
+  events: { persist: true }, // durable invalidation log (the default with this driver)
 });
 
 const redis = createClient({ url: process.env.REDIS_URL });

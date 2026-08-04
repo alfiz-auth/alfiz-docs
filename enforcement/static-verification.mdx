@@ -79,6 +79,14 @@ await alfiz.can({ userId }, "docs.files.read"); // OK
 
 Server files are identified by a `"use server"` directive or by path patterns matching the configured `serverFilePatterns` (default: `app/.*route\.(t|j)sx?$` and `pages/api/`).
 
+Gate-shape linting also covers the [condition seam](/enforcement/conditions): a gate call site for a key declared `requiresCondition: true` that visibly carries no `condition` in its options is an error (`missing-condition`).
+
+```
+✖ [missing-condition] app/actions/claims.ts:12 — "exp.claims.approve_claim" is declared `requiresCondition: true` — the gate must pass `{ condition: () => … }` evaluating the resource predicate; without it the check throws MissingConditionError at runtime
+```
+
+The rule is syntax-level and honest about its reach: an options object built elsewhere (an identifier, a call, a spread) is accepted here and caught by the runtime check instead. What it exists to catch is the common literal call site with no predicate at all.
+
 ### 4. Catalog linting
 
 `lintCatalog` runs over the loaded catalog document alongside the code scan, so one command covers the full checklist. It reports six things, and each carries its own severity — a warning does not fail the build:
