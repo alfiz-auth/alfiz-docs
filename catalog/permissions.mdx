@@ -66,6 +66,7 @@ export interface PermissionLeafInput {
   destructive?:        boolean;
   scopes?:             readonly ScopeType[];
   impliedOnAncestors?: boolean;
+  requiresCondition?:  boolean;
 }
 ```
 
@@ -91,6 +92,10 @@ export interface PermissionLeafInput {
 
 <ParamField body="impliedOnAncestors" type="boolean" default="false">
   When `true`, holding any grant of this permission at a scope implies it on the **proper ancestors** of that scope — never on the global scope, so an unscoped `can()` is unaffected. Use this for the "shared doc shows its containing folder" pattern: a user who can read a specific document automatically sees the folder containing it. Off by default.
+</ParamField>
+
+<ParamField body="requiresCondition" type="boolean" default="false">
+  The [condition seam](/enforcement/conditions): holding this permission is necessary but not **sufficient** — every gate must also pass `{ condition: () => … }` evaluating an application predicate ("under the approver's limit", "still Draft"). A gate without one throws `MissingConditionError` at runtime and fails `alfiz-verify` in CI. Visibility shapes are unaffected. Off by default.
 </ParamField>
 
 ## The naming floor

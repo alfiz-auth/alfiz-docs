@@ -32,7 +32,7 @@ It never caches the answer. Every `can()` re-evaluates the grant rows, the revok
 Two things cut that short in the process that made the write: the provider's invalidation stream busts the affected entries immediately, and object chains bust the moment you report a move.
 
 <Warning>
-The in-process stream only reaches the process that wrote the event. On a second node, or a second serverless invocation, the TTL alone is the bound — until you turn on the event log below.
+The in-process stream only reaches the process that wrote the event. On a second node, or a second serverless invocation, the TTL alone would be the bound — which is why, since 0.7.0, the event log and revalidation below are **on by default** wherever the storage driver supports them. The blind-TTL posture is now the explicit opt-out, not the silent default.
 </Warning>
 
 ## Moves are your responsibility to report
@@ -46,24 +46,29 @@ await app.notifyScopeMoved(`docs.doc:${id}`);
 
 The promise resolves when the move event is durable. The 60-second object TTL exists to bound staleness for the moves that were never reported — it is a backstop, not the design.
 
-## Tightening the bound across processes
+## The cross-process bound is the default one (0.7.0)
 
-Multi-node and serverless deployments opt into a durable invalidation log. Turn it on at the Application, then set a revalidation window on the client:
+With a storage driver that implements the event methods — both bundled drivers do — the Application persists invalidation events **by default** (since 0.7.0), and a client attached to an epoch-bearing provider revalidates **by default** with a 5-second window. The default cross-process revocation bound is therefore the revalidation window, not the blind TTL. You configure nothing:
 
 ```ts
 const app = createApplication({
   catalog,
-  storage: prismaDriver(prisma),
+  storage: prismaDriver(prisma),   // schema carries AlfizEpoch/AlfizEvent → events persist
   ancestry,
-  events: { persist: true },          // two extra tables: AlfizEpoch, AlfizEvent
 });
 
 export const alfiz = createAlfizClient({
   catalog,
-  provider: app,
-  revalidateAfterMs: 5_000,           // the new cross-process bound
-  cacheStore: respCacheStore(redis),  // optional L2 for cold starts
+  provider: app,                    // epoch present → revalidateAfterMs defaults to 5_000
+  cacheStore: respCacheStore(redis), // optional L2 for cold starts
 });
+```
+
+The opt-outs, for deployments that deliberately trade looser bounds for zero head reads:
+
+```ts
+createApplication({ ..., events: { persist: false } });
+createAlfizClient({ ..., revalidateAfterMs: false }); // TTL-only: the pre-0.7.0 posture
 ```
 
 Past the window, the next check performs **one** read of the log head — coalesced across every concurrent check, and constant-cost regardless of organization size. An unchanged head proves nothing changed anywhere, so entry TTLs are *renewed* rather than expired. A changed head replays only the missed events through the same busting logic the live stream feeds.
@@ -72,13 +77,13 @@ Past the window, the next check performs **one** read of the log head — coales
 
 | Mode | Cross-process staleness bound | Steady-state cost per check |
 |---|---|---|
-| TTL only (default) | Subject / object TTL (30 s / 60 s) | 0 queries warm; full closure fetch per TTL expiry |
-| \+ event log and `revalidateAfterMs` | The revalidation window (e.g. 5 s) plus one request | 0 queries warm; **one** single-row read per window, amortized over every principal |
+| Event log + revalidation (**default** with a capable driver) | The revalidation window (5 s default) plus one request | 0 queries warm; **one** single-row read per window, amortized over every principal |
+| TTL only (`revalidateAfterMs: false`, or a driver without event methods) | Subject / object TTL (30 s / 60 s) | 0 queries warm; full closure fetch per TTL expiry |
 | \+ `cacheStore` (L2) | Same as above | Cold starts read one cache entry and one head read, instead of the full closure fan-out |
 | Epoch unreachable | Falls back to the TTL bounds | Fail-closed to the database — stale data is never served past its window |
 
 <Note>
-Both features are opt-in and independent. `revalidateAfterMs` is silently inert against a provider with no `epoch`, and every L2 failure — error, timeout, unparseable or version-mismatched envelope — is a **miss**, never an answer.
+`revalidateAfterMs` is inert against a provider with no `epoch` (TTL-only is all such a deployment can have), and every L2 failure — error, timeout, unparseable or version-mismatched envelope — is a **miss**, never an answer. The L2 tier remains opt-in.
 </Note>
 
 An L2 entry is served only when provably fresh: with epoch revalidation on, only when it was written under exactly the current log head. Any intervening write anywhere discards it. That is strict, and still a hit whenever writes are quiet — which is the common case.
@@ -86,6 +91,27 @@ An L2 entry is served only when provably fresh: with epoch revalidation on, only
 <Warning>
 The cache store holds closure data inside your server trust boundary. Point it only at authenticated, private cache infrastructure.
 </Warning>
+
+## The incident switch
+
+`strict: true` on the client makes **every check on every surface** bypass both cache tiers — exactly as if each call were `can.fresh`. It exists for one moment: an active incident where "revocations must land *now*" outranks latency.
+
+```ts
+export const alfiz = createAlfizClient({
+  catalog,
+  provider: app,
+  strict: process.env.ALFIZ_STRICT === "1",
+});
+```
+
+The runbook:
+
+1. **Cut the access** — revoke the grants, `setUserActive(userId, false)`, or both. This is the fix; strict mode is only how fast it lands everywhere.
+2. **Flip strict on** (set the variable, restart or redeploy). Every check now pays provider round-trips; the propagation bound is zero.
+3. **Verify** with `explain()` that the principal's effective access is what you intend.
+4. **Flip strict off** once the window that mattered has passed. Caches rebuild on the next checks; nothing else to clean up.
+
+Strict mode is a blunt instrument priced accordingly — every check is a closure fetch. For one destructive surface, prefer `can.fresh` below; for one offboarding, `setUserActive` plus the default revalidation bound is usually already enough.
 
 ## The escape hatch
 

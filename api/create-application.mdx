@@ -52,12 +52,18 @@ Like `createAlfizClient`, the factory is generic over the catalog: it threads th
   A function that generates unique IDs for new rows. Defaults to `randomUUID` from `node:crypto`. Override in tests if you need deterministic IDs.
 </ParamField>
 
-<ParamField body="events" type="{ persist: true; retention?: { maxAgeMs?: number; maxRows?: number } }" optional>
-  Persist invalidation events to a sequenced log in your database, exposing them on the provider as `epoch`. This is the signal clients use (via `revalidateAfterMs`) to tighten cross-process staleness from a blind TTL to a single revalidation window. Off by default. See [Cross-process invalidation](#cross-process-invalidation) below.
+<ParamField body="events" type="{ persist?: boolean; retention?: { maxAgeMs?: number; maxRows?: number } }" optional>
+  Persist invalidation events to a sequenced log in your database, exposing them on the provider as `epoch`. This is the signal clients use (via `revalidateAfterMs`) to tighten cross-process staleness from a blind TTL to a single revalidation window. **Since 0.7.0, persistence defaults ON whenever the storage driver implements the event methods** (`appendEvents`, `headSeq`, `eventsSince`, `pruneEvents`) — both bundled drivers do. Pass `{ persist: false }` to opt out, or an explicit `{ persist: true }` to demand it (construction then fails loudly against an incapable driver, where the auto default degrades honestly to the pre-epoch contract instead). See [Cross-process invalidation](#cross-process-invalidation) below.
 
-  Requires a storage driver that implements the optional event methods (`appendEvents`, `headSeq`, `eventsSince`, `pruneEvents`). The bundled `memoryDriver` and `prismaDriver` both do. Construction fails loudly when they are missing — a silent degradation would let clients think they are getting cross-process freshness when they are not.
+  Retention defaults to 7 days / 100 000 rows, pruned opportunistically. Retention only needs to cover the longest interval between one client's revalidations; a client whose cursor predates retention gets a gap and busts everything. Event-log pruning never touches the [audit log](/enforcement/audit).
+</ParamField>
 
-  Retention defaults to 7 days / 100 000 rows, pruned opportunistically. Retention only needs to cover the longest interval between one client's revalidations; a client whose cursor predates retention gets a gap and busts everything.
+<ParamField body="sod" type='{ enforce?: "off" | "reject" }' optional>
+  What a grant write violating a catalog-declared [separation-of-duty constraint](/access/separation-of-duties) does. `"off"` (default): constraints are detective only — read `listSodViolations()`. `"reject"`: a user-subject grant that would create a **new** violation is rejected with code `conflict`; group- and role-shaped writes always pass through and remain the report's job.
+</ParamField>
+
+<ParamField body="audit" type="{ hashChain?: boolean }" optional>
+  `hashChain: true` makes every audit entry carry a SHA-256 hash over its canonical serialization plus the previous entry's hash, making edits, deletions, and reordering detectable with `verifyAuditChain`. Chained appends serialize through `runExclusive("audit", …)` — multi-node deployments need the driver's cross-process lock for the chain to stay linear. Off by default. See [Audit log](/enforcement/audit).
 </ParamField>
 
 <ParamField body="groupTopologyTtlMs" type="number" default="30000" optional>
@@ -137,7 +143,7 @@ const app = createApplication({
   catalog,
   storage: prismaDriver(prisma),
   ancestry,
-  events: { persist: true }, // durable invalidation log
+  events: { persist: true }, // durable invalidation log (the default with this driver)
 });
 
 // Optional: on long-lived nodes, tail the log for push-like invalidation

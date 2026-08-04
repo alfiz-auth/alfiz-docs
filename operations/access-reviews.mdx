@@ -1,0 +1,74 @@
+---
+title: "Access Reviews: Entitlement Export, Wildcard Drift, and the IGA Path"
+sidebarTitle: "Access reviews"
+description: "The computed per-user entitlement rollup a reviewer signs, the drift report that keeps forward-inclusive wildcards reviewable, and the write-back path an external IGA uses."
+---
+
+SOX ITGC, SOC 2 (CC6.2/6.3), ISO 27001 (A.5.18), and PCI DSS 7.2.4 all expect periodic user access reviews. Alfiz does not ship review *campaigns* — reviewer assignment, escalation, and attestation workflows are what your IGA (Entra ID Governance, Okta IGA, ConductorOne, Opal, Veza) or your ticketing system already does well. What Alfiz ships is the part only it can do: **computed, attributable answers** to what each person can actually do, and the reports that keep those answers true between cycles.
+
+## The entitlement export
+
+Raw grant rows cannot be reviewed: between the group DAG, role indirection, implicit manager subjects, `everyone`, and revokes, effective access is a computation. `exportEntitlements` runs it per user:
+
+```ts
+const report = await app.exportEntitlements();
+// [{
+//   userId: "alice",
+//   active: true,
+//   closure: ["user:alice", "group:eng", "group:staff", "everyone"],
+//   entitlements: [{
+//     key: "docs.files.read",
+//     held: true,                       // revokes applied, expiry filtered
+//     sources: [{                      // the "why" — and the write-back handle
+//       grantId: "g_123",
+//       subject: "group:eng",          // arrived through Engineering
+//       roleId: "role_reader",
+//       pattern: "docs.files.read",
+//       scope: "*",
+//     }],
+//   }, …],
+//   revokes: [{ revokeId: "r_9", pattern: "docs.admin.*", scope: "*" }],
+// }, …]
+```
+
+What a reviewer reads: capability (`held`), not rows. What remediation uses: the `sources` — each names the grant row to revoke or end-date, and a personal revoke covers the "remove this one person from inherited access" case. **Write-back is the ordinary API**; there is no parallel remediation surface to integrate.
+
+Candidates default to every user the store can name (records plus user-subject grant rows); pass `{ userIds }` for a population your host enumerates. Pair each export with the [audit cursor](/enforcement/audit) for the evidence trail, and with [`listSodViolations`](/access/separation-of-duties) for the conflicts page of the same review.
+
+## Wildcard drift: what changed since you certified
+
+Forward-inclusive wildcards are a deliberate commitment: a stored `docs.files.*` grant absorbs keys published under that prefix *later*, with no write and no re-review trigger. A grant certified in Q1 may therefore confer permissions that did not exist in Q1. Since 0.7.0 every catalog publish retains its document, and the drift report makes the absorption visible:
+
+```ts
+await app.listCatalogVersions();
+// [{ version: 12, publishedAt: … }, { version: 13, … }]
+
+const drift = await app.listWildcardDrift({ sinceVersion: 12 });
+// {
+//   fromVersion: 12, toVersion: 14,
+//   gainedKeys: ["docs.files.export_all"],
+//   removedKeys: [],
+//   findings: [{
+//     via: { kind: "grant", grant: { id: "g_7", subject: "group:eng", … } },
+//     pattern: "docs.files.*",
+//     gainedKeys: ["docs.files.export_all"],
+//   }],
+// }
+```
+
+The review loop: record the catalog version each cycle certifies; open the next cycle with `listWildcardDrift({ sinceVersion })`; every finding is a grant or assigned role now conferring more than what was signed. Expired grants and unassigned roles are excluded — they confer nothing. `removedKeys` surfaces tombstone candidates in the other direction.
+
+<Note>
+Drift needs catalog history. The bundled drivers retain it (the Prisma schema's optional `AlfizCatalogVersion` model); a schema without the model answers `unsupported` rather than wrongly.
+</Note>
+
+## The IGA integration shape
+
+- **Ingest:** run `exportEntitlements()` on the IGA's collection schedule and map `userId` + `entitlements[].key` (+ per-source `scope`) onto its entitlement model. The export is deterministic JSON; diffing two runs is the IGA's incremental feed.
+- **Certify:** campaigns, reviewer routing, and attestations live in the IGA. Alfiz's reporting hierarchy (`getReportingEdges`) can seed reviewer assignment.
+- **Remediate:** the IGA's revoke decision calls your endpoint, which calls `deleteGrant` / `createRevoke` / an expiry update — audited like every write. A review that cannot remediate is not a control; this one closes the loop with three ordinary calls.
+- **Evidence:** the audit export (cursor paging, optional [hash chain](/enforcement/audit)) is the record that the remediation happened.
+
+## What is deliberately not built
+
+First-party campaign objects — population snapshots with reviewer state machines — would duplicate the half of IGA tooling that is workflow, not authorization. The primitives above are the half that must come from the authorization layer because only it can compute them. If you operate no IGA, the export plus a spreadsheet and the audit trail is a defensible small-company review; the ingredients do not expire if you later adopt one.
