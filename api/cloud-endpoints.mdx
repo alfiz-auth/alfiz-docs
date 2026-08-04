@@ -87,8 +87,8 @@ Per-application surfaces are **account surfaces**: they gate on a seat plus a gr
 |---|---|---|---|
 | GET | `/orgs/{org}/applications` | `cloud.applications.read` (admin seats always pass) | List applications visible to the caller. |
 | POST | `/orgs/{org}/applications` | `cloud.applications.register_application` | Register an application. |
-| GET | `/orgs/{org}/applications/{app}` | Seat + `cloud.app:<id>` | Detail — including relay health and registry status. |
-| POST | `/orgs/{org}/applications/{app}/link` | Seat + `cloud.app:<id>` | Link: `{relayUrl}`. Returns the relay secret — once. |
+| GET | `/orgs/{org}/applications/{app}` | Seat + `cloud.app:<id>` | Detail — including connection health and registry status. |
+| POST | `/orgs/{org}/applications/{app}/link` | Seat + `cloud.app:<id>` | Link: `{relayUrl}` — the base URL your provider handler is mounted below; operations POST to `{relayUrl}/v1/{op}`. Returns the provider secret — once. |
 | POST | `/orgs/{org}/applications/{app}/unlink` | Seat + `cloud.app:<id>` | Remove the link registration. |
 | DELETE | `/orgs/{org}/applications/{app}` | `cloud.applications.delete` at `cloud.app:<id>` | Delete the application entry. |
 | POST | `/orgs/{org}/applications/{app}/federate` | `cloud.applications.federate_application` at `cloud.app:<id>` | Federate — the first federation is promotion. Body: `{resolutions?}` for merge conflicts. |

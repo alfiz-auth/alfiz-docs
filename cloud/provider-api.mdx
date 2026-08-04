@@ -1,0 +1,151 @@
+---
+title: "Connecting Your Application to Alfiz Cloud: The Provider API"
+sidebarTitle: "Provider API setup"
+description: "Mount the provider handler from @alfiz/application, register your Application in the Dashboard, and verify the connection — administrative traffic only, never on the check path."
+---
+
+The **Alfiz Provider API** is how Alfiz Cloud talks to your Application: the provider contract, carried over HTTPS, terminating at a route you mount inside your own deployment. It carries administrative traffic only — dashboard operations, approval decisions, org-domain reads. It is never on the check path. A Dashboard session produces a relayed operation; your Application enforces that operation exactly as it would a local admin call, and answers over the same route.
+
+Because the wire speaks the provider contract your Application already implements, there is nothing to translate and nothing to keep in sync. Alfiz Cloud is a caller, not a copy.
+
+<Note>
+  Before 0.6.0 this connection was the **relay module** — `createRelayHandler` and a single RPC endpoint. The seam is the same; what changed is that its wire form is now a normative, versioned API. If you are upgrading, see the 0.6.0 entry in the [changelog](/changelog) — the rename is mechanical, but both ends of a link must upgrade together.
+</Note>
+
+## One contract, two implementations
+
+The intuition behind the whole design is that Alfiz has exactly one load-bearing interface: the **provider contract**. Your `alfiz` client attaches to a provider and asks it for closure data, rows, requests, and org data; it neither knows nor cares what stands behind the interface. Everything Alfiz Cloud does rides on that indifference.
+
+The contract exists as three artifacts, held in exact correspondence so they cannot drift:
+
+1. **The interface** — `AlfizProvider` in `@alfiz/core`: the contract as a TypeScript type, what a Client attaches to.
+2. **The abstract class** — `AlfizProviderBase` in `@alfiz/core`: the contract as an implementation root. Exactly two kinds of provider extend it, by design:
+   - the **local** provider (`AlfizApplication`) — the contract implemented against *your* database. Standalone, it is the org root: the complete system with no external dependency.
+   - the **hosted** provider (`HostedProvider`) — the same contract with its far side reached over the Provider API: an API connection wrapped in the abstract class. It stores and decides nothing itself; every operation is forwarded to the serving side, which enforces its own integrity rules on remote operations exactly as on local ones. Delegation, never a second writer.
+3. **The OpenAPI document** — `openapi/alfiz-provider.v1.yaml`, shipped in the `@alfiz/core` package: the contract's wire form, fixed as a language-agnostic document rather than a TypeScript export.
+
+The correspondence is enforced, not promised: the abstract class satisfies the interface at compile time, a type-level assertion holds the operation manifest to the interface (add a contract method without a wire operation and the build fails, naming the drifted method), and the test suite holds the OpenAPI document to the manifest.
+
+This is why the connection to Alfiz Cloud is so small a step: the Dashboard's side of the link is a hosted provider pointed at your handler, and your side is your existing Application with one route in front of it. It is also what keeps the system portable — a provider (or consumer) in Go, Python, or anything else is "the abstract class's surface, served over this API"; nothing about the wire is discoverable only by reading TypeScript.
+
+## The wire, in five conventions
+
+The whole API follows from the contract being method-shaped, so the API is too — one path per operation, mirroring the contract one-to-one, rather than a resource grammar bolted over an RPC contract:
+
+- **Every operation is `POST {base}/v1/{op}`** with a JSON object body of the operation's *named* parameters (`{}` when there are none). POST-only keeps the transport uniform and keeps authorization data out of URLs and shared caches.
+- **Every success is a `200` with a JSON object** — never a bare array, primitive, or `null` — so any response can grow a field without a wire break. Void operations return `{}`.
+- **Every failure carries a typed-error envelope** under a non-2xx status. The status is a transport hint — a correct one, so retry policies and dashboards read the API sensibly (`403` not org root, `409` conflict or graph cycle, `422` validation, `404` not found, `501` unsupported) — but the envelope is normative. `ProviderWriteRejectedError` codes and `GraphCycleError` paths survive the wire and re-throw intact on the calling side, so a dashboard renders "cycle: a → b → a" identically for local and remote writes.
+- **Authentication is `Authorization: Bearer <token>`**, the secret minted at link time, compared in constant time.
+- **The live `onInvalidate` stream never crosses.** The epoch operations (`epoch.head`, `epoch.since`) are the cross-process invalidation transport — exactly the mechanism the library already uses between processes sharing a database, carried over HTTP instead.
+
+The version in the path (`/v1/`) increments only on a wire break; additive changes ride on the object-body convention instead.
+
+## Mount the handler
+
+The handler ships in `@alfiz/application`. Operations arrive at per-operation paths, so mount it as a **catch-all** POST route wherever your Application runs:
+
+```ts src/app/api/alfiz/[...op]/route.ts
+import { createProviderHandler } from "@alfiz/application";
+import { app, storage } from "@/authz/app";
+
+export const POST = createProviderHandler({
+  application: app,
+  storage,
+  secret: process.env.ALFIZ_PROVIDER_SECRET!,
+  applicationId: "docs",
+});
+```
+
+The options are:
+
+| Option | Required | What it does |
+| --- | --- | --- |
+| `application` | yes | Your `AlfizApplication`. Every remote op except the two org-snapshot ops runs through the same provider methods your local code calls. |
+| `storage` | yes for federation | Your `StorageDriver`. Required for the org-snapshot ops that promotion, demotion, and read-model sync ride on — and passing it is what enables them. A linked-only setup should **omit** it; the snapshot ops then answer `unsupported` under a `501`. |
+| `secret` | yes | The provider secret minted at link time. Compared with the incoming `Authorization: Bearer` header in constant time. |
+| `applicationId` | yes | The application id you registered in the Dashboard. |
+| `auditOptIn` | for hosted audit | Enables the opt-in audit stream the linked tier retains and exports. Reported back on the health probe. |
+| `onAuthorityChanged` | for promotion | Called with the applied `authority` value after **every** `org.applySnapshot` — including a routine read-model sync, which passes `authority: false`. Branch on the value; do not treat the call itself as a transfer signal. See [Handling authority transfer](#handling-authority-transfer). |
+| `clock` / `ids` | no | Injectable time and id sources, for tests. |
+
+<Note>
+  Event persistence (`events: { persist: true }` on `createApplication`) is **recommended**, not required. The connection works without it — the health probe simply reports `hasEpoch: false`, and Alfiz Cloud falls back to the TTL bounds for its cached org reads instead of revalidating against your log. Turn it on so those reads tighten to a revalidation window. See [caching and staleness](/enforcement/caching).
+</Note>
+
+<Warning>
+  Mount the route inside your network perimeter as appropriate. The secret authenticates Alfiz Cloud to your Application, and every remote write **that maps to a provider method** passes your Application's own enforcement — org-root gating, validation, graph integrity, and audit — so possession of the secret confers no access your authorization model would refuse.
+
+  The two org-snapshot ops are the exception, and they are why `storage` is opt-in. `org.applySnapshot` writes the org-domain dataset straight through the storage driver: no org-root gate, no provenance assertion, no transaction. Pass `storage` only when you are federating, and treat the secret as a credential that can rewrite your org data wholesale when you do.
+</Warning>
+
+## Set up the connection
+
+<Steps>
+  <Step title="Register the application">
+    From the application page in the Dashboard, create the application entry — or call `POST /api/v1/orgs/{org}/applications` with an admin key. Either path runs the same server function; the API is not a second implementation.
+  </Step>
+
+  <Step title="Configure the connection URL and copy the secret">
+    Point the entry at the **base URL** your handler is mounted below — operations POST to `{base}/v1/{op}` — and link it. The provider secret is shown **once, at link time** — copy it into your deployment's environment as `ALFIZ_PROVIDER_SECRET`. Losing it means re-linking, not recovering.
+  </Step>
+
+  <Step title="Verify with the health probe">
+    Run the connection health probe from the application page — or read `GET /api/v1/orgs/{org}/applications/{app}`, which includes connection health and registry status. The probe is the `ping` operation, and returns `{ api, application, orgRoot, hasEpoch, auditOptIn }`: it confirms the route is reachable and the secret matches, reports the Provider API version the serving side speaks (`api: 1`), and reports whether an event log was configured. `hasEpoch` is a static fact about how the Application was constructed, not a liveness signal.
+  </Step>
+</Steps>
+
+## Handling authority transfer
+
+`orgRoot` is a constructor commitment — `createApplication` records it once and the library never flips it at runtime. When you later [promote](/cloud/promotion) to federation (or demote back), Alfiz Cloud pushes the new dataset over the Provider API and calls `onAuthorityChanged(orgRoot)` so your host process can rebuild its Application with the new flag:
+
+```ts src/app/api/alfiz/[...op]/route.ts
+import { createProviderHandler } from "@alfiz/application";
+import { getApp, rebuildApp, storage } from "@/authz/app";
+
+export const POST = createProviderHandler({
+  application: getApp(),
+  storage,
+  secret: process.env.ALFIZ_PROVIDER_SECRET!,
+  applicationId: "docs",
+  onAuthorityChanged: async (orgRoot) => {
+    // Reconstruct the Application with the new orgRoot value.
+    // `false` after promotion (Alfiz Cloud is now the org root);
+    // `true` after demotion (your Application resumes authority).
+    await rebuildApp({ orgRoot });
+  },
+});
+```
+
+If you never plan to promote to federation, you can omit the callback — a linked Application stays the org root indefinitely, and no authority-transfer snapshot is ever pushed. Add the hook before you run the promotion runbook, not during.
+
+## Consuming the API yourself
+
+Both halves of the wire ship in `@alfiz/application`: the handler that serves it, and the hosted provider that consumes it. `createHostedProvider` gives you an `AlfizProvider` over `fetch` — useful when an internal admin tool or a back-office service needs to administer an Application it has no database connection to:
+
+```ts
+import { createHostedProvider } from "@alfiz/application";
+
+const provider = createHostedProvider({
+  url: "https://internal.example.com/api/alfiz", // ops POST to {url}/v1/{op}
+  secret: process.env.ALFIZ_PROVIDER_SECRET!,
+});
+
+await provider.listRequests({ state: "pending" }); // enforced by the far side
+```
+
+Typed errors re-throw on this side exactly as the serving side threw them, and the far side's epoch is exposed, so caches revalidate across the wire the same way they do across processes. Transport failures — unreachable host, bad credentials, unknown op — surface as `ProviderTransportError`, distinct from errors the provider itself threw.
+
+<Warning>
+  A hosted provider is an **admin-surface** tool. Your application's runtime checks stay on the local provider, in-process against your own database — putting a network hop on the check path is precisely what Alfiz is designed to never need.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="What linking means" icon="link" href="/growth/linked">
+    What changes when you link — and the longer list of what does not. Authority stays with your Application; the Provider API only carries administrative traffic to it.
+  </Card>
+  <Card title="API endpoints" icon="code" href="/api/cloud-endpoints">
+    The full REST surface behind the Dashboard, including application registration, linking, and the health probe.
+  </Card>
+</CardGroup>

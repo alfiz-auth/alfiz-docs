@@ -87,7 +87,7 @@
             "group": "Alfiz Cloud",
             "pages": [
               "cloud/overview",
-              "cloud/relay",
+              "cloud/provider-api",
               "cloud/registry",
               "cloud/promotion",
               "cloud/metering"
@@ -153,5 +153,11 @@
         ]
       }
     ]
-  }
+  },
+  "redirects": [
+    {
+      "source": "/cloud/relay",
+      "destination": "/cloud/provider-api"
+    }
+  ]
 }

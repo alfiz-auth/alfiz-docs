@@ -10,14 +10,14 @@ description: "The runbook for moving the org root to Alfiz Cloud — validation,
 
 Two things must be true before promotion can begin:
 
-- The Application is **linked** — the relay is mounted, the secret is configured, and the health probe passes.
+- The Application is **linked** — the provider handler is mounted, the secret is configured, and the health probe passes.
 - The Application's catalog is **published** to the registry. The org root cannot hold roles and grants against vocabulary it cannot see.
 
 ## What promotion does
 
 <Steps>
-  <Step title="Export over the relay">
-    Alfiz Cloud pulls the Application's organizational-domain data — groups, roles, global grants and revokes, the reporting hierarchy — through the same relay that carries everyday administrative traffic.
+  <Step title="Export over the Provider API">
+    Alfiz Cloud pulls the Application's organizational-domain data — groups, roles, global grants and revokes, the reporting hierarchy — through the same provider connection that carries everyday administrative traffic.
   </Step>
 
   <Step title="Validate through the standard import paths">
@@ -27,7 +27,7 @@ Two things must be true before promotion can begin:
   <Step title="Flip authority atomically">
     Authority transfers as a single push, applied and then acknowledged: Alfiz Cloud sends one `org.applySnapshot` carrying `authority: true`, and your Application rejects local org-domain writes with `ProviderWriteRejectedError` (`not_org_root`) once it is rebuilt with the new flag. The snapshot is applied as a sequence of individual storage writes rather than inside a transaction, so run the transfer during a quiet window rather than under concurrent org-domain load.
 
-    Because `orgRoot` is a constructor commitment, the relay handler calls your `onAuthorityChanged` hook with the applied `authority` value so the host process can rebuild its Application. The hook fires after **every** applied snapshot, including routine read-model syncs that pass `authority: false` — branch on the argument rather than treating the call itself as a transfer. Wire it before you start promotion; see [Handling authority transfer](/cloud/relay#handling-authority-transfer).
+    Because `orgRoot` is a constructor commitment, the provider handler calls your `onAuthorityChanged` hook with the applied `authority` value so the host process can rebuild its Application. The hook fires after **every** applied snapshot, including routine read-model syncs that pass `authority: false` — branch on the argument rather than treating the call itself as a transfer. Wire it before you start promotion; see [Handling authority transfer](/cloud/provider-api#handling-authority-transfer).
   </Step>
 
   <Step title="Push the read model down">

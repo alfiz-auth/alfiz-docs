@@ -20,6 +20,8 @@ Alfiz is organized into three layers. The first two are open-source packages you
 | **Application** | `@alfiz/application` | The local provider: the same contract implemented against *your* database through a storage seam. Standalone, it is the org root — the complete system for one organization, with no external dependency. |
 | **Alfiz Cloud** | — | The managed provider speaking the same contract: the Dashboard (hosted administration by relay) and Federation (registry, cross-application composition, the hosted org root). Nothing in the OSS packages depends on it. |
 
+The Client/Provider split is enforced in code, not convention. The provider contract has three normative artifacts, held in exact correspondence by the type system and the test suite: the `AlfizProvider` interface a Client attaches to, the `AlfizProviderBase` abstract class every provider extends, and the **Alfiz Provider API** — an OpenAPI document fixing the contract's wire form. Exactly two kinds of implementation exist, both in `@alfiz/application`: the **local** provider (`AlfizApplication`, your database) and the **hosted** provider (`HostedProvider`, an API connection to the same contract served elsewhere — the seam the Dashboard and Federation ride on). Because the wire form is a language-agnostic document rather than a TypeScript export, a provider can be implemented — and consumed — from any language. See [Provider API setup](/cloud/provider-api) for the wire conventions and what they buy.
+
 <Note>
 Runtime checks never leave your application in any topology. Every `can()` runs in-process against your catalog, your rows, and your resolver — so nothing Alfiz operates can slow or break your app.
 </Note>

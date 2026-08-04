@@ -9,7 +9,7 @@ Alfiz Cloud is the managed Alfiz provider: a hosted implementation of the same p
 ## Two features, one implementation
 
 <CardGroup cols={2}>
-  <Card title="Dashboard" icon="layout-dashboard" href="/cloud/relay">
+  <Card title="Dashboard" icon="layout-dashboard" href="/cloud/provider-api">
     A hosted, styled, maintained admin UI for grants, roles, groups, approvals, and audit — every operation relayed to your Application for enforcement. Your Application stays the org root and the only writer.
   </Card>
   <Card title="Federation" icon="diagram-project" href="/growth/federated">
@@ -17,14 +17,14 @@ Alfiz Cloud is the managed Alfiz provider: a hosted implementation of the same p
   </Card>
 </CardGroup>
 
-The relationship between the two is exact: **the Dashboard is Federation with one Application in play**. There is no separate linked-mode codebase — the same org surfaces, the same relay, the same approvals queue, with authority left exactly where it already lives. When you later federate, nothing is rebuilt; the org root moves and the surfaces stay.
+The relationship between the two is exact: **the Dashboard is Federation with one Application in play**. There is no separate linked-mode codebase — the same org surfaces, the same provider connection, the same approvals queue, with authority left exactly where it already lives. When you later federate, nothing is rebuilt; the org root moves and the surfaces stay.
 
 ## Three kinds of user
 
 Alfiz Cloud serves three audiences, and its surfaces divide cleanly along that line:
 
 - **Administrators** work the org domain — groups, roles, the reporting hierarchy, global grants and revokes, the approvals queue, the audit history.
-- **Application owners and developers** work their own applications — catalog publishes, credentials, scoped grants, relay health, and the drift report.
+- **Application owners and developers** work their own applications — catalog publishes, credentials, scoped grants, connection health, and the drift report.
 - **Employees** use the portal — view their own access, request more, and approve what falls to them.
 
 <Note>
@@ -36,7 +36,7 @@ Alfiz Cloud serves three audiences, and its surfaces divide cleanly along that l
 Alfiz Cloud gates its own surfaces with the same machinery it hosts, and the rule is uniform across every topology:
 
 - **Org-domain surfaces** gate on the `alfiz_internal.*` permissions of whichever provider currently holds the org root. For a linked org that is your Application; after federation it is Alfiz Cloud. The keys do not change when the authority moves — they resolve against wherever the org root currently lives.
-- **Account surfaces** — an application's own page: credentials, publishes, relay health — gate on admin seats plus grants scoped to `cloud.app:<id>`.
+- **Account surfaces** — an application's own page: credentials, publishes, connection health — gate on admin seats plus grants scoped to `cloud.app:<id>`.
 - **The portal** needs only a seat.
 
-Setup starts with the relay — see [Relay setup](/cloud/relay). What is billed, and what never is, is covered in [Metering and caps](/cloud/metering).
+Setup starts with the provider connection — see [Provider API setup](/cloud/provider-api). What is billed, and what never is, is covered in [Metering and caps](/cloud/metering).

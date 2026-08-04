@@ -85,15 +85,15 @@ Linking is a registration step — you associate your Application with an Alfiz 
   </Step>
 
   <Step title="Configure the Alfiz Cloud connection in your Application">
-    The connection is the **relay** — a POST route that ships in `@alfiz/application`. Mount it, and Alfiz Cloud forwards administrative operations through it to your Application for enforcement. Your `createApplication` options do not change.
+    The connection is the **Provider API** — the provider contract your Application already implements, served over HTTPS by a handler that ships in `@alfiz/application`. Mount it as a catch-all POST route, and Alfiz Cloud forwards administrative operations through it to your Application for enforcement. Your `createApplication` options do not change.
 
-    ```ts src/app/api/alfiz-relay/route.ts
-    import { createRelayHandler } from "@alfiz/application";
+    ```ts src/app/api/alfiz/[...op]/route.ts
+    import { createProviderHandler } from "@alfiz/application";
     import { app } from "@/authz/app";
 
-    export const POST = createRelayHandler({
+    export const POST = createProviderHandler({
       application: app,
-      secret: process.env.ALFIZ_RELAY_SECRET!,
+      secret: process.env.ALFIZ_PROVIDER_SECRET!,
       applicationId: "docs",
     });
     ```
@@ -104,7 +104,7 @@ Linking is a registration step — you associate your Application with an Alfiz 
     [promotion](/cloud/promotion), and a linked deployment does not need them.
     Add `storage` when you federate, not before.
 
-    The [relay setup guide](/cloud/relay) covers the full flow — registration, the relay URL, the secret, and the connection health probe.
+    The [Provider API setup guide](/cloud/provider-api) covers the full flow — registration, the connection URL, the secret, and the connection health probe.
 
     <Tip>
       Your `alfiz` client instance (`createAlfizClient`) does not change at all. The Alfiz Cloud connection is an Application-layer concern; the Client is unaware of it.
