@@ -1,0 +1,138 @@
+---
+title: "Shared-Store Topologies: Partitioned Storage and the Mesh"
+sidebarTitle: "Shared-store topologies"
+description: "Run several Alfiz Applications against one database. Partitioned storage gives strict isolation with zero interaction; the mesh adds granted read/write access between partitions, live imports, and an org partition."
+---
+
+One Alfiz Application owns its tables outright. Before 0.8.0 that was literal: point a second Application at the same store and the two collided — silently and destructively. Unfiltered lists returned both applications' rows (a privilege leak), the catalog head and invalidation-log singletons clobbered each other in turns, event sequences interleaved, audit hash chains forked, and caller-assigned ids denied each other's imports.
+
+0.8.0 adds two layers, each useful alone:
+
+1. **Partitioned storage** — several Applications share one set of tables with strict isolation and zero interaction. No contract changes; this is the default behavior once you set a partition.
+2. **The mesh** — an opt-in topology on top, in which applications can be *granted* read or write access to each other's partitions. Because the shared database already provides the cross-application vantage that federation's registry exists to supply, a mesh delivers federation-shaped capability — first-party imports, a centrally administrable org — with no new infrastructure and no network hops.
+
+The topology family runs **standalone → mesh → federated**, with partitioned storage as the mesh's degenerate case: a mesh with no edges.
+
+<Note>
+  This page is about several *applications* of **one organization** sharing a
+  database. Serving many *customer organizations* is a different problem with a
+  different answer — see [Multi-tenancy](/operations/multi-tenancy).
+</Note>
+
+## Layer 1: partitioned storage
+
+Both database drivers take a `partition` option that pins the driver — at construction, irrevocably — to one application's slice of the backend. The recommended key is the application's primary catalog namespace, which is already unique org-wide.
+
+```ts
+// Prisma: an `app` discriminator threaded through every query (v2 schema).
+const docs = prismaDriver(prisma, { partition: "docs", lock });
+const billing = prismaDriver(prisma, { partition: "billing", lock });
+
+// Mongo: a collection prefix (docs_grants, docs_epoch, docs_locks, …).
+const docs = mongoDriver(db, { partition: "docs" });
+```
+
+On Prisma the discriminator is **unforgettable by construction**: the delegate types require `app` on every query shape, so a query inside the driver that omitted the partition fails to compile rather than scanning every tenant. On Mongo the prefix means no query *can* forget the predicate. On both, isolation is pinned by a published conformance suite (`isolationContractCases` in `@alfiz/application/driver-suite`), and third-party drivers claiming multi-app support are graded against the same bar.
+
+Two rules, stated plainly:
+
+- **All partitioned or none.** An application that omits the option lands in partition `""` (Prisma) or the unprefixed collections (Mongo), beside any legacy data. The boot log's driver line includes the partition; check it.
+- **Isolation here is logical and cooperative.** Every co-tenant holds credentials to the whole table set, so this protects against bugs and accidents, not against a compromised co-tenant. When you need isolation that holds adversarially, use physical partitioning — a schema or database per application, separate credentials — which both drivers support with zero Alfiz configuration.
+
+At this layer the applications interact in no way. No registry, no edges, nothing shared but the connection pool.
+
+## Layer 2: the mesh
+
+The mesh starts from one design invariant: **the storage seam never learns cross-partition addressing.** A driver physically cannot reach a neighboring partition, and there is no `listGrants({ partitions: [...] })` — a raw cross-partition write would bypass the owning application's catalog validation, graph integrity, audit chain, and invalidation events, which for an authorization system is the cardinal failure.
+
+Instead, cross-application access is *composition of Applications over the shared store*, through exactly one road:
+
+```ts
+import { connectMesh, openPeerApplication } from "@alfiz/application";
+
+const mesh = connectMesh({
+  partition: "docs",
+  driver: (p) => prismaDriver(prisma, { partition: p, lock }),
+});
+
+const billing = await openPeerApplication(mesh, "billing", { as: "m.reyes" });
+await billing.createGrants([...], provenance); // full validation, audited into billing's log
+```
+
+`openPeerApplication` consults the registry (below) for an edge authorizing the access and refuses loudly without one. It then reads the *target's published catalog head from the target's partition* — it is sitting in the same database — and constructs a full in-process Application over a driver pinned to that partition. Every operation flows through the target's own enforcement; audit lands in the **target's** log, where its operators expect it, naming the cross-app actor; and the handle re-checks the stored catalog version before every catalog-validating write, so validation never runs against a stale contract. Read-mode handles refuse every write at the seam.
+
+The admin-dashboard topology falls out for free: enumerate the mesh's members, open a peer Application per partition, and reuse the entire headless admin kit against each one.
+
+### The registry
+
+A reserved meta-partition (`__mesh`) holds the mesh's one shared document: members, edges, and the optional org designation.
+
+```ts
+await mesh.putRegistry({
+  members: [
+    { partition: "docs", namespaces: ["docs"] },
+    { partition: "billing", namespaces: ["billing"] },
+  ],
+  edges: [{ from: "docs", to: "billing", mode: "read" }],
+}, { kind: "admin", actorUserId: "m.reyes" });
+```
+
+Edges are deliberately coarse — whole-partition `read` or `write`, where write implies read. The registry has one writer by discipline (the org partition's owner, like every other piece of org-domain data), versions monotonically, and audits every change. It gives you three things: discoverability (the dashboard's member list; namespace-to-partition resolution for imports), **boot verification**, and answerability — one place that answers "who can touch my partition?".
+
+```ts
+// Refuse to start on a mismatch, instead of discovering it at the first check:
+await mesh.verify({ peers: { read: ["billing"] } });
+```
+
+### First-party imports
+
+Your catalog already [declares the namespaces it references but does not own](/catalog/imports). In a mesh, those imports stop being vocabulary-only:
+
+```ts
+const app = createApplication({
+  catalog,                       // imports: { billing: { permissions: { "billing.invoices.read": true } } }
+  storage: mesh.storage(),
+  mesh: { connection: mesh, imports: true },
+});
+await app.verifyMeshImports();   // boot check, against billing's LIVE catalog head
+```
+
+The registry maps each imported namespace to its publishing partition, and a read edge authorizes the resolution — no edge means a loud `no_mesh_edge` refusal, never a silent degrade. Closure assembly then merges the neighboring partition's **global-scope grants and role definitions** for the session's subjects into evaluation: if billing granted Jane Okafor its "Invoice auditor" role globally, a check in the docs application sees it. Checks still run entirely in your process — the rows are sitting in the same database.
+
+Invalidation crosses partitions the same way everything else does — through the shared store. `startMeshEventPoller(app, mesh)` tails your own event log plus each partition you hold an edge to, so a revoked billing role invalidates docs-side caches at the same staleness bound as local writes.
+
+**The v1 limit, stated:** instance-scoped peer grants stay out of the merge. They reference resources only the owning application can resolve, and cross-app hierarchical scope matching would require the peer's ancestry resolver — exactly the path that fails closed. Global-scope grants and roles cover the "people holding permissions and roles from other applications" case.
+
+### Write edges
+
+"Application A writes application B's partition" does not break the single-writer rule, framed correctly: authority stays singular — B's Application semantics — and the mesh adds a second *process* executing them. That is exactly one application deployed on multiple nodes, which the drivers already handle. The multi-node requirements therefore become **mandatory** for any partition with an inbound write edge, even if every application is single-node, and `openPeerApplication` in write mode enforces them fail-loudly:
+
+- **Cross-process `runExclusive`** — built into `@alfiz/mongo` (its lease); on Prisma, supply `options.lock` or write mode refuses.
+- **The persisted event log** — invalidation must cross process boundaries, and in a mesh the shared log *is* the transport: the peer's write appends to the target's partition log, the target's processes poll their own log, caches invalidate.
+
+### The org partition
+
+The homing rule gains a third clause: *standalone, the Application is the org root; in a mesh, the org partition is; federated, Alfiz Cloud is.* Designate a partition in the registry and it homes organizational-domain data — groups, roles, the reporting hierarchy, global-scope grants and revokes — for the whole mesh: **one copy, one writer, zero sync lag**, because every member was already reading this database.
+
+```ts
+await promoteOrgPartition(mesh, { provenance });   // the audited authority handoff
+// Members then boot:
+await mesh.verify({ orgRoot: false });
+const app = createApplication({ catalog, storage: mesh.storage(), orgRoot: false, ... });
+```
+
+Members reject local org-domain writes exactly as [federated](/growth/federated) ones do, and route them through a peer Application over the org partition instead. Promotion reuses the same org-snapshot machinery the federation promotion path uses — which is what makes the mesh a genuine stepping stone: federating later lifts the org partition and the registry into Alfiz Cloud with the dataset already centralized.
+
+## The threat model, stated plainly
+
+Mesh isolation is **cooperative, not adversarial**. Every member holds credentials to the whole table set; partition discipline and access edges are enforced by driver construction and boot checks, not by the database. A compromised or misbehaving member can read and write any partition with the raw database client, and no mesh mechanism prevents it. That is a fine trade among first-party applications of one organization — the threat model is bugs and accidents, and the conformance suites pin exactly those — but it is a trade. Deployments needing adversarial isolation between applications use physical partitioning with separate credentials, and pay federation's costs for centralization. The guarantee differs by mechanism, and you should know which one you are getting.
+
+## Choosing a topology
+
+| Topology | Tables | Org-domain home | Cross-app access | Isolation |
+|---|---|---|---|---|
+| Standalone | Own | The Application | — | Physical |
+| Physical shared-DB | Own schema/db per app | Each Application | — | Physical (credentials) |
+| Partitioned | Shared | Each Application | None | Logical, by construction |
+| Mesh | Shared | The org partition (optional) | Granted read/write edges | Logical, cooperative |
+| [Federated](/growth/federated) | Own per app | Alfiz Cloud | Via Alfiz Cloud | Physical + contract |

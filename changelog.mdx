@@ -1,7 +1,7 @@
 ---
-title: "Alfiz Changelog: Every Release from 0.2.0 to 0.7.0"
+title: "Alfiz Changelog: Every Release from 0.2.0 to 0.8.0"
 sidebarTitle: "Changelog"
-description: "Every Alfiz release, from 0.2.0 to 0.7.0. What shipped, what changed, and what broke across @alfiz/core, @alfiz/application, @alfiz/prisma, and @alfiz/verify."
+description: "Every Alfiz release, from 0.2.0 to 0.8.0. What shipped, what changed, and what broke across @alfiz/core, @alfiz/application, @alfiz/prisma, @alfiz/mongo, and @alfiz/verify."
 ---
 
 Alfiz is pre-1.0 and moves deliberately. Each release addresses a concrete gap in how authorization is modeled, checked, or maintained. The entries below mirror the library's own `CHANGELOG.md` — what shipped and, where a release broke something, exactly what you have to change.
@@ -14,7 +14,39 @@ Alfiz is pre-1.0 and moves deliberately. Each release addresses a concrete gap i
   target before upgrading.
 </Note>
 
-All four packages version together: `@alfiz/core`, `@alfiz/application`, `@alfiz/prisma`, and `@alfiz/verify`.
+All five packages version together: `@alfiz/core`, `@alfiz/application`, `@alfiz/prisma`, `@alfiz/mongo`, and `@alfiz/verify` — `@alfiz/mongo` shipped between 0.7.1 and 0.8.0 at 0.1.0 and joined the release train at 0.8.0.
+
+---
+
+## 0.8.0 — shared-store topologies: partitioned storage and the mesh
+
+<Warning>
+  `@alfiz/prisma` requires the **v2 schema fragment**: every `Alfiz*` model
+  gains an `app` partition discriminator (`@default("")`) with composite
+  keys led by it. The migration is a column-add plus PK/index rebuilds, and
+  a migrated single-application deployment sees **no behavior change** — an
+  unpartitioned driver reads and writes partition `""`, which is where your
+  rows land. Regenerate your client after migrating; a v1-generated client
+  no longer satisfies the delegate types, by design. Read the Breaking
+  section.
+</Warning>
+
+Two Applications can now share one database. Two layers, each useful alone, both pinned by 101 new conformance and integration tests (938 → 1,039):
+
+**Partitioned storage.** A `partition` option on both database drivers pins a driver — at construction, irrevocably — to one application's slice of the backend: a collection prefix on Mongo, a type-enforced `app` discriminator on Prisma (the delegate types *require* it on every query shape, so a forgotten tenant clause is a compile error, not a cross-tenant scan). Strict isolation, zero interaction, and a new `isolationContractCases` suite grading any driver against the same bar — including the silent failure directions: unfiltered lists, the singletons, event-log sequencing, and the audit-chain seed. `memoryBackend()` is the in-memory analogue for tests. See [Storage drivers](/api/storage-drivers).
+
+**The mesh.** Opt-in granted access between partitions, built on one invariant: the storage seam never learns cross-partition addressing. A registry in a reserved meta-partition records members, read/write edges (write implies read), and the org designation; `openPeerApplication(mesh, "billing")` is the single edge-checked road into a neighboring partition — a full in-process Application over the neighbor's *published catalog*, so cross-app writes pass the owner's validation and graph integrity, audit into the owner's log with cross-app provenance, and emit invalidation events into the owner's log (which in a mesh **is** the invalidation transport). Write edges enforce the multi-node prerequisites fail-loudly: cross-process `runExclusive` (Mongo's lease qualifies as shipped; Prisma needs `options.lock`) and the persisted event log. First-party imports (`mesh: { connection, imports: true }`) resolve imported namespaces against live neighbors under read edges and merge peer global-scope grants and roles into closure supply — checks still never leave your process. A designated **org partition** can home organizational-domain data for the whole mesh, with `promoteOrgPartition` as the audited handoff and members booting `orgRoot: false`. `startMeshEventPoller` tails every partition you hold an edge to; `meshContractCases` pins all of it in the driver suite. See [Shared-store topologies](/operations/shared-store).
+
+**And the MongoDB driver.** `@alfiz/mongo` implements the storage seam directly over the official `mongodb` package — no schema to merge, no codegen; collections and indexes are created lazily. The event-log methods work out of the box (the right posture for serverless); catalog history and metrics are honestly absent (`unsupported` / construction refusal rather than wrong answers); and every value reaching a query document is type-checked first, so operator-shaped input off the wire is rejected as data, never executed as a query. See [Storage drivers](/api/storage-drivers#mongodriver).
+
+Stated plainly, because the guarantee differs by mechanism: mesh isolation is **cooperative, not adversarial**. Every member holds credentials to the whole table set; deployments needing adversarial isolation use separate schemas or databases with separate credentials.
+
+### Breaking
+
+- `@alfiz/prisma` requires the v2 schema fragment and a regenerated client. Migration: add `app TEXT NOT NULL DEFAULT ''` to every `Alfiz*` table and rebuild each primary key, unique constraint, and index with `app` leading. Runtime behavior for a migrated deployment is unchanged.
+- The delegate types (`AlfizGrantWhere` et al., every create and where-unique shape) now require `app`; the compound where-unique inputs are `app_id`, `app_userId`, `app_version`, and `app_bucket_dimension_subject_metric`. Hand-rolled mocks need the same shapes.
+- `AlfizApplication.catalog` is now a getter (same type, still stable for compiled-in catalogs) so peer Applications can follow the owning partition's published head.
+- `@alfiz/mongo` jumps 0.1.0 → 0.8.0 with the release train; the driver additionally reports `partition` and `crossProcess` advisory fields. No data changes.
 
 ---
 

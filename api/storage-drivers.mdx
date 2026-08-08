@@ -1,7 +1,7 @@
 ---
-title: "Alfiz Storage Drivers — Memory and Prisma Reference"
+title: "Alfiz Storage Drivers — Memory, Prisma, and MongoDB Reference"
 sidebarTitle: "Storage Drivers"
-description: "memoryDriver() for tests, prismaDriver() for production. Both satisfy the StorageDriver interface — swap without changing any application logic."
+description: "memoryDriver() for tests, prismaDriver() and mongoDriver() for production. All satisfy the StorageDriver interface — swap without changing any application logic."
 ---
 
 The storage seam is the single interface a database must satisfy to host an Alfiz Application. All application semantics — graph integrity, request workflows, org-root gating, the audit log — live above the seam in the Application layer and are identical regardless of which driver you use. Drivers store and retrieve; they never interpret. All IDs are assigned by the Application.
@@ -38,7 +38,7 @@ The following methods are optional. Custom drivers can omit them and keep compil
 | `putImports`, `getImports` | `publishImports` / `getPublishedImports`, and the drift report that names roles still referencing a tombstoned key | `capabilities().imports` reports `false`; the methods are absent |
 | `recordMetrics`, `readMetrics`, `pruneMetrics` | The Application's `metrics: {}` option — stored usage counters and the revocation safeguard | Construction throws when `metrics` is on without them |
 
-`memoryDriver` implements all ten. `prismaDriver` includes each group only when the corresponding delegate is present on the client you hand it — so if you merged only the ten core models and generated your client, `events: { persist: true }` and `metrics: {}` will still throw at construction. Add the [optional models](#optional-models), migrate, and regenerate first.
+`memoryDriver` and `mongoDriver` implement the event-log methods out of the box (`mongoDriver` omits catalog history and metrics — see [its section](#mongodriver)). `prismaDriver` includes each group only when the corresponding delegate is present on the client you hand it — so if you merged only the ten core models and generated your client, `events: { persist: true }` and `metrics: {}` will still throw at construction. Add the [optional models](#optional-models), migrate, and regenerate first.
 
 ## `memoryDriver()`
 
@@ -140,6 +140,12 @@ Pass the `PrismaClient` instance directly. Any Prisma client generated from a sc
     },
   });
   ```
+
+  The keys the driver hands to `lock` already carry the partition (`"docs:groups"` under `partition: "docs"`), so applications sharing one database never contend on each other's locks. Supplying `lock` also marks the driver cross-process capable (`crossProcess`), a prerequisite for accepting a [mesh write edge](/operations/shared-store#write-edges).
+</ParamField>
+
+<ParamField body="partition" type="string" optional>
+  Pins the driver to one application's slice of [shared tables](/operations/shared-store). Rows are written and read with `app = partition`; the default `""` is the unpartitioned dataset. The recommended value is the application's primary catalog namespace. The delegate types make the discriminator required in every query shape, so a query inside the driver that forgot the partition fails to compile rather than scanning every tenant.
 </ParamField>
 
 ### The delegate interface
@@ -180,14 +186,17 @@ const mockDb: AlfizPrismaDelegates = {
 const storage = prismaDriver(mockDb);
 ```
 
-### Schema fragment
+### Schema fragment (v2)
 
 Add the following models to your `schema.prisma`. These are a fragment — they have no `datasource` or `generator` blocks and inherit yours. All models are prefixed `Alfiz` to avoid colliding with your own models.
+
+Since 0.8.0 the fragment is **v2**: every model carries an `app` partition discriminator (`@default("")`) and every primary key and index is a composite led by it, so several Applications can [share one set of tables](/operations/shared-store). A single-application deployment changes nothing — an unpartitioned driver reads and writes partition `""`, which is where a migrated v1 dataset lands. Upgrading from v1 is a column-add plus PK/index rebuilds; see the [0.8.0 changelog entry](/changelog#0-8-0-shared-store-topologies-partitioned-storage-and-the-mesh).
 
 ```prisma
 /// The atomic grant tuple: (subject, role-or-pattern, scope, expiry?).
 model AlfizGrant {
-  id         String  @id
+  app        String  @default("")
+  id         String
   subject    String
   roleId     String?
   pattern    String?
@@ -196,70 +205,85 @@ model AlfizGrant {
   provenance Json
   createdAt  BigInt
 
-  @@index([subject])
-  @@index([scope])
-  @@index([roleId])
+  @@id([app, id])
+  @@index([app, subject])
+  @@index([app, scope])
+  @@index([app, roleId])
 }
 
 /// Personal revoke — the single negative layer; only users hold revokes.
 model AlfizRevoke {
-  id         String @id
+  app        String @default("")
+  id         String
   userId     String
   pattern    String
   scope      String
   provenance Json
   createdAt  BigInt
 
-  @@index([userId])
-  @@index([scope])
+  @@id([app, id])
+  @@index([app, userId])
+  @@index([app, scope])
 }
 
 /// A named bundle of permission patterns, plus its requestability policy.
 model AlfizRole {
-  id          String  @id
+  app         String  @default("")
+  id          String
   name        String
   description String?
   patterns    Json
   requestable Json?
+
+  @@id([app, id])
 }
 
 /// A user group node; its parent edges live in AlfizGroupParent.
 model AlfizGroup {
-  id          String  @id
+  app         String  @default("")
+  id          String
   name        String
   description String?
   virtual     Boolean @default(false)
+
+  @@id([app, id])
 }
 
 /// Group parentage edges (the group DAG).
 model AlfizGroupParent {
+  app      String @default("")
   childId  String
   parentId String
 
-  @@id([childId, parentId])
-  @@index([parentId])
+  @@id([app, childId, parentId])
+  @@index([app, parentId])
 }
 
 /// The authorization-relevant user record; identity stays in the IdP.
 model AlfizUser {
-  userId        String  @id
+  app           String  @default("")
+  userId        String
   active        Boolean
   orgIds        Json
   managerUserId String?
+
+  @@id([app, userId])
 }
 
 /// Explicit user → group membership edges.
 model AlfizMembership {
+  app     String @default("")
   userId  String
   groupId String
 
-  @@id([userId, groupId])
-  @@index([groupId])
+  @@id([app, userId, groupId])
+  @@index([app, groupId])
 }
 
 /// An access request with workflow state and snapshotted approval policy.
 model AlfizRequest {
-  id                String  @id
+  app               String  @default("")
+  id                String
   requesterUserId   String
   roleId            String?
   pattern           String?
@@ -273,27 +297,38 @@ model AlfizRequest {
   createdAt         BigInt
   decidedAt         BigInt?
 
-  @@index([state])
-  @@index([requesterUserId])
+  @@id([app, id])
+  @@index([app, state])
+  @@index([app, requesterUserId])
 }
 
-/// The published catalog — a versioned singleton (always id = 1).
+/// The published catalog — a versioned singleton per partition (id = 1).
 model AlfizCatalog {
-  id       Int  @id @default(1)
+  app      String @default("")
+  id       Int    @default(1)
   version  Int
   document Json
+
+  @@id([app, id])
 }
 
-/// Append-only audit log, ordered by `at` (epoch ms).
+/// Append-only audit log, ordered by (`at`, `id`) (epoch ms). The hash
+/// columns are populated under `audit: { hashChain: true }`.
 model AlfizAudit {
-  id     String @id
-  at     BigInt
-  actor  String
-  action String
-  target String
-  detail Json?
+  app      String  @default("")
+  id       String
+  at       BigInt
+  actor    String
+  action   String
+  target   String
+  detail   Json?
+  prevHash String?
+  hash     String?
 
-  @@index([target])
+  @@id([app, id])
+  @@index([app, target])
+  @@index([app, at, id])
+  @@index([app, actor])
 }
 ```
 
@@ -315,29 +350,48 @@ Four more models are additive. Leave them out and everything above still works; 
 ```prisma
 /// The consumed-vocabulary manifest — catalog.toImportManifest().
 model AlfizImports {
-  id       Int  @id @default(1)
+  app      String @default("")
+  id       Int    @default(1)
   version  Int
   manifest Json
+
+  @@id([app, id])
 }
 
-/// The invalidation-log head — a singleton (always id = 1). One tiny indexed
-/// read answers "did anything change anywhere?", which is the cross-process
-/// cache-freshness signal behind `revalidateAfterMs`.
+/// Catalog history: one retained document per published version.
+model AlfizCatalogVersion {
+  app         String @default("")
+  version     Int
+  document    Json
+  publishedAt BigInt
+
+  @@id([app, version])
+}
+
+/// The invalidation-log head — a singleton per partition (id = 1). One tiny
+/// indexed read answers "did anything change anywhere?", which is the
+/// cross-process cache-freshness signal behind `revalidateAfterMs`.
 model AlfizEpoch {
-  id            Int    @id @default(1)
+  app           String @default("")
+  id            Int    @default(1)
   seq           BigInt
   prunedThrough BigInt @default(0)
+
+  @@id([app, id])
 }
 
-/// Persisted invalidation events, contiguous by `seq` — the same events the
-/// in-process stream carries, durable so other processes can replay them.
+/// Persisted invalidation events, contiguous by `seq` within a partition —
+/// the same events the in-process stream carries, durable so other
+/// processes can replay them.
 model AlfizEvent {
-  seq     BigInt @id
+  app     String @default("")
+  seq     BigInt
   type    String
   payload Json
   at      BigInt
 
-  @@index([at])
+  @@id([app, seq])
+  @@index([app, at])
 }
 
 /// Rolling permission-usage counters: one row per counter per time bucket
@@ -345,25 +399,85 @@ model AlfizEvent {
 /// key, or scope type. Counters accumulate across app servers. Nothing here
 /// is access data — dropping the table loses metrics and changes no decision.
 model AlfizMetric {
+  app       String @default("")
   bucket    BigInt
   dimension String
   subject   String
   metric    String
   count     BigInt
 
-  @@id([bucket, dimension, subject, metric])
-  @@index([dimension, subject])
-  @@index([bucket])
+  @@id([app, bucket, dimension, subject, metric])
+  @@index([app, dimension, subject])
+  @@index([app, bucket])
 }
 ```
 
+## `mongoDriver`
+
+The MongoDB driver ships in `@alfiz/mongo` and implements the seam directly over the official `mongodb` package — there is no schema to merge and no code generation step. Collections and their hot-path indexes are created lazily on first use; every row is stored with its Alfiz id as Mongo's `_id` for free uniqueness and point reads.
+
+### Installation
+
+```bash
+npm install @alfiz/mongo mongodb
+```
+
+`mongodb` (v6 or v7) is a peer dependency.
+
+### Creating a Mongo driver
+
+```ts
+import { MongoClient } from "mongodb";
+import { createApplication } from "@alfiz/application";
+import { mongoDriver } from "@alfiz/mongo";
+
+const client = new MongoClient(process.env.MONGO_URL!);
+await client.connect();
+
+const storage = mongoDriver(client.db("alfiz"));
+const app = createApplication({ catalog, storage });
+```
+
+`mongoDriver` also accepts a `Promise<Db>`, for constructing the Application before `connect()` resolves:
+
+```ts
+const storage = mongoDriver(client.connect().then((c) => c.db("alfiz")));
+```
+
+### `MongoDriverOptions`
+
+<ParamField body="leaseMs" type="number" default="10000" optional>
+  Lease duration for the cross-process graph lock, in milliseconds. `runExclusive` is an in-process mutex plus a best-effort lease in the `locks` collection, so two nodes writing group parentage at the same moment cannot jointly form a cycle — no `lock` option to configure, unlike the Prisma driver. An expired lease is stolen, so a crashed holder cannot wedge writes forever.
+</ParamField>
+
+<ParamField body="partition" type="string" optional>
+  Prefixes every collection this driver touches (`docs_grants`, `docs_epoch`, `docs_locks`, …) so several Applications can [share one `Db`](/operations/shared-store). A separate `Db` per application (`client.db("alfiz_docs")`) needs no option at all and is strictly preferred where databases are not rationed. Must match `[A-Za-z0-9_-]+`.
+</ParamField>
+
+### What this driver supports
+
+The event-log methods work out of the box, so `events: { persist: true }` and client revalidation need no extra setup — the right posture for serverless. Because the lease already serializes across processes, the driver qualifies for [mesh write edges](/operations/shared-store#write-edges) as shipped. Two features are not implemented: catalog **history** (only the head is kept, so the wildcard-drift report answers `unsupported` rather than wrongly) and the rolling **metrics** methods (`metrics: {}` refuses at construction). Every value the driver assigns into a query document is checked to be the expected primitive first, so an object-shaped value off the wire (`{"subject": {"$ne": null}}`) can never be read as a query operator.
+
+## Partitioned storage: several Applications, one backend
+
+Both database drivers take a `partition` option pinning the driver — at construction, irrevocably — to one application's slice of a shared backend. Isolation is strict and pinned by a published conformance suite; the applications interact in no way unless you opt into the [mesh](/operations/shared-store). The rule in shared tables is **all partitioned or none**: an application that omits the option lands in partition `""` (Prisma) or the unprefixed collections (Mongo) beside any legacy data.
+
+```ts
+const docs = prismaDriver(prisma, { partition: "docs", lock });
+const billing = prismaDriver(prisma, { partition: "billing", lock });
+// or, over one Mongo Db:
+const docs = mongoDriver(db, { partition: "docs" });
+```
+
+See [Shared-store topologies](/operations/shared-store) for the full picture — what collides without partitioning, the mesh's access edges, and the org partition.
+
 ## Multi-node deployments
 
-The default in-process mutex inside both the memory driver and the Prisma driver only serializes within one Node.js process. When you run multiple application instances against the same database, two concurrent group-parentage or reporting-edge writes could each pass their individual cycle checks while jointly forming a cycle. Supply the `lock` option with a database advisory lock to prevent this.
+The default in-process mutex inside the memory driver and the Prisma driver only serializes within one Node.js process. When you run multiple application instances against the same database, two concurrent group-parentage or reporting-edge writes could each pass their individual cycle checks while jointly forming a cycle. Supply the Prisma driver's `lock` option with a database advisory lock to prevent this; the Mongo driver's lease covers it as shipped.
 
 ## Implementing a custom driver
 
-If you use a database without a Prisma provider — DynamoDB, a raw SQL driver, MongoDB, or similar — implement `StorageDriver` directly. The interface is in `@alfiz/application`:
+If you use a database without a bundled driver — DynamoDB, a raw SQL driver, or similar — implement `StorageDriver` directly. The interface is in `@alfiz/application`:
 
 ```ts
 import type { StorageDriver } from "@alfiz/application";
@@ -393,6 +507,8 @@ for (const c of driverContractCases) test(c.name, () => c.run(makeDriver()));
 ```
 
 The suite covers the row round-trips, the audit ordering and filters below, catalog history, and — the case that matters most for correctness — **`runExclusive` serialization**, which is what keeps graph-cycle detection sound under concurrency. A driver that fails it is unsound multi-node, not merely non-conforming.
+
+Since 0.8.0 the suite also exports `isolationContractCases(makePartitionedDriver)` and `meshContractCases(makePartitionedDriver)`. A custom driver claiming multi-application support over one backend is graded against the same isolation bar the bundled drivers pass — including the failure directions that leak silently: the unfiltered lists, the singletons, event-log sequencing, and the audit-chain seed. See [Shared-store topologies](/operations/shared-store).
 
 The conventions the suite pins:
 

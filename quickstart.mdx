@@ -6,7 +6,7 @@ description: "Install Alfiz, define your first permission catalog, wire a storag
 
 Alfiz ships as two packages you install today. `@alfiz/core` holds the evaluator — the catalog, grammar, closures, and check logic. `@alfiz/application` wraps a storage driver into the full local provider. You define your permissions in TypeScript, wire up storage, and every `can()` check runs in-process against your own database with no external round-trip.
 
-This page gets you from an empty project to a passing scoped check. It uses the in-memory driver so you can run it immediately; [swapping in Prisma](/api/storage-drivers) is a two-line change at the end.
+This page gets you from an empty project to a passing scoped check. It uses the in-memory driver so you can run it immediately; [swapping in Prisma or MongoDB](/api/storage-drivers) is a two-line change at the end.
 
 <Steps>
   <Step title="Install the packages">
@@ -189,6 +189,19 @@ import { prismaDriver } from "@alfiz/prisma";
 export const app = createApplication({
   catalog,
   storage: prismaDriver(prisma),
+  ancestry: async (scope) => db.ancestorChainOf(scope),
+});
+```
+
+On MongoDB, there is no schema to merge — point `@alfiz/mongo` at a
+database:
+
+```ts
+import { mongoDriver } from "@alfiz/mongo";
+
+export const app = createApplication({
+  catalog,
+  storage: mongoDriver(client.db("alfiz")),
   ancestry: async (scope) => db.ancestorChainOf(scope),
 });
 ```

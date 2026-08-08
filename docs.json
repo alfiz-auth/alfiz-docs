@@ -92,6 +92,7 @@
               "operations/access-reviews",
               "operations/sync-reconciliation",
               "operations/multi-tenancy",
+              "operations/shared-store",
               "operations/performance"
             ]
           },

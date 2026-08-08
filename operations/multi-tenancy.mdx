@@ -56,3 +56,10 @@ Legitimate uses exist: B2C products where "tenant" is really just a container re
 Topology A does not require one database per tenant — it requires **tenant-scoped storage**. A Prisma driver over a shared database with a `tenantId` discriminator your wrapper injects satisfies it, provided the wrapper is the only path to the tables and the advisory-lock key carries the tenant. The isolation guarantee is then exactly as strong as that wrapper, which is the honest statement of where the trust moved.
 
 Alfiz Cloud's Federation tier models each customer organization as its own org root — Topology A at the managed layer — so a standalone deployment choosing A stays aligned with the growth path.
+
+<Note>
+  A different question with a different answer: several *applications* of
+  **one organization** sharing one database. That is what the `partition`
+  option on both database drivers is for — and, opted-in, the mesh. See
+  [Shared-store topologies](/operations/shared-store).
+</Note>
