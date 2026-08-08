@@ -1,7 +1,7 @@
 ---
-title: "Alfiz Storage Drivers — Memory and Prisma Reference"
+title: "Alfiz Storage Drivers — Memory, Prisma, and Mongo Reference"
 sidebarTitle: "Storage Drivers"
-description: "memoryDriver() for tests, prismaDriver() for production. Both satisfy the StorageDriver interface — swap without changing any application logic."
+description: "memoryDriver() for tests, prismaDriver() and mongoDriver() for production. Every driver satisfies the StorageDriver interface — swap without changing any application logic."
 ---
 
 The storage seam is the single interface a database must satisfy to host an Alfiz Application. All application semantics — graph integrity, request workflows, org-root gating, the audit log — live above the seam in the Application layer and are identical regardless of which driver you use. Drivers store and retrieve; they never interpret. All IDs are assigned by the Application.
@@ -38,7 +38,7 @@ The following methods are optional. Custom drivers can omit them and keep compil
 | `putImports`, `getImports` | `publishImports` / `getPublishedImports`, and the drift report that names roles still referencing a tombstoned key | `capabilities().imports` reports `false`; the methods are absent |
 | `recordMetrics`, `readMetrics`, `pruneMetrics` | The Application's `metrics: {}` option — stored usage counters and the revocation safeguard | Construction throws when `metrics` is on without them |
 
-`memoryDriver` implements all ten. `prismaDriver` includes each group only when the corresponding delegate is present on the client you hand it — so if you merged only the ten core models and generated your client, `events: { persist: true }` and `metrics: {}` will still throw at construction. Add the [optional models](#optional-models), migrate, and regenerate first.
+`memoryDriver` implements all ten. `prismaDriver` includes each group only when the corresponding delegate is present on the client you hand it — so if you merged only the ten core models and generated your client, `events: { persist: true }` and `metrics: {}` will still throw at construction. Add the [optional models](#optional-models), migrate, and regenerate first. `mongoDriver` ships the event log built in (no schema step) but does not implement the optional metrics or catalog-history methods — see [mongoDriver](#mongodriver) below.
 
 ## `memoryDriver()`
 
@@ -357,13 +357,78 @@ model AlfizMetric {
 }
 ```
 
+## `mongoDriver`
+
+The MongoDB driver is the production driver shipped in `@alfiz/mongo`. It implements the `StorageDriver` interface directly over the official [`mongodb`](https://www.npmjs.com/package/mongodb) driver — no schema fragment to merge, no code generation step, and no migration. Point it at a database and go.
+
+### Installation
+
+```bash
+npm install @alfiz/mongo mongodb
+```
+
+`mongodb` is a peer dependency (`^6.0.0 || ^7.0.0`). `@alfiz/mongo` does not depend on it directly.
+
+### Creating a Mongo driver
+
+```ts
+import { MongoClient } from "mongodb";
+import { createApplication } from "@alfiz/application";
+import { mongoDriver } from "@alfiz/mongo";
+
+const client = new MongoClient(process.env.MONGO_URL!);
+await client.connect();
+
+const storage = mongoDriver(client.db("alfiz"));
+const app = createApplication({ catalog, storage /* ... */ });
+```
+
+`mongoDriver` also accepts a `Promise<Db>`, so you can construct the Application before `client.connect()` resolves:
+
+```ts
+const storage = mongoDriver(client.connect().then((c) => c.db("alfiz")));
+```
+
+Collections (`grants`, `revokes`, `roles`, `groups`, `users`, `requests`, `catalog`, `audit`, `epoch`, `events`, `locks`) and their hot-path indexes are created lazily on first use. Every row is stored with its Alfiz id as Mongo's `_id`, giving free uniqueness and point reads.
+
+### `MongoDriverOptions`
+
+`mongoDriver` accepts an optional second argument:
+
+<ParamField body="leaseMs" type="number" default="10000" optional>
+  Duration in milliseconds of the cross-process lease that `runExclusive` acquires in the `locks` collection. In a single-process deployment the in-process promise-chain mutex is sufficient. In a **multi-node deployment**, `runExclusive` also writes a best-effort lease so two nodes writing group parentage at the same moment cannot jointly form a cycle. An expired lease is stolen, so a crashed holder cannot wedge writes forever.
+
+  ```ts
+  const storage = mongoDriver(db, { leaseMs: 5_000 });
+  ```
+</ParamField>
+
+### Persisted events, built in
+
+The `epoch` and `events` collections back the Application's `events: { persist: true }` option out of the box — unlike the Prisma driver, no additive models to merge and no migration to run. Under the 0.7.0 auto default, `events` persistence turns on because the driver reports itself as capable.
+
+### What this driver does not implement
+
+Two optional method groups are absent:
+
+| Missing methods | Effect |
+|---|---|
+| `getCatalogVersion`, `listCatalogVersions` | Catalog history is not retained. The [wildcard-drift report](/operations/access-reviews#wildcard-drift-what-changed-since-you-certified) answers `unsupported` rather than wrongly. |
+| `recordMetrics`, `readMetrics`, `pruneMetrics` | `createApplication` **throws** when `metrics: {}` is set. |
+
+Both groups are optional on `StorageDriver`. If you need either, use `prismaDriver` or implement the missing methods in a wrapper.
+
+### Query safety
+
+Nothing upstream of a storage driver validates the *runtime* type of an id or filter value — `@alfiz/application`'s Provider API checks field **presence**, not shape, so a JSON body carrying `{ "subject": { "$ne": null } }` reaches the driver unmolested. Every value `mongoDriver` assigns into a Mongo query document (an id, or a filter field such as `subject`, `scope`, `roleId`, `actor`) is checked to be the expected primitive first and rejected with a `TypeError` otherwise. An object-shaped value can never be read as a query operator instead of data.
+
 ## Multi-node deployments
 
-The default in-process mutex inside both the memory driver and the Prisma driver only serializes within one Node.js process. When you run multiple application instances against the same database, two concurrent group-parentage or reporting-edge writes could each pass their individual cycle checks while jointly forming a cycle. Supply the `lock` option with a database advisory lock to prevent this.
+The default in-process mutex inside the memory and Prisma drivers only serializes within one Node.js process. When you run multiple application instances against the same database, two concurrent group-parentage or reporting-edge writes could each pass their individual cycle checks while jointly forming a cycle. Supply the `lock` option to `prismaDriver` with a database advisory lock to prevent this. `mongoDriver` handles this on your behalf via the `locks` collection lease — tune the timeout with [`leaseMs`](#mongodriveroptions).
 
 ## Implementing a custom driver
 
-If you use a database without a Prisma provider — DynamoDB, a raw SQL driver, MongoDB, or similar — implement `StorageDriver` directly. The interface is in `@alfiz/application`:
+If you use a database that neither `prismaDriver` nor `mongoDriver` covers — DynamoDB, a raw SQL driver, or similar — implement `StorageDriver` directly. The interface is in `@alfiz/application`:
 
 ```ts
 import type { StorageDriver } from "@alfiz/application";

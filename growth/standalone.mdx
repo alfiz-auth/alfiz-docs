@@ -23,7 +23,7 @@ Standalone is the composition of two packages:
   </Card>
 </CardGroup>
 
-Your database is the only infrastructure requirement. Swap in `@alfiz/prisma` for a Postgres, MySQL, or SQLite-backed storage driver, or use `memoryDriver()` for tests.
+Your database is the only infrastructure requirement. Swap in `@alfiz/prisma` for a Postgres, MySQL, or SQLite-backed storage driver, `@alfiz/mongo` for MongoDB, or use `memoryDriver()` for tests.
 
 ## What you get
 
@@ -74,7 +74,7 @@ await alfiz.can.fresh({ userId }, "docs.files.delete", "docs.folder:9"); // bypa
       ```
     </CodeGroup>
 
-    For a Prisma-backed storage driver, also install `@alfiz/prisma`.
+    For a Prisma-backed storage driver, also install `@alfiz/prisma`. For MongoDB, install `@alfiz/mongo`.
   </Step>
 
   <Step title="Define your catalog">
@@ -107,7 +107,7 @@ await alfiz.can.fresh({ userId }, "docs.files.delete", "docs.folder:9"); // bypa
     import { catalog } from "./catalog";
     import { db } from "../db";
 
-    export const storage = memoryDriver();  // swap for @alfiz/prisma in production
+    export const storage = memoryDriver();  // swap for @alfiz/prisma or @alfiz/mongo in production
 
     export const app = createApplication({
       catalog,

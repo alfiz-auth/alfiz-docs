@@ -25,7 +25,7 @@ Like `createAlfizClient`, the factory is generic over the catalog: it threads th
 </ParamField>
 
 <ParamField body="storage" type="StorageDriver" required>
-  The storage driver the Application reads and writes through. Use `memoryDriver()` during development and tests; use `prismaDriver` from `@alfiz/prisma` in production. You can also implement the `StorageDriver` interface yourself over any other database. See [Storage Drivers](/api/storage-drivers) for details.
+  The storage driver the Application reads and writes through. Use `memoryDriver()` during development and tests; use `prismaDriver` from `@alfiz/prisma` or `mongoDriver` from `@alfiz/mongo` in production. You can also implement the `StorageDriver` interface yourself over any other database. See [Storage Drivers](/api/storage-drivers) for details.
 </ParamField>
 
 <ParamField body="ancestry" type="AncestryResolver" optional>
