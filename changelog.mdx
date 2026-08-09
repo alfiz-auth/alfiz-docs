@@ -1,7 +1,7 @@
 ---
-title: "Alfiz Changelog: Every Release from 0.2.0 to 0.8.0"
+title: "Alfiz Changelog: Every Release from 0.2.0 to 0.8.1"
 sidebarTitle: "Changelog"
-description: "Every Alfiz release, from 0.2.0 to 0.8.0. What shipped, what changed, and what broke across @alfiz/core, @alfiz/application, @alfiz/prisma, @alfiz/mongo, and @alfiz/verify."
+description: "Every Alfiz release, from 0.2.0 to 0.8.1. What shipped, what changed, and what broke across @alfiz/core, @alfiz/application, @alfiz/prisma, @alfiz/mongo, and @alfiz/verify."
 ---
 
 Alfiz is pre-1.0 and moves deliberately. Each release addresses a concrete gap in how authorization is modeled, checked, or maintained. The entries below mirror the library's own `CHANGELOG.md` — what shipped and, where a release broke something, exactly what you have to change.
@@ -15,6 +15,21 @@ Alfiz is pre-1.0 and moves deliberately. Each release addresses a concrete gap i
 </Note>
 
 All five packages version together: `@alfiz/core`, `@alfiz/application`, `@alfiz/prisma`, `@alfiz/mongo`, and `@alfiz/verify` — `@alfiz/mongo` shipped between 0.7.1 and 0.8.0 at 0.1.0 and joined the release train at 0.8.0.
+
+---
+
+## 0.8.1 — `@alfiz/mongo` row partitioning: one shared collection set
+
+0.8.0's Mongo partitioning was a collection prefix per application (`docs_grants`, `docs_epoch`, …) — the physically stronger mechanism, but with several co-tenants it multiplies the collection list, and that clutter is the first thing anyone sees in Compass. This release adds the row-partitioned alternative, matching the Prisma v2 layout exactly:
+
+```ts
+const docs    = mongoDriver(db, { partition: "docs",    layout: "rows" });
+const billing = mongoDriver(db, { partition: "billing", layout: "rows" });
+```
+
+`layout: "rows"` keeps **one** shared set of collections (`grants`, `epoch`, `locks`, …) however many applications share the `Db`: every document carries an `app` discriminator (stripped on read), `_id` becomes the compound `{ app, id }` — Alfiz ids are only unique per partition, and the compound key keeps uniqueness and point reads free — every index leads with `app`, and lease keys are partition-scoped. `crossProcess` still holds, so the layout qualifies for [mesh write edges](/operations/shared-store#write-edges) unchanged, and the full conformance surface (base contract, event log, isolation, mesh) passes over one shared `Db` under both layouts.
+
+Two rules, stated plainly: `"rows"` **requires an explicit `partition`** — unlike SQL, Mongo has no migrated-in-place `""` dataset, and a row-partitioned query cannot see documents written without the discriminator — and you pick **one layout per shared `Db`**. The default (`"collections"`) layout is byte-identical to 0.8.0; existing deployments change nothing. All five packages move to 0.8.1 in lockstep with no other code changes. See [Storage drivers](/api/storage-drivers#mongodriver).
 
 ---
 

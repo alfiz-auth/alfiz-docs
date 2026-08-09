@@ -451,7 +451,11 @@ const storage = mongoDriver(client.connect().then((c) => c.db("alfiz")));
 </ParamField>
 
 <ParamField body="partition" type="string" optional>
-  Prefixes every collection this driver touches (`docs_grants`, `docs_epoch`, `docs_locks`, …) so several Applications can [share one `Db`](/operations/shared-store). A separate `Db` per application (`client.db("alfiz_docs")`) needs no option at all and is strictly preferred where databases are not rationed. Must match `[A-Za-z0-9_-]+`.
+  Pins the driver to one application's slice of a [shared `Db`](/operations/shared-store); how the partition lands in the database is chosen by `layout`. A separate `Db` per application (`client.db("alfiz_docs")`) needs no option at all and is strictly preferred where databases are not rationed. Must match `[A-Za-z0-9_-]+`.
+</ParamField>
+
+<ParamField body="layout" type='"collections" | "rows"' default="collections" optional>
+  How `partition` lands in the shared `Db`. `"collections"` prefixes every collection (`docs_grants`, `docs_epoch`, `docs_locks`, …) — physically unforgettable, but a parallel collection set per application. `"rows"` (since 0.8.1) keeps **one** shared collection set: every document carries an `app` discriminator, `_id` becomes the compound `{ app, id }`, and every index leads with `app` — the same shape as the Prisma v2 tables, so the collection list stays flat however many applications share the `Db`. `"rows"` requires an explicit `partition` (Mongo has no migrated-in-place default dataset the way SQL does), and the rule is one layout per shared `Db` — a `"rows"` driver cannot see documents written without the discriminator. Both layouts pass the same isolation and mesh conformance suites.
 </ParamField>
 
 ### What this driver supports
@@ -465,8 +469,9 @@ Both database drivers take a `partition` option pinning the driver — at constr
 ```ts
 const docs = prismaDriver(prisma, { partition: "docs", lock });
 const billing = prismaDriver(prisma, { partition: "billing", lock });
-// or, over one Mongo Db:
+// or, over one Mongo Db — prefix-per-partition, or one shared collection set:
 const docs = mongoDriver(db, { partition: "docs" });
+const docs = mongoDriver(db, { partition: "docs", layout: "rows" });
 ```
 
 See [Shared-store topologies](/operations/shared-store) for the full picture — what collides without partitioning, the mesh's access edges, and the org partition.

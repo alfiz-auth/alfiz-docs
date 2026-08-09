@@ -24,15 +24,22 @@ The topology family runs **standalone → mesh → federated**, with partitioned
 Both database drivers take a `partition` option that pins the driver — at construction, irrevocably — to one application's slice of the backend. The recommended key is the application's primary catalog namespace, which is already unique org-wide.
 
 ```ts
-// Prisma: an `app` discriminator threaded through every query (v2 schema).
+// Prisma: an `app` discriminator threaded through every query (v2 schema) —
+// one shared set of tables, row-partitioned.
 const docs = prismaDriver(prisma, { partition: "docs", lock });
 const billing = prismaDriver(prisma, { partition: "billing", lock });
 
-// Mongo: a collection prefix (docs_grants, docs_epoch, docs_locks, …).
+// Mongo, layout "collections" (default): a prefix per partition
+// (docs_grants, docs_epoch, docs_locks, …).
 const docs = mongoDriver(db, { partition: "docs" });
+
+// Mongo, layout "rows" (0.8.1): ONE shared collection set with an `app`
+// discriminator per document — the same shape as the SQL side, and a flat
+// collection list however many applications share the Db.
+const docs = mongoDriver(db, { partition: "docs", layout: "rows" });
 ```
 
-On Prisma the discriminator is **unforgettable by construction**: the delegate types require `app` on every query shape, so a query inside the driver that omitted the partition fails to compile rather than scanning every tenant. On Mongo the prefix means no query *can* forget the predicate. On both, isolation is pinned by a published conformance suite (`isolationContractCases` in `@alfiz/application/driver-suite`), and third-party drivers claiming multi-app support are graded against the same bar.
+On Prisma the discriminator is **unforgettable by construction**: the delegate types require `app` on every query shape, so a query inside the driver that omitted the partition fails to compile rather than scanning every tenant. On Mongo, choose the mechanism: the collection prefix means no query *can* forget the predicate (physically stronger, but a parallel collection set per application), while `layout: "rows"` keeps one shared collection set — compound `{ app, id }` document ids, app-led indexes, partition-scoped lease keys — and routes every query through one partition-scoping helper. `"rows"` requires an explicit `partition`, and the rule is one layout per shared `Db`. On every path, isolation is pinned by a published conformance suite (`isolationContractCases` in `@alfiz/application/driver-suite`), and third-party drivers claiming multi-app support are graded against the same bar.
 
 Two rules, stated plainly:
 
