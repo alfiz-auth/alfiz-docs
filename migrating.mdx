@@ -4,20 +4,20 @@ sidebarTitle: "Migrating"
 description: "Move a role-column or hand-rolled RBAC system onto Alfiz: map your tables onto the grant row, split the roles that grant globally, import in bulk, and wire the lifecycle paths."
 ---
 
-Adopting Alfiz in an application that already has permissions is not a rewrite. Your keys usually survive, your assignments import in one call, and your call sites change shape rather than meaning. What *does* take deliberate work is one thing, and it is the step every migration underestimates: **splitting the roles that currently grant globally.**
+Adopting Alfiz in an application that already has permissions rarely means a rewrite. Your keys usually survive, your assignments import in one call, and your call sites change shape without changing meaning. One step does take deliberate work, and every migration underestimates it: **splitting the roles that currently grant globally.**
 
 This page is the brownfield path. If you are starting fresh, the [quickstart](/quickstart) is shorter.
 
 ## 1. Keep your keys
 
-Declare your existing permission strings as they are. The only structural requirement is that each key's first segment is a namespace you declare — everything else about the shape is [house convention](/catalog/permissions), configurable in one line. A migration that renames 400 call sites on day one is a migration that stalls.
+Declare your existing permission strings as they are. The only structural requirement is that each key's first segment is a namespace you declare. Everything else about the shape is [house convention](/catalog/permissions), configurable in one line. A migration that renames 400 call sites on day one is a migration that stalls.
 
 Set the conventions to match your keys:
 
 ```ts
 conventions: { depth: 2 }      // a thin two-level catalog
 conventions: { depth: 4 }      // a deeper feature tree
-conventions: { depth: "any" }  // mixed depths — no check at all
+conventions: { depth: "any" }  // mixed depths, no check at all
 ```
 
 `"any"` is a perfectly good permanent answer. Nothing in evaluation depends on how many segments a key has.
@@ -39,9 +39,9 @@ If a concept does not fit this table, stop and reread it. In every migration so 
 
 ## 3. The crux: a global grant satisfies every scoped check
 
-The global scope `*` is in **every** object closure. So `can(user, "docs.files.share", "docs.folder:9")` passes for anyone holding `docs.files.share` at `*` — a global grant is authority *everywhere*, including every scope you will ever create.
+The global scope `*` is in **every** object closure. So `can(user, "docs.files.share", "docs.folder:9")` passes for anyone holding `docs.files.share` at `*`. A global grant is authority *everywhere*, including every scope you will ever create.
 
-Obvious once stated. Its consequence is the part that bites: **your existing roles grant resource-level permissions globally**, because a scopeless RBAC system has nowhere else to put them. Import "Editor = may share documents" as a global role, then start writing scoped grants, and *scoping changes nothing* — every editor still passes every scoped check through the global grant.
+That is obvious once stated. The consequence is the part that bites: **your existing roles grant resource-level permissions globally**, because a scopeless RBAC system has nowhere else to put them. Import "Editor = may share documents" as a global role, then start writing scoped grants, and *scoping changes nothing*: every editor still passes every scoped check through the global grant.
 
 <Warning>
 Splitting those roles **is** the migration. Until it is done, adding scopes has no effect on who can do what.
@@ -116,15 +116,15 @@ await app.createRole(
 |---|---|---|
 | `can(u, "docs.files.read", "docs.folder:9")` | ✅ | ✅ |
 | `can(u, "docs.files.read", "docs.folder:10")` | ✅ | ❌ |
-| `can(u, "docs.files.manage_workspace")` | ✅ | ❌ — declares no `docs.folder` scope, so a folder-site grant cannot confer it |
+| `can(u, "docs.files.manage_workspace")` | ✅ | ❌ (it declares no `docs.folder` scope, so a folder-site grant cannot confer it) |
 
-This is what makes one "Folder editor" role safe to hand out per folder: the **catalog**, not the role author's restraint, bounds what a scoped grant site can confer. It also means "grant role R" is an incomplete sentence during a migration. Always say *where*.
+This is what makes one "Folder editor" role safe to hand out per folder. What a scoped grant site can confer is bounded by the **catalog**, not by the role author's restraint. It also means "grant role R" is an incomplete sentence during a migration. Always say *where*.
 
 `catalog.appliesAt(key, grantScope)` answers the same question programmatically, if you are building a picker that must show what a grant at a given site would actually confer.
 
 ## 5. Import assignments in bulk, with your own ids
 
-Migrating N existing assignments is one `createGrants` call, not N `createGrant` calls. Every input is validated **before** any row is written — one bad assignment rejects the whole batch instead of half-importing a tenant — then one audit entry records the batch and one invalidation event fires per distinct subject.
+Migrating N existing assignments is one `createGrants` call rather than N `createGrant` calls. Every input is validated **before** any row is written, so one bad assignment rejects the whole batch instead of half-importing a tenant. Then one audit entry records the batch, and one invalidation event fires per distinct subject.
 
 ```ts
 await app.createGrants(
@@ -137,11 +137,11 @@ await app.createGrants(
 );
 ```
 
-Where a SQL data migration must reference a role or group by id, pass the id yourself — `createRole({ id: "role_folder_editor", … })`, `createGroup({ id: "editors", … })` — so migration SQL and runtime agree on identity with no name-resolution cache. A taken id is a conflict, never an overwrite.
+Where a SQL data migration must reference a role or group by id, pass the id yourself (`createRole({ id: "role_folder_editor", … })`, `createGroup({ id: "editors", … })`) so migration SQL and runtime agree on identity with no name-resolution cache. A taken id is a conflict, and never an overwrite.
 
 ## 6. Wire the lifecycle paths, not just the checks
 
-Grants key on subject and scope **strings**, not foreign keys. Alfiz cannot see your `users` or `folders` tables, so deleting a row there strands the grant rows here — silently. If an id is ever reused, the new principal inherits the old one's access.
+Grants key on subject and scope **strings**, not foreign keys. Alfiz cannot see your `users` or `folders` tables, so deleting a row there silently strands the grant rows here. If an id is ever reused, the new principal inherits the old one's access.
 
 | In the code path that… | Call |
 |---|---|
@@ -149,7 +149,7 @@ Grants key on subject and scope **strings**, not foreign keys. Alfiz cannot see 
 | Deletes a scoped resource (a folder, a document) | `app.deleteScope("docs.folder:<id>", provenance)` |
 | Moves a resource (its parent pointer changes) | `app.notifyScopeMoved("<type>:<id>")` |
 
-`deleteSubject` on a `user:` also removes their revokes, their stored record, grants held by their implicit-group subjects (`directs:` / `orgof:`), and cancels their pending requests. `deleteScope` sweeps one scope id — descendants are separate rows, so call it per deleted resource when removing a subtree.
+`deleteSubject` on a `user:` also removes their revokes, their stored record, grants held by their implicit-group subjects (`directs:` / `orgof:`), and cancels their pending requests. `deleteScope` sweeps one scope id. Descendants are separate rows, so call it per deleted resource when removing a subtree.
 
 For offboarding that must be **reversible**, deactivate instead: `app.setUserActive(userId, false, provenance)`. An inactive principal evaluates to no access on every check shape. Delete only when the id itself is being retired.
 
@@ -164,18 +164,18 @@ snap.require("docs.files.read", `docs.folder:${folderId}`);
 const canShare = snap.can("docs.files.share", `docs.folder:${folderId}`);
 ```
 
-For a hierarchical list page, you cannot know your row ids until after the query — so extend the snapshot once the query returns:
+For a hierarchical list page you cannot know your row ids until after the query, so extend the snapshot once the query returns:
 
 ```ts
 const rows = await db.docs.findMany({ … });
 await snap.resolve(rows.map((r) => `docs.doc:${r.id}`));
 ```
 
-For large result sets, push the filter into the database instead with [`grantedScopes`](/api/granted-scopes) rather than resolving every row.
+For large result sets, push the filter into the database with [`grantedScopes`](/api/granted-scopes) instead of resolving every row.
 
 ## 8. Turn the verifier on last, and configure it for your wrappers
 
-Your codebase gates through its own wrappers (`assertCanEditFile`, `gateDestructiveAction`, …) — the conventions encourage exactly that. Tell the verifier, or every wrapped action reads as ungated:
+Your codebase gates through its own wrappers (`assertCanEditFile`, `gateDestructiveAction`, …), which the conventions encourage. Tell the verifier, or every wrapped action reads as ungated:
 
 ```json
 {
@@ -190,27 +190,27 @@ CLI name lists are **added** to the built-ins, so you never need to restate `can
 
 ## 9. Runtime strings are checked against the catalog
 
-Typed keys and the verifier cover every literal call site. The paths they cannot see — nav tables, config, generic wrappers taking `permission: string` — are checked at runtime instead. A key or pattern the catalog does not declare raises `UnknownPermissionError`, a **programming error** your framework should map to 500, never 403.
+Typed keys and the verifier cover every literal call site. The paths they cannot see, such as nav tables, config, and generic wrappers taking `permission: string`, are checked at runtime instead. A key or pattern the catalog does not declare raises `UnknownPermissionError`, a **programming error** your framework should map to 500 rather than 403.
 
-This is not strictness for its own sake. Both silent behaviours it replaces were wrong in ways that were nearly impossible to notice:
+Both silent behaviours this replaces were wrong in ways that were nearly impossible to notice:
 
 | Call | Before | Now |
 |---|---|---|
-| `can(u, "docs.files.raed")` | **`true`** for anyone holding `*` or `docs.*` — the typo admitted exactly the privileged users who review and test it, and denied everyone else | Throws, naming the key and the nearest match |
-| `canAny(u, "docs")` | `false` — a whole nav section vanishes, with no error to search for | Throws: *did you mean `"docs.*"`?* |
+| `can(u, "docs.files.raed")` | **`true`** for anyone holding `*` or `docs.*`. The typo admitted exactly the privileged users who review and test it, and denied everyone else | Throws, naming the key and the nearest match |
+| `canAny(u, "docs")` | `false`, so a whole nav section vanishes with no error to search for | Throws: *did you mean `"docs.*"`?* |
 
 Two consequences worth planning for:
 
-- **A bare group path is never a valid check.** For visibility, the subtree pattern is `docs.*`. For a gate, groups are folders — gate on a leaf.
+- **A bare group path is never a valid check.** For visibility, the subtree pattern is `docs.*`. For a gate, groups are folders, so gate on a leaf.
 - **Keys must exist in the compiled-in catalog.** A shared component checking a key from a namespace this application neither owns nor [imports](/catalog/imports) will say so instead of quietly denying.
 
-Provenance is validated the same way, at the write path: a missing `actorUserId` is rejected as a `validation` write rejection before any row is written, rather than failing later inside the audit writer.
+Provenance is validated the same way, at the write path: a missing `actorUserId` is rejected as a `validation` write rejection before any row is written, so nothing fails later inside the audit writer.
 
 ## The checklist
 
 <Steps>
   <Step title="Catalog">
-    Keys unchanged, `namespaces` declared, `conventions: { depth }` set to match your keys (or `"any"`), scope types declared — `parent: null` only if instances are truly flat — and group-level `scopes` on scoped groups.
+    Keys unchanged, `namespaces` declared, `conventions: { depth }` set to match your keys (or `"any"`), scope types declared (`parent: null` only if instances are truly flat), and group-level `scopes` on scoped groups.
   </Step>
   <Step title="Roles imported split">
     Global halves and scoped halves, per the crux above. This is the step that makes scoping real.
@@ -232,4 +232,4 @@ Provenance is validated the same way, at the write path: a missing `actorUserId`
   </Step>
 </Steps>
 
-After that, the capabilities your old system lacked — group grants, time-bound elevation, [access requests](/requests/overview), per-resource roles — are single grant rows away, not features to build.
+After that, the capabilities your old system lacked are single grant rows away rather than features to build: group grants, time-bound elevation, [access requests](/requests/overview), per-resource roles.

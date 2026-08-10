@@ -4,7 +4,7 @@ sidebarTitle: "Check Shapes"
 description: "Alfiz exposes two check shapes: can() for gates and canAny() for visibility affordances, plus can.fresh() to bypass caches on destructive actions."
 ---
 
-Every check in Alfiz flows through one of two shapes: `can` is the authorization gate, and `canAny` is the visibility affordance. A third form, `can.fresh`, carries the same signature as `can` but bypasses every cache — it exists because bounded staleness is acceptable on most reads but never on destructive writes. Understanding which shape to reach for, and when, is the core of using Alfiz correctly.
+Every check in Alfiz flows through one of two shapes: `can` is the authorization gate, and `canAny` is the visibility affordance. A third form, `can.fresh`, carries the same signature as `can` but bypasses every cache. It exists because bounded staleness is acceptable on most reads but never on destructive writes. Understanding which shape to reach for, and when, is the core of using Alfiz correctly.
 
 ## `can(principal, key, scope?)`
 
@@ -13,12 +13,12 @@ Every check in Alfiz flows through one of two shapes: `can` is the authorization
 ```ts
 const allowed: boolean = await alfiz.can(
   { userId },           // PrincipalRef
-  "docs.files.read",   // K — compile-time verified against the catalog
-  "docs.doc:123",      // ScopeId (optional — omit for global checks)
+  "docs.files.read",   // K, compile-time verified against the catalog
+  "docs.doc:123",      // ScopeId (optional; omit for global checks)
 );
 ```
 
-**`principal`** is a `PrincipalRef` — a discriminated union:
+**`principal`** is a `PrincipalRef`, a discriminated union:
 
 ```ts
 { userId: string }      // a human user
@@ -27,18 +27,18 @@ const allowed: boolean = await alfiz.can(
 
 Pass the shape that matches your session: `{ userId: session.userId }` for user sessions, `{ serviceId: "export-worker" }` for machine callers.
 
-**`key`** is a typed template-literal derived from your catalog. The TypeScript compiler rejects any string that is not a declared leaf. You can also pass a `readonly` array of keys — `can` returns `true` when the principal holds _any one_ of them:
+**`key`** is a typed template-literal derived from your catalog. The TypeScript compiler rejects any string that is not a declared leaf. You can also pass a `readonly` array of keys, and `can` returns `true` when the principal holds _any one_ of them:
 
 ```ts
 await alfiz.can({ userId }, ["docs.files.read", "docs.files.update_file"], "docs.doc:123");
 ```
 
-**`scope`** is an optional `ScopeId` — the resource instance being accessed (e.g., `"docs.doc:123"`, `"docs.folder:9"`). Omit it for global checks. When a principal holds the key at any ancestor of the scope, `can` returns `true` — hierarchy is resolved at check time.
+**`scope`** is an optional `ScopeId`: the resource instance being accessed (e.g., `"docs.doc:123"`, `"docs.folder:9"`). Omit it for global checks. When a principal holds the key at any ancestor of the scope, `can` returns `true`, because hierarchy is resolved at check time.
 
 `can` returns `Promise<boolean>`. It never throws on a denied check; use `require` when you want a throw instead.
 
 <Note>
-Every call to `can` is verified against the catalog before evaluation. If the key is not declared, Alfiz throws `UnknownPermissionError` — a programming error, not a denial. Map it to a 500, never to a 403.
+Every call to `can` is verified against the catalog before evaluation. If the key is not declared, Alfiz throws `UnknownPermissionError`, a programming error and not a denial. Map it to a 500, never to a 403.
 </Note>
 
 ---
@@ -48,7 +48,7 @@ Every call to `can` is verified against the catalog before evaluation. If the ke
 `can.fresh` carries exactly the same signature as `can` but bypasses all caches: subject closures are not read from the cache, and object ancestor chains are re-fetched from the provider.
 
 ```ts
-// Destructive action — always use can.fresh
+// Destructive action: always use can.fresh
 const allowed = await alfiz.can.fresh(
   { userId },
   "docs.files.delete",
@@ -58,10 +58,10 @@ const allowed = await alfiz.can.fresh(
 
 **When to use `can.fresh`:**
 
-- **Destructive actions** — deleting, publishing, or transferring a resource where a stale allow would be worse than a brief latency hit.
-- **Just-in-time elevations** — the principal was just granted emergency access and must be able to act on it immediately, without waiting for a cache TTL.
+- **Destructive actions.** Deleting, publishing, or transferring a resource where a stale allow would be worse than a brief latency hit.
+- **Just-in-time elevations.** The principal was just granted emergency access and must be able to act on it immediately, without waiting for a cache TTL.
 
-**Why it exists — staleness bounds:** Subject-side closures are cached for `subjectCacheTtlMs` (default 30 seconds). A revocation can therefore take up to 30 seconds to propagate to `can` responses. On most read paths that bound is acceptable. On destructive paths it is not, and `can.fresh` is the explicit escape hatch.
+**Why it exists, and the staleness bounds:** Subject-side closures are cached for `subjectCacheTtlMs` (default 30 seconds). A revocation can therefore take up to 30 seconds to propagate to `can` responses. On most read paths that bound is acceptable. On destructive paths it is not, and `can.fresh` is the explicit escape hatch.
 
 <Tip>
 Pair `can.fresh` with destructive server actions as a convention: `can.fresh` makes the staleness contract visible at the call site, so reviewers know the action is being explicit about freshness.
@@ -76,14 +76,14 @@ Pair `can.fresh` with destructive server actions as a convention: `can.fresh` ma
 ```ts
 const visible: boolean = await alfiz.canAny(
   { userId },
-  "docs.*",   // PatternOf<typeof catalog> — catalog-typed wildcard pattern
+  "docs.*",   // PatternOf<typeof catalog>, a catalog-typed wildcard pattern
 );
 ```
 
-`pattern` is a wildcard string derived from the catalog's `$pattern` union — e.g., `"docs.*"`, `"docs.files.*"`. Passing an undeclared pattern throws `UnknownPermissionError`.
+`pattern` is a wildcard string derived from the catalog's `$pattern` union, for example `"docs.*"` or `"docs.files.*"`. Passing an undeclared pattern throws `UnknownPermissionError`.
 
 <Warning>
-**`canAny` is never a gate.** It tells you whether a section is worth showing — it does not authorize any action. The `alfiz-verify` static verifier emits an error whenever `canAny` appears inside a server action or route handler. Gate on a concrete key with `can` or `require`.
+**`canAny` is never a gate.** It tells you whether a section is worth showing. It does not authorize any action. The `alfiz-verify` static verifier emits an error whenever `canAny` appears inside a server action or route handler. Gate on a concrete key with `can` or `require`.
 </Warning>
 
 ---
@@ -130,27 +130,27 @@ Use `require` at the top of server actions and route handlers where you want a s
 
 ---
 
-## `snapshot(principal, options?)` — one round-trip, synchronous checks
+## `snapshot(principal, options?)`: one round-trip, synchronous checks
 
 Server-rendered frameworks make hundreds of conditional-UI checks inside `.map()` callbacks and pure helpers that cannot be async. `snapshot` solves this: one provider round-trip, then every subsequent check is synchronous.
 
 ```ts
-// Once per request — one provider round-trip. Name the hierarchical scopes
+// Once per request, one provider round-trip. Name the hierarchical scopes
 // you intend to check, so their ancestor chains resolve now.
 const snap = await alfiz.snapshot({ userId }, { scopes: ["docs.doc:123"] });
 
-// Every check below is synchronous — safe inside .map() and render helpers
+// Every check below is synchronous, so it is safe inside .map() and render helpers
 snap.can("docs.files.read");                        // GLOBAL scope, not "anywhere"
 snap.can("docs.files.update_file", "docs.doc:123"); // scoped, synchronous
 snap.canAny("docs.*");                              // visibility affordance
 snap.require("docs.files.read");                    // throws AccessDeniedError on deny
-snap.holds("docs.files.delete");                    // held at ANY scope — unscoped UI hint
+snap.holds("docs.files.delete");                    // held at ANY scope: unscoped UI hint
 snap.heldKeys;                                      // ReadonlySet<PermissionKey>
 ```
 
 A snapshot is a _stronger_ consistency guarantee than repeated `can` calls: every check in a request sees one subject-data instant and one evaluation clock. The caches do not tick over mid-render.
 
-**List pages** — when you do not know your row scope IDs until after the query:
+**List pages.** When you do not know your row scope IDs until after the query:
 
 ```ts
 const snap = await alfiz.snapshot({ userId });
@@ -172,7 +172,7 @@ const snap = await alfiz.snapshot({ userId }, { fresh: true });
 ```
 
 <Note>
-Flat scope types — declared `parent: null` **and** not `multiParent` — are always synchronously resolvable from a snapshot. Hierarchical scope types require pre-resolution — either via `client.snapshot(principal, { scopes: [...] })` up front, or `await snap.resolve([...])` once the IDs are known. Checking an unresolved hierarchical scope throws, rather than silently evaluating a truncated chain.
+Flat scope types, meaning those declared `parent: null` **and** not `multiParent`, are always synchronously resolvable from a snapshot. Hierarchical scope types require pre-resolution, either via `client.snapshot(principal, { scopes: [...] })` up front, or `await snap.resolve([...])` once the IDs are known. Checking an unresolved hierarchical scope throws, rather than silently evaluating a truncated chain.
 </Note>
 
 ---
@@ -184,4 +184,4 @@ Flat scope types — declared `parent: null` **and** not `multiParent` — are a
 | Subject closures | 30 s | Provider `user`, `subject`, `role`, `catalog`, or `all` invalidation event |
 | Object ancestor chains | 60 s | Provider `scope` event for any scope in the chain, or a `catalog` / `all` event; `app.notifyScopeMoved(scope)` from your code emits the `scope` event |
 
-`can.fresh` bypasses both layers. For moves your application makes in its own tables, call `app.notifyScopeMoved(scope)` from the same code path that changes the parent pointer — the TTL is the backstop, not the primary mechanism.
+`can.fresh` bypasses both layers. For moves your application makes in its own tables, call `app.notifyScopeMoved(scope)` from the same code path that changes the parent pointer. The TTL is the backstop and not the primary mechanism.

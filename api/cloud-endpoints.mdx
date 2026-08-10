@@ -1,10 +1,10 @@
 ---
 title: "Alfiz Cloud API Endpoints: The Complete REST Surface"
 sidebarTitle: "Endpoints"
-description: "Every Alfiz Cloud endpoint under /api/v1, grouped by area, with the gate and semantics of each — the same server functions the Dashboard calls."
+description: "Every Alfiz Cloud endpoint under /api/v1, grouped by area, with the gate and semantics of each, over the same server functions the Dashboard calls."
 ---
 
-All paths below are relative to the base `/api/v1`. Three gate notations recur: **Seat** (any admin seat or portal session), `alfiz_internal.*` keys (org-domain permissions, enforced by whichever provider currently holds the org root), and **Seat + `cloud.app:<id>`** (a seat holding a grant scoped to that application). Org-domain gates use the built-in keys every Alfiz catalog carries: `alfiz_internal.access.{read, manage_grants, manage_revokes, manage_roles, manage_groups, manage_reporting, view_as}`, `alfiz_internal.requests.{read, decide_request}`, `alfiz_internal.audit.read`, and `alfiz_internal.catalog.{read, publish_catalog}`. Account gates are an admin seat, or the named `cloud.*` key — held globally, or at `cloud.app:<id>` for one application.
+All paths below are relative to the base `/api/v1`. Three gate notations recur: **Seat** (any admin seat or portal session), `alfiz_internal.*` keys (org-domain permissions, enforced by whichever provider currently holds the org root), and **Seat + `cloud.app:<id>`** (a seat holding a grant scoped to that application). Org-domain gates use the built-in keys every Alfiz catalog carries: `alfiz_internal.access.{read, manage_grants, manage_revokes, manage_roles, manage_groups, manage_reporting, view_as}`, `alfiz_internal.requests.{read, decide_request}`, `alfiz_internal.audit.read`, and `alfiz_internal.catalog.{read, publish_catalog}`. Account gates are an admin seat, or the named `cloud.*` key, held globally or at `cloud.app:<id>` for one application.
 
 ## Auth and orgs
 
@@ -12,7 +12,7 @@ All paths below are relative to the base `/api/v1`. Three gate notations recur: 
 |---|---|---|---|
 | POST | `/auth/sign-in` | Public | Establish a session for `{org, userId}`. |
 | POST | `/auth/sign-out` | Session | End the session. |
-| GET | `/orgs` | Session | List orgs available to the caller — the sign-in picker. |
+| GET | `/orgs` | Session | List orgs available to the caller, for the sign-in picker. |
 | POST | `/orgs` | Session | Create an org: `{id?, name, ownerUserId}`. |
 
 ## Publisher
@@ -21,7 +21,7 @@ All paths below are relative to the base `/api/v1`. Three gate notations recur: 
 |---|---|---|---|
 | POST | `/registry/publish` | Publisher key | Publish a namespace's catalog: `{document, expectedVersion?}`. |
 
-The `document` is the `CatalogDocument` from `catalog.toDocument()`. Publisher keys are namespace-scoped and valid for this endpoint only — sessions and admin keys cannot call it. Versions are monotonic per namespace; out-of-order publishes are rejected. See [the registry](/cloud/registry).
+The `document` is the `CatalogDocument` from `catalog.toDocument()`. Publisher keys are namespace-scoped and valid for this endpoint only; sessions and admin keys cannot call it. Versions are monotonic per namespace; out-of-order publishes are rejected. See [the registry](/cloud/registry).
 
 ## Me
 
@@ -30,7 +30,7 @@ The `document` is the `CatalogDocument` from `catalog.toDocument()`. Publisher k
 | GET | `/orgs/{org}/me` | Seat | The caller's identity, seat, and effective permissions. |
 | POST | `/orgs/{org}/view-as` | `alfiz_internal.access.view_as` | Preview the org as another subject: `{viewAs}`. |
 
-A view-as preview only narrows — it can never show the viewer a surface their own grants would not reach.
+A view-as preview only narrows. It can never show the viewer a surface their own grants would not reach.
 
 ## Org root
 
@@ -47,8 +47,8 @@ Uniform across topologies: these gates are the `alfiz_internal.*` keys of the **
 | PATCH/DELETE | `/orgs/{org}/org/roles/{id}` | `alfiz_internal.access.manage_roles` | Update or delete a role. |
 | GET/POST | `/orgs/{org}/org/groups` | `alfiz_internal.access.read` / `alfiz_internal.access.manage_groups` | List or create groups. |
 | PATCH/DELETE | `/orgs/{org}/org/groups/{id}` | `alfiz_internal.access.manage_groups` | Update or delete a group. |
-| PUT | `/orgs/{org}/org/groups/{id}/parents` | `alfiz_internal.access.manage_groups` | Set group parentage — a cycle is rejected with `ProviderWriteRejectedError`, `code: "graph_cycle"`, whose message names the full path. |
-| GET | `/orgs/{org}/org/groups/{id}/members` | `alfiz_internal.access.read` | List the users **directly** in this group. Membership through a child group is not expanded here — that is the subject closure's job. |
+| PUT | `/orgs/{org}/org/groups/{id}/parents` | `alfiz_internal.access.manage_groups` | Set group parentage. A cycle is rejected with `ProviderWriteRejectedError`, `code: "graph_cycle"`, whose message names the full path. |
+| GET | `/orgs/{org}/org/groups/{id}/members` | `alfiz_internal.access.read` | List the users **directly** in this group. Membership through a child group is not expanded here, because that is the subject closure's job. |
 | POST | `/orgs/{org}/org/groups/{id}/dissolve` | `alfiz_internal.access.manage_groups` | Dissolve a virtual parent: its grants copy down to each child, then the children drift freely. |
 | GET | `/orgs/{org}/org/users` | `alfiz_internal.access.read` | List users. |
 | PUT | `/orgs/{org}/org/users/{id}/membership` | `alfiz_internal.access.manage_groups` | Set a user's group memberships. |
@@ -56,28 +56,28 @@ Uniform across topologies: these gates are the `alfiz_internal.*` keys of the **
 | PUT | `/orgs/{org}/org/users/{id}/manager` | `alfiz_internal.access.manage_reporting` | Set the user's `reports-to` edge. |
 | GET | `/orgs/{org}/org/reporting-edges` | `alfiz_internal.access.read` | The full reporting hierarchy. |
 | GET | `/orgs/{org}/org/subject-access` | `alfiz_internal.access.read` | A subject's resolved access closure. |
-| GET | `/orgs/{org}/org/explain` | `alfiz_internal.access.read` | Explain a decision — which rows and paths produced it. |
+| GET | `/orgs/{org}/org/explain` | `alfiz_internal.access.read` | Explain a decision, showing which rows and paths produced it. |
 | DELETE | `/orgs/{org}/org/subjects/{subject}` | `alfiz_internal.access.manage_grants` | Remove all rows for a deleted subject. |
-| DELETE | `/orgs/{org}/org/scopes/{scope}` | `alfiz_internal.access.manage_grants` | Remove the rows at exactly this scope id, and cancel pending requests targeting it. Descendants are separate rows — call it per deleted resource. |
-| GET | `/orgs/{org}/org/catalog` | Seat | The composed org catalog — what is grantable and requestable. |
+| DELETE | `/orgs/{org}/org/scopes/{scope}` | `alfiz_internal.access.manage_grants` | Remove the rows at exactly this scope id, and cancel pending requests targeting it. Descendants are separate rows, so call it per deleted resource. |
+| GET | `/orgs/{org}/org/catalog` | Seat | The composed org catalog: what is grantable and requestable. |
 | GET | `/orgs/{org}/org/audit` | `alfiz_internal.audit.read` | The org-domain audit history. |
 | GET | `/orgs/{org}/org/epoch` | Seat | The current org epoch. |
 
 <Note>
-  Instance-scoped rows live with their owner. Grant, revoke, and request writes at instance scopes belonging to a member application's namespace are routed to the owning Application by delegation — the org root never holds another application's instance-scoped rows.
+  Instance-scoped rows live with their owner. Grant, revoke, and request writes at instance scopes belonging to a member application's namespace are routed to the owning Application by delegation, since the org root never holds another application's instance-scoped rows.
 </Note>
 
 ## Requests
 
 | Method | Path | Gate | What it does |
 |---|---|---|---|
-| GET | `/orgs/{org}/requests` | Seat (`mine=1`) or `alfiz_internal.requests.read` | List requests — `mine=1` is self-scoped and needs only a seat. |
-| POST | `/orgs/{org}/requests` | Seat | Submit a request. The requester is the caller — always. |
+| GET | `/orgs/{org}/requests` | Seat (`mine=1`) or `alfiz_internal.requests.read` | List requests. `mine=1` is self-scoped and needs only a seat. |
+| POST | `/orgs/{org}/requests` | Seat | Submit a request. The requester is always the caller. |
 | GET | `/orgs/{org}/requests/queue` | Seat | The caller's approver queue. |
 | POST | `/orgs/{org}/requests/{id}/decide` | Provider-side `canDecide` + admin override | Decide: `{decision, note?, application?}`. |
 | POST | `/orgs/{org}/requests/{id}/cancel` | Requester | Cancel a pending request. |
 
-In a federated org the queue aggregates member-application queues, each entry tagged with its application — pass `application` on decide when the entry names one. Decision entitlement resolves provider-side at decision time, with the admin override available to org administrators.
+In a federated org the queue aggregates member-application queues, each entry tagged with its application. Pass `application` on decide when the entry names one. Decision entitlement resolves provider-side at decision time, with the admin override available to org administrators.
 
 ## Applications
 
@@ -87,16 +87,16 @@ Per-application surfaces are **account surfaces**: they gate on a seat plus a gr
 |---|---|---|---|
 | GET | `/orgs/{org}/applications` | `cloud.applications.read` (admin seats always pass) | List applications visible to the caller. |
 | POST | `/orgs/{org}/applications` | `cloud.applications.register_application` | Register an application. |
-| GET | `/orgs/{org}/applications/{app}` | Seat + `cloud.app:<id>` | Detail — including connection health and registry status. |
-| POST | `/orgs/{org}/applications/{app}/link` | Seat + `cloud.app:<id>` | Link: `{relayUrl}` — the base URL your provider handler is mounted below; operations POST to `{relayUrl}/v1/{op}`. Returns the provider secret — once. |
+| GET | `/orgs/{org}/applications/{app}` | Seat + `cloud.app:<id>` | Detail, including connection health and registry status. |
+| POST | `/orgs/{org}/applications/{app}/link` | Seat + `cloud.app:<id>` | Link: `{relayUrl}`, the base URL your provider handler is mounted below; operations POST to `{relayUrl}/v1/{op}`. Returns the provider secret once. |
 | POST | `/orgs/{org}/applications/{app}/unlink` | Seat + `cloud.app:<id>` | Remove the link registration. |
 | DELETE | `/orgs/{org}/applications/{app}` | `cloud.applications.delete` at `cloud.app:<id>` | Delete the application entry. |
-| POST | `/orgs/{org}/applications/{app}/federate` | `cloud.applications.federate_application` at `cloud.app:<id>` | Federate — the first federation is promotion. Body: `{resolutions?}` for merge conflicts. |
-| POST | `/orgs/{org}/applications/{app}/demote` | `cloud.applications.demote_application` at `cloud.app:<id>` | Demote — available when this is the last member. |
+| POST | `/orgs/{org}/applications/{app}/federate` | `cloud.applications.federate_application` at `cloud.app:<id>` | Federate. The first federation is promotion. Body: `{resolutions?}` for merge conflicts. |
+| POST | `/orgs/{org}/applications/{app}/demote` | `cloud.applications.demote_application` at `cloud.app:<id>` | Demote, available when this is the last member. |
 | POST | `/orgs/{org}/applications/{app}/audit-optin` | `cloud.retention.manage_retention` at `cloud.app:<id>` | Toggle hosted audit retention: `{optIn}`. |
 | POST | `/orgs/{org}/applications/{app}/publish` | `cloud.applications.publish_catalog` at `cloud.app:<id>` | Publish the catalog: `{document, expectedVersion?}`. |
 | POST | `/orgs/{org}/applications/{app}/ingest-audit` | `cloud.retention.manage_retention` at `cloud.app:<id>` | Pull the Application's opted-in audit stream into hosted retention now. |
-| GET/POST | `/orgs/{org}/applications/{app}/grants` | Seat + `cloud.app:<id>` | The application's scoped grants — served by delegation from the owner. |
+| GET/POST | `/orgs/{org}/applications/{app}/grants` | Seat + `cloud.app:<id>` | The application's scoped grants, served by delegation from the owner. |
 | DELETE | `/orgs/{org}/applications/{app}/grants/{id}` | Seat + `cloud.app:<id>` | Delete a scoped grant. |
 | GET/POST | `/orgs/{org}/applications/{app}/revokes` | Seat + `cloud.app:<id>` | The application's revokes. |
 | DELETE | `/orgs/{org}/applications/{app}/revokes/{id}` | Seat + `cloud.app:<id>` | Delete a revoke. |
@@ -105,16 +105,16 @@ Per-application surfaces are **account surfaces**: they gate on a seat plus a gr
 | GET | `/orgs/{org}/applications/{app}/catalog` | Seat + `cloud.app:<id>` | The application's published catalog. |
 | GET | `/orgs/{org}/applications/{app}/ancestors?scope=` | Seat + `cloud.app:<id>` | Resolve a scope's ancestor chain, for display. |
 
-Promotion via `federate` follows [the runbook](/cloud/promotion) — export, validation, atomic flip, read-model push-down. `PromotionConflictError` (409) returns the `conflicts` array that `resolutions` answers.
+Promotion via `federate` follows [the runbook](/cloud/promotion): export, validation, atomic flip, read-model push-down. `PromotionConflictError` (409) returns the `conflicts` array that `resolutions` answers.
 
 ## Registry
 
 | Method | Path | Gate | What it does |
 |---|---|---|---|
 | GET | `/orgs/{org}/registry` | Seat | List published namespaces. |
-| GET | `/orgs/{org}/registry/{ns}` | Seat | Namespace detail — versions, tombstones, publisher. |
-| GET | `/orgs/{org}/registry/{ns}/document?version=` | Seat | Export the `CatalogDocument` — the input to `alfiz-verify codegen`. |
-| GET | `/orgs/{org}/registry/drift` | `cloud.registry.read` | The drift report — roles and grants referencing keys no longer published. |
+| GET | `/orgs/{org}/registry/{ns}` | Seat | Namespace detail: versions, tombstones, publisher. |
+| GET | `/orgs/{org}/registry/{ns}/document?version=` | Seat | Export the `CatalogDocument`, the input to `alfiz-verify codegen`. |
+| GET | `/orgs/{org}/registry/drift` | `cloud.registry.read` | The drift report: roles and grants referencing keys no longer published. |
 
 ## Seats and API keys
 
@@ -122,7 +122,7 @@ Promotion via `federate` follows [the runbook](/cloud/promotion) — export, val
 |---|---|---|---|
 | GET/POST | `/orgs/{org}/seats` | `cloud.seats.read` / `cloud.seats.invite_seat` | List or invite admin seats. |
 | PATCH/DELETE | `/orgs/{org}/seats/{userId}` | `cloud.seats.update_seat` / `cloud.seats.delete` | Update or remove a seat. |
-| GET/POST | `/orgs/{org}/api-keys` | `cloud.applications.manage_credentials` | List or create API keys — admin, principal, or publisher. |
+| GET/POST | `/orgs/{org}/api-keys` | `cloud.applications.manage_credentials` | List or create API keys: admin, principal, or publisher. |
 | DELETE | `/orgs/{org}/api-keys/{id}` | `cloud.applications.manage_credentials` | Revoke a key. |
 
 ## Billing
@@ -132,7 +132,7 @@ Promotion via `federate` follows [the runbook](/cloud/promotion) — export, val
 | GET | `/orgs/{org}/billing/usage` | `cloud.billing.read` | Every meter, exactly as the Dashboard renders it. |
 | PUT | `/orgs/{org}/billing/caps/{dimension}` | `cloud.billing.manage_caps` | Set a hard cap for one dimension. |
 
-Crossing a cap degrades hosted convenience only — see [Metering and caps](/cloud/metering).
+Crossing a cap degrades hosted convenience only. See [Metering and caps](/cloud/metering).
 
 ## Retention
 

@@ -4,7 +4,7 @@ sidebarTitle: "Audit log"
 description: "Every write lands with an audit entry, structurally. This page specifies the record schema, the retention posture, the export surface, and the optional hash chain."
 ---
 
-Audit in Alfiz is structurally enforced: provenance is validated at the top of every write path, *before* storage is touched, precisely so no row can land without an attributable entry. This page specifies the properties a compliance review asks about — schema, ordering, retention, immutability, and export.
+Audit in Alfiz is structurally enforced: provenance is validated at the top of every write path, *before* storage is touched, precisely so no row can land without an attributable entry. This page specifies the properties a compliance review asks about: schema, ordering, retention, immutability, and export.
 
 ## The record
 
@@ -16,12 +16,12 @@ interface AuditEvent {
   action: string;      // e.g. "grant.create", "role.update", "directory.import"
   target: string;      // the entity acted on: row id, group id, request id, …
   detail?: unknown;    // action-specific payload (subject, scope, reason, …)
-  prevHash?: string;   // present when the hash chain is on — see below
+  prevHash?: string;   // present when the hash chain is on, see below
   hash?: string;
 }
 ```
 
-Log order is **(`at`, then `id`)** — two entries in the same millisecond order by id, identically in every driver, which is what makes cursor paging stable.
+Log order is **(`at`, then `id`)**, so two entries in the same millisecond order by id, identically in every driver, which is what makes cursor paging stable.
 
 ## Reading and exporting
 
@@ -50,21 +50,21 @@ for (;;) {
 }
 ```
 
-Without `cursor` you get the **last** `limit` matching entries in log order (the "recent activity" shape). With `cursor` you get the first `limit` entries strictly after it, ascending (the export shape) — pass the last entry you received and repeat until a short page.
+Without `cursor` you get the **last** `limit` matching entries in log order (the "recent activity" shape). With `cursor` you get the first `limit` entries strictly after it, ascending (the export shape). Pass the last entry you received and repeat until a short page.
 
 ## Retention
 
 **Alfiz never prunes the audit log.** There is no audit retention setting, no compaction job, and no code path that deletes an audit row. Retention is your database's policy: keep the table as long as your compliance horizon requires (for SOX that is commonly measured in years), and archive by exporting with the cursor above.
 
 <Warning>
-Do not confuse this with the invalidation **event log** (`AlfizEvent`), which has documented retention defaults of 7 days / 100 000 rows. That log is cache-freshness plumbing and pruning it affects nothing but cache catch-up. Event-log pruning never touches `AlfizAudit` — they are different tables with different jobs.
+Do not confuse this with the invalidation **event log** (`AlfizEvent`), which has documented retention defaults of 7 days / 100 000 rows. That log is cache-freshness plumbing and pruning it affects nothing but cache catch-up. Event-log pruning never touches `AlfizAudit`, because they are different tables with different jobs.
 </Warning>
 
 Hosted audit retention (Alfiz Cloud's linked tier) is an opt-in *copy* of this stream for deployments that want a longer horizon than the application database keeps; the local log remains authoritative.
 
 ## Immutability and the hash chain
 
-The library appends and reads; it never updates or deletes an audit row. But your database will do what anyone with write access tells it to — so the honest posture is *append-only by construction, tamper-evident by opt-in*:
+The library appends and reads; it never updates or deletes an audit row. But your database will do what anyone with write access tells it to, so the honest posture is *append-only by construction, tamper-evident by opt-in*:
 
 ```ts
 const app = createApplication({
@@ -74,7 +74,7 @@ const app = createApplication({
 });
 ```
 
-With the chain on, every entry carries `hash` — SHA-256 over the entry's canonical serialization plus the previous entry's `hash` (`prevHash`). Editing, deleting, or reordering any entry breaks every hash after it:
+With the chain on, every entry carries `hash`, being SHA-256 over the entry's canonical serialization plus the previous entry's `hash` (`prevHash`). Editing, deleting, or reordering any entry breaks every hash after it:
 
 ```ts
 import { verifyAuditChain } from "@alfiz/application";
@@ -82,7 +82,7 @@ import { verifyAuditChain } from "@alfiz/application";
 // Full-log verification: the first hashed entry must be a chain genesis.
 const events = await app.listAuditEvents();
 const result = verifyAuditChain(events);
-// { ok: true, hashed: n } — or { ok: false, index, reason }
+// { ok: true, hashed: n }, or { ok: false, index, reason }
 
 // Export-window verification: carry one hash between windows.
 verifyAuditChain(page, { priorHash: lastHashOfPreviousWindow });
@@ -91,7 +91,7 @@ verifyAuditChain(page, { priorHash: lastHashOfPreviousWindow });
 Three properties to know:
 
 - **It can be enabled mid-life.** Existing unhashed entries precede the chain; verification covers the hashed suffix.
-- **It is evidence, not proof.** An attacker with database write access *and* this source code can rewrite and re-hash the whole chain. What makes the evidence hard is anchoring the head hash somewhere they cannot reach — a ticket, a WORM bucket, a signed release note. That anchor is deliberately yours.
+- **It is evidence rather than proof.** An attacker with database write access *and* this source code can rewrite and re-hash the whole chain. What makes the evidence hard is anchoring the head hash somewhere they cannot reach: a ticket, a WORM bucket, a signed release note. That anchor is deliberately yours.
 - **It serializes appends.** Chained writes go through `runExclusive("audit", …)`; multi-node deployments need the driver's real cross-process lock (the Prisma driver's `options.lock`) for the chain to stay linear. The cost is one lock per audited write, paid only by deployments that opt in.
 
 The canonical serialization sorts object keys recursively, so a `detail` payload hashes identically however a JSON column round-trips key order (Postgres `jsonb` does not preserve it).

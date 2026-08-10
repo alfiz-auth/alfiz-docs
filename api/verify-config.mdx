@@ -1,15 +1,15 @@
 ---
-title: "alfiz-verify.config.json — Configuration Reference"
+title: "alfiz-verify.config.json: Configuration Reference"
 sidebarTitle: "Verify Config"
 description: "alfiz-verify.config.json reference: catalog path, scan directories, additive gate names, visibility names, server patterns, and client-reach guards."
 ---
 
-`alfiz-verify` reads its configuration from `alfiz-verify.config.json` in the current working directory, or from the path passed via `--config <path>`. The file is plain JSON — no JavaScript, no comments.
+`alfiz-verify` reads its configuration from `alfiz-verify.config.json` in the current working directory, or from the path passed via `--config <path>`. The file is plain JSON, with no JavaScript and no comments.
 
 ## Config fields
 
 <ParamField body="catalog" type="string" required>
-  Path to the emitted catalog JSON file — the output of `catalog.toDocument()`. Resolved relative to the current working directory.
+  Path to the emitted catalog JSON file, the output of `catalog.toDocument()`. Resolved relative to the current working directory.
 
   ```json
   { "catalog": "alfiz-catalog.json" }
@@ -40,7 +40,7 @@ description: "alfiz-verify.config.json reference: catalog path, scan directories
   ```
 
   <Note>
-    This field is **additive** — it extends the defaults. You do not need to restate `can` or `require`. If you want full replacement of the defaults (dropping the built-ins), use the programmatic `verifyProject` API directly.
+    This field is **additive**, so it extends the defaults. You do not need to restate `can` or `require`. If you want full replacement of the defaults (dropping the built-ins), use the programmatic `verifyProject` API directly.
   </Note>
 </ParamField>
 
@@ -57,7 +57,7 @@ description: "alfiz-verify.config.json reference: catalog path, scan directories
 </ParamField>
 
 <ParamField body="serverFilePatterns" type="string[]" optional>
-  Additional RegExp source strings matched against file paths to identify server enforcement points, **added to** the built-in patterns (`app/.*route.(t|j)sx?`, `pages/api/`). Files matching these patterns are treated as server files even without a `"use server"` directive — exported async functions in them must contain a gate.
+  Additional RegExp source strings matched against file paths to identify server enforcement points, **added to** the built-in patterns (`app/.*route.(t|j)sx?`, `pages/api/`). Files matching these patterns are treated as server files even without a `"use server"` directive, so exported async functions in them must contain a gate.
 
   ```json
   { "serverFilePatterns": ["app/actions/", "server/handlers/"] }
@@ -81,7 +81,7 @@ description: "alfiz-verify.config.json reference: catalog path, scan directories
 </ParamField>
 
 <ParamField body="importManifest" type="string" optional>
-  Path to the emitted import manifest — the output of `catalog.toImportManifest()`. **Required if your catalog declares [imports](/catalog/imports)**: a catalog document carries owned vocabulary only, so without the manifest the verifier treats every imported key as foreign.
+  Path to the emitted import manifest, the output of `catalog.toImportManifest()`. **Required if your catalog declares [imports](/catalog/imports)**: a catalog document carries owned vocabulary only, so without the manifest the verifier treats every imported key as foreign.
 
   ```json
   { "importManifest": "alfiz-imports.json" }
@@ -115,7 +115,7 @@ description: "alfiz-verify.config.json reference: catalog path, scan directories
 </ParamField>
 
 <ParamField body="implicitImportAllow" type="string[]" optional>
-  Namespaces exempt from `implicit-import` entirely — narrower than turning the rule off.
+  Namespaces exempt from `implicit-import` entirely, which is narrower than turning the rule off.
 
   ```json
   { "implicitImportAllow": ["stripe", "zoom"] }
@@ -140,7 +140,7 @@ description: "alfiz-verify.config.json reference: catalog path, scan directories
 
 The three name lists (`gateNames`, `visibilityNames`, `serverFilePatterns`) are always **additive** through the CLI. This is intentional: the CLI is the batteries-included path, and forgetting to restate `can` in `gateNames` should not silently un-gate your whole codebase.
 
-If you need full replacement of the built-in defaults — for example, a codebase that uses entirely custom gate wrappers and wants to treat the built-in names as errors — use the programmatic `verifyProject` API from `@alfiz/verify` directly:
+If you need full replacement of the built-in defaults, for example a codebase that uses entirely custom gate wrappers and wants to treat the built-in names as errors, use the programmatic `verifyProject` API from `@alfiz/verify` directly:
 
 ```ts
 import { verifyProject } from "@alfiz/verify";
@@ -154,7 +154,7 @@ const report = verifyProject({
 });
 ```
 
-`files` is a list of paths; the source text comes from `read`, which defaults to the filesystem — pass your own to verify an in-memory tree. `verifyProject` is synchronous and performs no network I/O, by construction.
+`files` is a list of paths; the source text comes from `read`, which defaults to the filesystem. Pass your own to verify an in-memory tree. `verifyProject` is synchronous and performs no network I/O, by construction.
 
 It returns a `VerifyReport`:
 

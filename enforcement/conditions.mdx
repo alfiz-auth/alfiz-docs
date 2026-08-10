@@ -1,10 +1,10 @@
 ---
 title: "The Condition Seam: Attributes Without a Rules Engine"
 sidebarTitle: "Conditions"
-description: "Declare that holding a permission is necessary but not sufficient. Alfiz enforces that your predicate is present — at runtime and in CI — without ever evaluating your attributes itself."
+description: "Declare that holding a permission is necessary but not sufficient. Alfiz enforces that your predicate is present, at runtime and in CI, without ever evaluating your attributes itself."
 ---
 
-Alfiz is deliberately not an ABAC engine: the check is a set intersection over closures, and the semantic rules are fixed. But real policies carry predicates — "approve expenses **under $10k**", "edit only **while status is Draft**" — and without a sanctioned place for them, teams write `if (invoice.amount < limit)` next to the `can()` call. At that moment the product's headline guarantee quietly halves: `alfiz-verify` proves a gate exists at every surface, but it cannot see the predicate, cannot check it is present, and cannot check it is consistent across forty call sites.
+Alfiz is not an ABAC engine: the check is a set intersection over closures, and the semantic rules are fixed. Real policies still carry predicates, such as "approve expenses **under $10k**" or "edit only **while status is Draft**". Without a sanctioned place for them, teams write `if (invoice.amount < limit)` next to the `can()` call. At that moment the product's headline guarantee quietly halves: `alfiz-verify` proves a gate exists at every surface, but it cannot see the predicate, cannot check it is present, and cannot check it is consistent across forty call sites.
 
 The condition seam closes that gap **without becoming a rules engine**. The catalog declares that a key *requires* a condition; the tooling enforces that one is *present*; the predicate itself stays your code, over your data, in your process.
 
@@ -25,7 +25,7 @@ const catalog = defineCatalog({
 
 ## Gating
 
-Every gate for the key must pass a `condition` — the final AND of the decision:
+Every gate for the key must pass a `condition`, the final AND of the decision:
 
 ```ts
 export async function approveClaim(claimId: string) {
@@ -41,26 +41,26 @@ export async function approveClaim(claimId: string) {
 
 The contract, precisely:
 
-- **A gate without the condition throws `MissingConditionError`** — a programming error on the same footing as `UnknownPermissionError`: map it to 500, never 403. The caller forgot the predicate; the principal was not denied.
+- **A gate without the condition throws `MissingConditionError`**, a programming error on the same footing as `UnknownPermissionError`: map it to 500, never 403. The caller forgot the predicate; the principal was not denied.
 - **The condition runs only after the rows allow.** A principal the rows already deny never pays for (or triggers) your predicate.
 - **A false condition is a deny**, observed as one in metrics, with the rows that *would* have allowed kept for attribution.
-- **Async is fine on the async surfaces** (`can`, `require`, the session). On the synchronous snapshot the predicate must return a plain boolean — resolve your data before the check, or use `client.can`. A Promise there throws.
+- **Async is fine on the async surfaces** (`can`, `require`, the session). On the synchronous snapshot the predicate must return a plain boolean, so resolve your data before the check or use `client.can`. A Promise there throws.
 - **Visibility is unaffected.** `canAny` and `holds` ignore the declaration: a button may exist because authority exists; the gate still decides. Keys without the declaration may still pass a `condition` voluntarily.
-- **Conditions never cross a wire.** The [`/v1/check` operation](/cloud/provider-api) answers `requiresCondition` keys with an error rather than a half-checked yes — a predicate over resource state is meaningful only where the resource lives.
+- **Conditions never cross a wire.** The [`/v1/check` operation](/cloud/provider-api) answers `requiresCondition` keys with an error rather than a half-checked yes, because a predicate over resource state is meaningful only where the resource lives.
 
 ## Verified in CI
 
 `alfiz-verify` gains the `missing-condition` rule: a literal gate call site for a `requiresCondition` key that visibly carries no `condition` fails the build.
 
 ```
-app/actions.ts:12 error missing-condition — "exp.claims.approve_claim" is declared
-`requiresCondition: true` — the gate must pass `{ condition: () => … }` …
+app/actions.ts:12 error missing-condition: "exp.claims.approve_claim" is declared
+`requiresCondition: true`, so the gate must pass `{ condition: () => … }` …
 ```
 
-The rule is syntax-level and honest about its reach: an options object built elsewhere (an identifier, a spread) is accepted statically and caught at runtime instead. What it exists to catch is the common case — the literal call site with no predicate at all.
+The rule is syntax-level and honest about its reach: an options object built elsewhere (an identifier, a spread) is accepted statically and caught at runtime instead. What it exists to catch is the common case: the literal call site with no predicate at all.
 
 ## What this is not
 
-Alfiz still evaluates no attributes, stores no conditions, and ships no expression language. The seam enforces **presence**, not content: your predicate can still be wrong, and only your tests can know. What can no longer happen silently is the predicate being *absent* — at any of the forty call sites, under any refactor, in any agent-written wiring.
+Alfiz still evaluates no attributes, stores no conditions, and ships no expression language. The seam enforces **presence** and not content: your predicate can still be wrong, and only your tests can know. What can no longer happen silently is the predicate being *absent*: at any of the forty call sites, under any refactor, in any agent-written wiring.
 
-For requirements that are genuinely about *where* rather than *whether* — "may issue codes only in this payment namespace" — reach for [scopes](/catalog/scope-types), not conditions. Breadth of authority is modeled data; conditions are for state the resource carries at decision time.
+For requirements that are genuinely about *where* instead of *whether*, such as "may issue codes only in this payment namespace", reach for [scopes](/catalog/scope-types) and not conditions. Breadth of authority is modeled data; conditions are for state the resource carries at decision time.

@@ -1,19 +1,19 @@
 ---
 title: "Alfiz Catalog: Permissions, Scopes, and Navigation"
 sidebarTitle: "Overview"
-description: "The Alfiz catalog declares every permission, scope type, and navigation entry — verified at compile time in code, never configured in a dashboard."
+description: "The Alfiz catalog declares every permission, scope type, and navigation entry in code, verified at compile time and never configured in a dashboard."
 ---
 
-The catalog is the single source of truth for everything Alfiz knows about your application's permission model. You declare it once in TypeScript, call `defineCatalog()`, and from that moment every permission key in your codebase is verified at compile time against the shape you described — no dashboard to drift, no runtime surprises from a misspelled key.
+The catalog is the single source of truth for everything Alfiz knows about your application's permission model. You declare it once in TypeScript, call `defineCatalog()`, and from that moment every permission key in your codebase is verified at compile time against the shape you described. There is no dashboard to drift, and no runtime surprise from a misspelled key.
 
 ## What the catalog contains
 
 The catalog is not an enum of strings. It is a structured description of four things:
 
-- **Permissions** — every leaf action and read your application exposes, organized into named groups.
-- **Scope types** — the resource hierarchy your permissions apply to (folders, documents, projects, or nothing at all for flat apps).
-- **Navigation entries** — the menu structure your UI renders, wired to permission patterns so items hide automatically for users who hold nothing under them.
-- **Namespaces** — the ownership prefixes that scope every key to your application, preventing collisions when multiple permission catalogs are composed together. Permissions your application references but does *not* own — from Alfiz Cloud or another application — are declared separately, as [imports](/catalog/imports).
+- **Permissions.** Every leaf action and read your application exposes, organized into named groups.
+- **Scope types.** The resource hierarchy your permissions apply to (folders, documents, projects, or nothing at all for flat apps).
+- **Navigation entries.** The menu structure your UI renders, wired to permission patterns so items hide automatically for users who hold nothing under them.
+- **Namespaces.** The ownership prefixes that scope every key to your application, preventing collisions when multiple permission catalogs are composed together. Permissions your application references but does *not* own, whether from Alfiz Cloud or another application, are declared separately as [imports](/catalog/imports).
 
 None of this is inferred from call sites. Nothing is configured in a dashboard. Every structural fact is in code, at the top of your authorization module, readable by any engineer and provable by CI.
 
@@ -32,17 +32,17 @@ billing.subscriptions.manage
 zoom.host
 ```
 
-You declare permissions using exactly these strings — the catalog is written in the same notation as every check, grant, role pattern, and nav entry, so a key at a call site greps straight back to its declaration.
+You declare permissions using exactly these strings. The catalog is written in the same notation as every check, grant, role pattern, and nav entry, so a key at a call site greps straight back to its declaration.
 
 The intermediate levels are **inferred**: every dotted prefix of a declared key is a group. Nothing declares them into existence, which is why depth costs nothing and why a two-segment key like `zoom.host` and a four-segment one are both perfectly ordinary catalogs.
 
 <Note>
-  `conventions: { depth }` is a **house-style setting**, not a rule of the system. It defaults to `3`, which is what most application catalogs land on naturally — but it is one line to change, and `lintCatalog` is the only thing that reads it. Set `{ depth: 2 }`, `{ depth: 4 }`, or `{ depth: "any" }` to match how you already name things, rather than renaming to match a default.
+  `conventions: { depth }` is a **house-style setting** rather than a rule of the system. It defaults to `3`, which is what most application catalogs land on naturally, but it is one line to change and `lintCatalog` is the only thing that reads it. Set `{ depth: 2 }`, `{ depth: 4 }`, or `{ depth: "any" }` to match how you already name things.
 </Note>
 
-## `defineCatalog()` — function signature and minimal example
+## `defineCatalog()`: function signature and minimal example
 
-`defineCatalog` accepts a `CatalogInput` object and returns a typed `Catalog<C>` instance. It throws a `CatalogError` at boot when the input is structurally invalid — a broken catalog fails immediately, not at the first check.
+`defineCatalog` accepts a `CatalogInput` object and returns a typed `Catalog<C>` instance. It throws a `CatalogError` at boot when the input is structurally invalid, so a broken catalog fails immediately, before the first check.
 
 ```ts
 import { defineCatalog } from "@alfiz/core";
@@ -78,12 +78,12 @@ export const catalog = defineCatalog({
 `defineCatalog` throws on:
 - Invalid key segments (segments must match `/^[a-zA-Z][a-zA-Z0-9_]*$/`)
 - Single-segment keys (the first segment is the namespace, and a namespace is a group)
-- A key that is also a group path — `docs.files` declared alongside `docs.files.read` would be both a folder and a leaf
+- A key that is also a group path, since `docs.files` declared alongside `docs.files.read` would be both a folder and a leaf
 - Duplicate permission keys
 - Keys outside the declared namespaces
 - References to undeclared scope types
 
-House conventions — key depth, the naming floor, action naming style, nav reference validity — are reported by `lintCatalog` and surfaced in CI by `alfiz-verify`, never at boot. The split is deliberate: what is structurally broken fails at boot, what is merely off-convention is a CI finding you can configure or switch off.
+House conventions such as key depth, the naming floor, action naming style and nav reference validity are reported by `lintCatalog` and surfaced in CI by `alfiz-verify`, never at boot. The split is deliberate: what is structurally broken fails at boot, and what is merely off-convention is a CI finding you can configure or switch off.
 
 ## Derived template-literal types
 
@@ -91,7 +91,7 @@ When you pass a literal object to `defineCatalog`, TypeScript derives a union of
 
 ```ts
 // "docs.files.read" | "docs.files.update_file" | "docs.files.delete"
-//   — plus the twelve built-in alfiz_internal.* keys, unless the catalog
+//   plus the twelve built-in alfiz_internal.* keys, unless the catalog
 //     was built with includeAlfizInternal: false.
 type MyKey = typeof catalog.$key;
 
@@ -127,7 +127,7 @@ node --experimental-strip-types -e \
 `--experimental-strip-types` needs **Node 22.6 or newer**. On an older runtime, compile first and run the emitter against the built output.
 </Note>
 
-`toDocument()` returns a `CatalogDocument` — a serializable snapshot of the catalog — which `alfiz-verify` reads to check coverage, gate shapes, and naming conventions. Add this step to your CI pipeline before running the verifier.
+`toDocument()` returns a `CatalogDocument`, a serializable snapshot of the catalog, which `alfiz-verify` reads to check coverage, gate shapes, and naming conventions. Add this step to your CI pipeline before running the verifier.
 
 <Note>
   The `alfiz_internal.*` permissions (access administration, access requests, audit log, and catalog management) are included in every catalog by default. Set `includeAlfizInternal: false` in your `CatalogInput` only when your application renders no Alfiz administration surface.

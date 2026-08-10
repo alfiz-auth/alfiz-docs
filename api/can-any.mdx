@@ -1,10 +1,10 @@
 ---
-title: "canAny() and requireAny() — Visibility Affordances"
+title: "canAny() and requireAny(): Visibility Affordances"
 sidebarTitle: "canAny()"
-description: "canAny(principal, pattern) tests whether a principal holds any permission matching a pattern. Visibility affordance only — never an authorization gate."
+description: "canAny(principal, pattern) tests whether a principal holds any permission matching a pattern. Visibility affordance only, and never an authorization gate."
 ---
 
-`canAny` answers a different question from `can`: not "does this principal hold *this specific permission* here?" but "does this principal hold *anything under this subtree* at all?" That distinction makes `canAny` the right tool for show/hide decisions in navigation and conditional UI — and the wrong tool for anything that authorizes an action. The static verifier (`@alfiz/verify`) produces a build error if it detects `canAny` in a server action or route handler, treating it as a gate.
+`canAny` answers a different question from `can`: not "does this principal hold *this specific permission* here?" but "does this principal hold *anything under this subtree* at all?" That distinction makes `canAny` the right tool for show/hide decisions in navigation and conditional UI, and the wrong tool for anything that authorizes an action. The static verifier (`@alfiz/verify`) produces a build error if it detects `canAny` in a server action or route handler, treating it as a gate.
 
 ## `canAny(principal, pattern)`
 
@@ -24,10 +24,10 @@ async canAny(
 <ParamField body="pattern" type="P" required>
   A permission pattern declared in your catalog. Three shapes are valid:
 
-  - A concrete key, e.g. `"docs.files.read"` — matches exactly that key.
-  - A subtree wildcard, e.g. `"docs.*"` or `"admin.*"` — matches every key
+  - A concrete key such as `"docs.files.read"` matches exactly that key.
+  - A subtree wildcard such as `"docs.*"` or `"admin.*"` matches every key
     under the named group, at any depth.
-  - The bare `"*"` — matches every key in the catalog.
+  - The bare `"*"` matches every key in the catalog.
 
   The TypeScript compiler validates patterns against the catalog's derived
   `PatternOf<typeof catalog>` union at literal call sites. At runtime, an
@@ -55,7 +55,7 @@ async requireAny(
 ): Promise<void>
 ```
 
-The throwing form of `canAny`. Throws `AccessDeniedError` with `reason: "forbidden"` when no matching permission is held — always that reason, including for an inactive principal, whose check simply evaluates to `false` before any row is read. Use this for project-root visibility checks — for example, to guard the project settings page against users with no access to the project at all, without requiring a specific leaf key.
+The throwing form of `canAny`. Throws `AccessDeniedError` with `reason: "forbidden"` when no matching permission is held, always that reason, including for an inactive principal, whose check simply evaluates to `false` before any row is read. Use this for project-root visibility checks, for example to guard the project settings page against users with no access to the project at all, without requiring a specific leaf key.
 
 <Warning>
   `requireAny` is still a visibility affordance, not a gate. Use it to block
@@ -76,7 +76,7 @@ The throwing form of `canAny`. Throws `AccessDeniedError` with `reason: "forbidd
 | **Use in** | Nav visibility, section headers, card rendering | Route handlers, server actions, data fetches |
 | **Authorization gate** | ❌ Never | ✅ Always |
 
-When you use `canAny` as a gate, you admit any user who holds *any* permission in the subtree — including, for example, a user who can only delete documents but cannot read them. A grant of `docs.files.delete` at one specific document would pass `canAny(p, "docs.*")`, but that user must not be able to call a `GET /docs/:id` route for arbitrary documents.
+When you use `canAny` as a gate, you admit any user who holds *any* permission in the subtree, including, for example, a user who can only delete documents but cannot read them. A grant of `docs.files.delete` at one specific document would pass `canAny(p, "docs.*")`, but that user must not be able to call a `GET /docs/:id` route for arbitrary documents.
 
 ---
 
@@ -88,7 +88,7 @@ Patterns are the typed string union `PatternOf<typeof catalog>`, which includes:
 - Every group-level wildcard (`"docs.*"`, `"docs.files.*"`, `"admin.*"`, …)
 - The global wildcard `"*"`
 
-Group paths without the `.*` suffix are not valid patterns — `"docs.files"` is a group name, not a pattern. The catalog rejects unknown patterns with a suggestion: if you pass `"docs.files"`, the error will recommend `"docs.files.*"`.
+Group paths without the `.*` suffix are not valid patterns. `"docs.files"` is a group name and not a pattern. The catalog rejects unknown patterns with a suggestion: if you pass `"docs.files"`, the error will recommend `"docs.files.*"`.
 
 ---
 
@@ -113,12 +113,12 @@ async function AppNavigation({ userId }: { userId: string }) {
 }
 
 // ── Route handler (server) ────────────────────────────────────────────────
-// The page itself still gates with can() — canAny() in the nav does NOT
+// The page itself still gates with can(). canAny() in the nav does NOT
 // authorize loading the page.
 export async function GET(req: Request, { params }: { params: { docId: string } }) {
   const { userId } = await getSession(req);
 
-  // Concrete gate — not canAny.
+  // Concrete gate, not canAny.
   await alfiz.require(
     { userId },
     "docs.files.read",

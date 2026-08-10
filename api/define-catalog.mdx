@@ -1,14 +1,14 @@
 ---
-title: "defineCatalog() — Build Your Alfiz Permission Tree"
+title: "defineCatalog(): Build Your Alfiz Permission Tree"
 sidebarTitle: "defineCatalog()"
-description: "defineCatalog(input) builds a typed catalog — source of truth for permission keys, scope types, navigation, and compile-time KeyOf/PatternOf unions."
+description: "defineCatalog(input) builds a typed catalog: the source of truth for permission keys, scope types, navigation, and compile-time KeyOf/PatternOf unions."
 ---
 
-`defineCatalog` is where your authorization model lives. It takes a structured declaration of your permission tree and produces a `Catalog` object that the Application validates writes against, the client checks keys against, and the build-time verifier consumes. The catalog is declared in code — not configured in a dashboard and not inferred from call sites — so it is always the ground truth.
+`defineCatalog` is where your authorization model lives. It takes a structured declaration of your permission tree and produces a `Catalog` object that the Application validates writes against, the client checks keys against, and the build-time verifier consumes. The catalog is declared in code, never configured in a dashboard and never inferred from call sites, so it is always the ground truth.
 
-Permissions are declared by their **full dotted key** — the same notation every check, grant, role pattern, and nav entry uses — and group levels are inferred from those keys. A small catalog is one flat map; a large one composes from [`group()` blocks](/catalog/permissions#organizing-a-large-catalog).
+Permissions are declared by their **full dotted key**, the same notation every check, grant, role pattern, and nav entry uses, and group levels are inferred from those keys. A small catalog is one flat map; a large one composes from [`group()` blocks](/catalog/permissions#organizing-a-large-catalog).
 
-`defineCatalog` throws `CatalogError` immediately on structural invalidity (bad segments, undeclared namespaces, missing scope types, a key that is also a group path). Convention violations — key depth, the naming floor, nav wiring — are reported by `alfiz-verify` at build time, not at runtime.
+`defineCatalog` throws `CatalogError` immediately on structural invalidity (bad segments, undeclared namespaces, missing scope types, a key that is also a group path). Convention violations such as key depth, the naming floor and nav wiring are reported by `alfiz-verify` at build time, not at runtime.
 
 ## Signature
 
@@ -21,7 +21,7 @@ function defineCatalog<const C extends CatalogInput>(input: C): Catalog<C>
 ## Parameters
 
 <ParamField body="namespaces" type="readonly string[]" required>
-  The namespaces your application owns — the first segment of every permission key it declares. The first entry is the primary namespace. Each must be a single valid segment (`[a-zA-Z][a-zA-Z0-9_]*`); `alfiz_internal` is reserved.
+  The namespaces your application owns, being the first segment of every permission key it declares. The first entry is the primary namespace. Each must be a single valid segment (`[a-zA-Z][a-zA-Z0-9_]*`); `alfiz_internal` is reserved.
 
   Catalogs are federation-shaped from the first commit, so this is required even standalone, where it is locally redundant. Example: `["docs"]` produces keys like `docs.files.read`; a multi-project portal declares `["docs", "billing", "admin"]`.
 
@@ -29,7 +29,7 @@ function defineCatalog<const C extends CatalogInput>(input: C): Catalog<C>
 </ParamField>
 
 <ParamField body="imports" type="Record<string, ImportInput>" optional>
-  Permissions your application references but does not own, keyed by the foreign namespace — from Alfiz Cloud or a federated application. See [Imports](/catalog/imports) for the full treatment.
+  Permissions your application references but does not own, keyed by the foreign namespace, whether from Alfiz Cloud or a federated application. See [Imports](/catalog/imports) for the full treatment.
 
   ```ts
   imports: {
@@ -42,7 +42,7 @@ function defineCatalog<const C extends CatalogInput>(input: C): Catalog<C>
   }
   ```
 
-  Each import declares specific keys or subtree patterns, never the bare `*`. Importing a namespace you own, declaring an entry outside the namespace it names, or wiring one to a scope type this catalog does not declare all throw `CatalogError`. With a `document` attached, an entry matching nothing the owner publishes throws too — the local half of drift detection.
+  Each import declares specific keys or subtree patterns, never the bare `*`. Importing a namespace you own, declaring an entry outside the namespace it names, or wiring one to a scope type this catalog does not declare all throw `CatalogError`. With a `document` attached, an entry matching nothing the owner publishes throws too, which is the local half of drift detection.
 
   `strict: true` closes the admission half of an undocumented wildcard: without it, an **opaque region** admits any key matching its pattern, since there is no published document to check the key against. Set it when you import a wildcard you have no document for and still want a typo to fail.
 </ParamField>
@@ -61,15 +61,15 @@ function defineCatalog<const C extends CatalogInput>(input: C): Catalog<C>
   permissions: [files, folders, { "docs.reports.read": { kind: "read" } }]
   ```
 
-  Group levels are inferred from the keys — every dotted prefix of a key is a group. Values are `true` (all defaults) or a `PermissionLeafInput`. See [Catalog Types](/api/catalog-types) for the full field reference.
+  Group levels are inferred from the keys, so every dotted prefix of a key is a group. Values are `true` (all defaults) or a `PermissionLeafInput`. See [Catalog Types](/api/catalog-types) for the full field reference.
 </ParamField>
 
 <ParamField body="groups" type="Record<string, GroupInput>" optional>
-  Metadata (`label`, `description`, `scopes`) for group paths you did not declare a `group()` block for — typically the project level, e.g. `{ docs: { label: "Documents" } }`. Purely optional: an undecorated group falls back to its path segment.
+  Metadata (`label`, `description`, `scopes`) for group paths you did not declare a `group()` block for, typically the project level, e.g. `{ docs: { label: "Documents" } }`. Purely optional: an undecorated group falls back to its path segment.
 </ParamField>
 
 <ParamField body="scopeTypes" type="Record<string, ScopeTypeInput>" optional>
-  Scope types this catalog uses. Required for any catalog that grants permissions at resource scopes (anything other than global `"*"`). Keys are dotted identifiers like `"docs.folder"` or `"docs.doc"` — and the first segment must be one of the catalog's declared `namespaces`, or `defineCatalog` throws `CatalogError`. A bare `"folder"` is rejected for the same reason a bare permission key is.
+  Scope types this catalog uses. Required for any catalog that grants permissions at resource scopes (anything other than global `"*"`). Keys are dotted identifiers like `"docs.folder"` or `"docs.doc"`, and the first segment must be one of the catalog's declared `namespaces`, or `defineCatalog` throws `CatalogError`. A bare `"folder"` is rejected for the same reason a bare permission key is.
 
   See [Catalog Types](/api/catalog-types) for the full `ScopeTypeInput` field reference.
 </ParamField>
@@ -83,23 +83,23 @@ function defineCatalog<const C extends CatalogInput>(input: C): Catalog<C>
 <ParamField body="conventions" type='{ depth?: number | "any" }' optional>
   House conventions the linter enforces. `depth` is the key depth `lintCatalog` checks for, defaulting to `3`; set `2` for a thin integration catalog (`zoom.host`), another number for a deeper tree, or `"any"` to opt out.
 
-  This is a **naming preference, not a rule of the system**. Nothing about evaluation, grants, patterns, or types reads it — `lintCatalog` is the only consumer, and a deviation is a CI finding rather than a boot-time throw. Set it to match your keys instead of renaming them to match it.
+  This is a **naming preference, not a rule of the system**. Nothing about evaluation, grants, patterns, or types reads it. `lintCatalog` is the only consumer, and a deviation is a CI finding rather than a boot-time throw. Set it to match your keys instead of renaming them to match it.
 </ParamField>
 
 <ParamField body="includeAlfizInternal" type="boolean" default="true" optional>
-  When `true` (the default), Alfiz's own administration permissions are included under `alfiz_internal.*`. Set to `false` only for catalogs that render no Alfiz admin UI surface. When `false`, view-as and all other `alfiz_internal.*` features are unavailable — `createSession` will deny any view-as attempt because the permission key does not exist.
+  When `true` (the default), Alfiz's own administration permissions are included under `alfiz_internal.*`. Set to `false` only for catalogs that render no Alfiz admin UI surface. When `false`, view-as and all other `alfiz_internal.*` features are unavailable, so `createSession` will deny any view-as attempt because the permission key does not exist.
 </ParamField>
 
 ## Return value
 
 <ResponseField name="Catalog" type="Catalog<C>">
   A `Catalog` object carrying:
-  - `catalog.leaves` — `ReadonlyMap<string, LeafMeta>` of all permission keys
-  - `catalog.groups` — `ReadonlyMap<string, GroupMeta>` of all group paths
-  - `catalog.scopeTypes` — `ReadonlyMap<string, ScopeTypeMeta>`
-  - `catalog.navigation` — the built nav tree
+  - `catalog.leaves`, a `ReadonlyMap<string, LeafMeta>` of all permission keys
+  - `catalog.groups`, a `ReadonlyMap<string, GroupMeta>` of all group paths
+  - `catalog.scopeTypes`, a `ReadonlyMap<string, ScopeTypeMeta>`
+  - `catalog.navigation`, the built nav tree
   - `catalog.namespace` / `catalog.namespaces`
-  - `catalog.toDocument()` — emits the JSON wire shape for `alfiz-verify`
+  - `catalog.toDocument()` emits the JSON wire shape for `alfiz-verify`
 
   The phantom fields `catalog.$key` and `catalog.$pattern` carry the derived `CatalogKeys<C>` and `CatalogPatterns<C>` union types. Extract them with `KeyOf<typeof catalog>` and `PatternOf<typeof catalog>`.
 </ResponseField>
@@ -140,7 +140,7 @@ declare function requirePermission(key: AppKey, scope?: string): Promise<void>;
 const visibilityPattern: AppPattern = "docs.files.*";
 ```
 
-## `includeAlfizInternal: true` — built-in admin permissions
+## `includeAlfizInternal: true`: built-in admin permissions
 
 By default, `defineCatalog` merges the `alfiz_internal` project into the catalog. This adds the following permission keys, which gate Alfiz's own headless administration components:
 
@@ -160,7 +160,7 @@ By default, `defineCatalog` merges the `alfiz_internal` project into the catalog
 | `alfiz_internal.catalog.publish_catalog` | Publish a verified catalog to the provider |
 
 <Note>
-  `alfiz_internal.*` keys are exempt from coverage linting in `alfiz-verify` — they are gated inside Alfiz's own admin surfaces, not your application code, so unreferenced warnings are suppressed for them automatically.
+  `alfiz_internal.*` keys are exempt from coverage linting in `alfiz-verify`, because they are gated inside Alfiz's own admin surfaces, not your application code, so unreferenced warnings are suppressed for them automatically.
 </Note>
 
 ## Complete example
@@ -171,7 +171,7 @@ A document management application with two scope types, a multi-group project, n
 import { defineCatalog, group } from "@alfiz/core";
 import type { KeyOf, PatternOf } from "@alfiz/core";
 
-// Each block is a named, foldable unit — in a real app these typically live
+// Each block is a named, foldable unit. In a real app these typically live
 // in their own files, next to the code they gate, and are imported here.
 const files = group("docs.files", {
   label: "Files",
@@ -269,7 +269,7 @@ export const catalog = defineCatalog({
   ],
 });
 
-// Derived types — use these throughout your application:
+// Derived types. Use these throughout your application:
 export type AppKey = KeyOf<typeof catalog>;
 export type AppPattern = PatternOf<typeof catalog>;
 ```

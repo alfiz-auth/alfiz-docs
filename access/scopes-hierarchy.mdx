@@ -1,14 +1,14 @@
 ---
 title: "Scopes and Resource Hierarchies in Alfiz Explained"
 sidebarTitle: "Scopes"
-description: "Scopes let you grant permissions at any level of your resource hierarchy — folder, document, or global — and Alfiz walks ancestor chains at check time."
+description: "Scopes let you grant permissions at any level of your resource hierarchy (folder, document, or global) and Alfiz walks ancestor chains at check time."
 ---
 
-Every grant row carries a scope — the resource or level at which that grant applies. Alfiz lets you grant access at any point in your resource hierarchy, from a single document all the way up to the global scope. At check time, Alfiz walks the ancestor chain of the target resource and considers a grant valid if it was made at the target itself *or at any ancestor*, including the global scope `*`. This means you grant once and the access flows down automatically, without touching every descendant.
+Every grant row carries a scope: the resource or level at which that grant applies. Alfiz lets you grant access at any point in your resource hierarchy, from a single document all the way up to the global scope. At check time, Alfiz walks the ancestor chain of the target resource and considers a grant valid if it was made at the target itself *or at any ancestor*, including the global scope `*`. This means you grant once and the access flows down automatically, without touching every descendant.
 
 ## The global scope
 
-The global scope is the string constant `"*"`. A grant with no `scope` field — or one explicitly set to `"*"` — applies everywhere:
+The global scope is the string constant `"*"`. A grant with no `scope` field, or one explicitly set to `"*"`, applies everywhere:
 
 ```ts
 import { GLOBAL_SCOPE } from "@alfiz/core";
@@ -19,7 +19,7 @@ Because `*` is present in every object closure, a global grant satisfies any sco
 
 ## Scope instance ids
 
-A scope instance id takes the form `<scopeType>:<instanceId>` — for example, `docs.doc:123` or `docs.folder:9`. The scope type is a dot-separated key that matches a declaration in the catalog; the instance id is an opaque string from your database.
+A scope instance id takes the form `<scopeType>:<instanceId>`, for example `docs.doc:123` or `docs.folder:9`. The scope type is a dot-separated key that matches a declaration in the catalog; the instance id is an opaque string from your database.
 
 ```ts
 import { scopeId, parseScopeId } from "@alfiz/core";
@@ -34,7 +34,7 @@ The hierarchy path is **never encoded in the id**. Moving a document from one fo
 
 ## The ancestry resolver
 
-Alfiz cannot know your resource hierarchy — it lives in your tables. You expose it to the check engine through an `AncestryResolver`:
+Alfiz cannot know your resource hierarchy, because it lives in your tables. You expose it to the check engine through an `AncestryResolver`:
 
 ```ts
 type AncestryResolver = (scope: ScopeId) => ScopeId[] | Promise<ScopeId[]>;
@@ -76,7 +76,7 @@ For `docs.doc:123` nested inside `docs.folder:9` nested inside `docs.folder:2`, 
 
 ## Check-time ancestry walk
 
-When you call `alfiz.can(principal, key, scope)`, Alfiz computes the *object closure* of `scope` — the set a grant's own scope must intersect to be relevant:
+When you call `alfiz.can(principal, key, scope)`, Alfiz computes the *object closure* of `scope`, the set a grant's own scope must intersect to be relevant:
 
 ```ts
 async function objectClosureOf(
@@ -91,15 +91,15 @@ For a document at `docs.doc:123` in `docs.folder:9` in `docs.folder:2`, the obje
 ["docs.doc:123", "docs.folder:9", "docs.folder:2", "*"]
 ```
 
-A grant anywhere in that list covers the target. Alfiz calls your `AncestryResolver` **once** per closure — it hands over the target scope and receives the whole chain back. The O(depth) cost is inside your resolver, which is why `parentPointerResolver` (walking one pointer per level) and a materialized-path or closure-table lookup (one query) differ so much at depth.
+A grant anywhere in that list covers the target. Alfiz calls your `AncestryResolver` **once** per closure, handing over the target scope and receiving the whole chain back. The O(depth) cost is inside your resolver, which is why `parentPointerResolver` (walking one pointer per level) and a materialized-path or closure-table lookup (one query) differ so much at depth.
 
 <Tip>
-Scope types declared `parent: null` are flat by declaration: their object closure is always `[scope, "*"]`. That is what lets a [snapshot](/api/snapshot) check them synchronously without consulting the resolver — the async `client.can` path still goes through the resolver. The shortcut also requires `multiParent: false`: a type declared `{ parent: null, multiParent: true }` is treated as hierarchical.
+Scope types declared `parent: null` are flat by declaration: their object closure is always `[scope, "*"]`. That is what lets a [snapshot](/api/snapshot) check them synchronously without consulting the resolver, while the async `client.can` path still goes through the resolver. The shortcut also requires `multiParent: false`: a type declared `{ parent: null, multiParent: true }` is treated as hierarchical.
 </Tip>
 
 ## The listing problem
 
-Point checks (`can()`) answer "can Alice read this document?" — one check, one object closure walk. Listing pages answer a different question: "which documents can Alice read?" Naive per-row checking is an N+1 death: you cannot load every document and call `can()` on each one.
+Point checks (`can()`) answer "can Alice read this document?" in one check and one object closure walk. Listing pages answer a different question: "which documents can Alice read?" Naive per-row checking is an N+1 death: you cannot load every document and call `can()` on each one.
 
 The correct pattern is:
 
@@ -176,7 +176,7 @@ Never short-circuit and run an unfiltered query when `planListing` returns `{ mo
 
 ## Object closure caching
 
-Ancestor chains are cached with a default 60-second TTL. The cache busts immediately when you call `app.notifyScopeMoved(scope)` — call this from the same code path that changes a parent pointer in your database:
+Ancestor chains are cached with a default 60-second TTL. The cache busts immediately when you call `app.notifyScopeMoved(scope)`. Call this from the same code path that changes a parent pointer in your database:
 
 ```ts
 // In your "move document" handler:
@@ -184,7 +184,7 @@ await myDb.setParent("docs.doc:123", "docs.folder:7");
 app.notifyScopeMoved("docs.doc:123"); // immediate invalidation
 ```
 
-Without this call, the cache TTL (60 seconds by default) bounds how long a stale ancestor chain can persist. For sensitive operations — moving a confidential document into a restricted folder — the old chain surviving for up to a minute is unacceptable.
+Without this call, the cache TTL (60 seconds by default) bounds how long a stale ancestor chain can persist. For a sensitive operation such as moving a confidential document into a restricted folder, the old chain surviving for up to a minute is unacceptable.
 
 ### Using `can.fresh` after moves
 
@@ -214,5 +214,5 @@ await app.deleteScope(
 ```
 
 <Note>
-Grants at **descendant** scopes are separate rows — Alfiz does not enumerate your subtree. When you delete a folder and all its contents, call `deleteScope` once per deleted resource id.
+Grants at **descendant** scopes are separate rows, and Alfiz does not enumerate your subtree. When you delete a folder and all its contents, call `deleteScope` once per deleted resource id.
 </Note>

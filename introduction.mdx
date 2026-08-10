@@ -1,14 +1,14 @@
 ---
-title: "Alfiz: Scoped Permissions for TypeScript — Introduction"
+title: "Alfiz: Scoped Permissions for TypeScript, an Introduction"
 sidebarTitle: "Introduction"
 description: "Alfiz is scoped permissions for TypeScript applications: declared in code, verified in CI, and checked in your own process against your own database."
 ---
 
 Alfiz is scoped permissions for TypeScript applications: **declared in code, verified in CI, checked in your own process.**
 
-It is not in the business of authentication — identity stays with your identity provider, and resource data stays in your database. Alfiz owns everything in between: **who may do what, where, and why**. You declare your permission catalog once in the codebase that enforces it, and every runtime check runs in-process against your own database. Nothing Alfiz operates ever sits on your request path.
+It does no authentication. Identity stays with your identity provider and resource data stays in your database, and Alfiz owns what sits between them: **who may do what, where, and why**. You declare your permission catalog once in the codebase that enforces it, and every runtime check runs in-process against your own database. Nothing Alfiz operates ever sits on your request path.
 
-The word *scoped* is the qualifier that matters. If a role column is enough for your application — admin and user, nothing more — Alfiz is more machinery than you need. It earns its place when access is per-folder, per-document, per-tenant, or otherwise attached to specific objects rather than to the whole application.
+The word *scoped* is the qualifier that matters. If a role column is enough for your application, admin and user and nothing more, Alfiz is more machinery than you need. It earns its place when access is per-folder, per-document, per-tenant, or otherwise attached to specific objects rather than to the whole application.
 
 ## The three layers
 
@@ -16,23 +16,23 @@ Alfiz is organized into three layers. The first two are open-source packages you
 
 | Layer | Package | What it does |
 |---|---|---|
-| **Client** | `@alfiz/core` | The evaluator: grammar, catalog, closures, check shapes, caches, graph integrity, and request evaluation. Every capability is a pure function over provider-supplied data — no storage, no I/O. |
-| **Application** | `@alfiz/application` | The local provider: the same contract implemented against *your* database through a storage seam. Standalone, it is the org root — the complete system for one organization, with no external dependency. |
-| **Alfiz Cloud** | — | The managed provider speaking the same contract: the Dashboard (hosted administration by relay) and Federation (registry, cross-application composition, the hosted org root). Nothing in the OSS packages depends on it. |
+| **Client** | `@alfiz/core` | The evaluator: grammar, catalog, closures, check shapes, caches, graph integrity, and request evaluation. Every capability is a pure function over provider-supplied data, with no storage and no I/O. |
+| **Application** | `@alfiz/application` | The local provider: the same contract implemented against *your* database through a storage seam. Standalone, it is the org root: the complete system for one organization, with no external dependency. |
+| **Alfiz Cloud** | none | The managed provider speaking the same contract: the Dashboard (hosted administration by relay) and Federation (registry, cross-application composition, the hosted org root). Nothing in the OSS packages depends on it. |
 
-The Client/Provider split is enforced in code, not convention. The provider contract has three normative artifacts, held in exact correspondence by the type system and the test suite: the `AlfizProvider` interface a Client attaches to, the `AlfizProviderBase` abstract class every provider extends, and the **Alfiz Provider API** — an OpenAPI document fixing the contract's wire form. Exactly two kinds of implementation exist, both in `@alfiz/application`: the **local** provider (`AlfizApplication`, your database) and the **hosted** provider (`HostedProvider`, an API connection to the same contract served elsewhere — the seam the Dashboard and Federation ride on). Because the wire form is a language-agnostic document rather than a TypeScript export, a provider can be implemented — and consumed — from any language. See [Provider API setup](/cloud/provider-api) for the wire conventions and what they buy.
+The Client/Provider split is enforced in code, not convention. The provider contract has three normative artifacts, held in exact correspondence by the type system and the test suite: the `AlfizProvider` interface a Client attaches to, the `AlfizProviderBase` abstract class every provider extends, and the **Alfiz Provider API**, an OpenAPI document fixing the contract's wire form. Exactly two kinds of implementation exist, both in `@alfiz/application`: the **local** provider (`AlfizApplication`, your database) and the **hosted** provider (`HostedProvider`, an API connection to the same contract served elsewhere, which is the seam the Dashboard and Federation ride on). Because the wire form is a language-agnostic document rather than a TypeScript export, a provider can be implemented, and consumed, from any language. See [Provider API setup](/cloud/provider-api) for the wire conventions and what they buy.
 
 <Note>
-Runtime checks never leave your application in any topology. Every `can()` runs in-process against your catalog, your rows, and your resolver — so nothing Alfiz operates can slow or break your app.
+Runtime checks never leave your application in any topology. Every `can()` runs in-process against your catalog, your rows, and your resolver, so nothing Alfiz operates can slow or break your app.
 </Note>
 
 ## Four commitments
 
-These are the decisions that make up the product. None of them is configurable.
+These four decisions make up the product, and none of them is configurable.
 
 <CardGroup cols={2}>
   <Card title="Declared in code" icon="code">
-    The catalog declares every permission and every scope type, in the codebase that enforces them. Nothing is inferred from call sites and nothing is dashboard-configured — there is no second list anywhere that can drift out of sync with this one.
+    The catalog declares every permission and every scope type, in the codebase that enforces them. Nothing is inferred from call sites and nothing is dashboard-configured, so there is no second list anywhere that can drift out of sync with this one.
   </Card>
   <Card title="Checked in your own process" icon="shield-check">
     Every `can()` runs in-process against your own database. Nothing Alfiz operates is on your request path, so nothing it does can slow, throttle, or stop a check.
@@ -46,31 +46,31 @@ These are the decisions that make up the product. None of them is configurable.
 </CardGroup>
 
 <Note>
-Two further semantics are worth knowing early, because they shape how you model access. Grants **nest**: one made at an enclosing scope covers everything within it, resolved by walking up ancestors at check time rather than fanning rows out to descendants. And the grant tuple and check shape are **identical in every topology** — standalone, linked, or federated — so growing your deployment never rewrites your call sites.
+Two further semantics are worth knowing early, because they shape how you model access. Grants **nest**: one made at an enclosing scope covers everything within it, resolved by walking up ancestors at check time, with no rows fanned out to descendants. And the grant tuple and check shape are **identical in every topology**, standalone or linked or federated, so growing your deployment never rewrites your call sites.
 </Note>
 
 ## What's included in the packages
 
 The Client (`@alfiz/core`) and Application (`@alfiz/application`) are the whole system for one organization with one application. Nothing below is held back for a paid tier:
 
-- **Permission grammar, catalog, and typed keys** — catalog-derived template-literal types mean every literal call site is verified at compile time, and every runtime-string path is verified against the catalog before evaluation
-- **`can` / `require` / `canAny` / `can.fresh` / `holds`** — in-process checks; `canAny` and `holds` are visibility affordances only, never gates; `can.fresh` bypasses all caches for destructive actions
-- **Per-request snapshots** — one provider round-trip, then synchronous checks safe inside `.map()`
-- **Four enforcement points** — page, navigation visibility, server action, and conditional UI; the verifier catches surfaces that skip any of the four
-- **Static verification and catalog lints** — `alfiz-verify` fails the build on an exported action with no gate, a visibility affordance used as a gate, an unknown key, and client-reachable service-key material
-- **Scoped grants, revokes, expiry, and provenance** — every grant is one row: `(subject, role-or-pattern, scope, expiry?)` with a full provenance record and an audit entry
-- **Groups, nested groups, roles, and reporting hierarchy** — union-only inheritance throughout; the single negative layer is the personal revoke
-- **Access requests and management-layer approvals** — requestable roles and scope types flow through a built-in staged approval workflow, including manager-chain approval
-- **Sessions and view-as** — typed per-request sessions with admin preview that fails closed and never mis-attributes
-- **Permission metrics** — an optional observation per check, an OpenTelemetry adapter, a local aggregator, and the revocation safeguard
-- **The headless permission tree** — the wildcard-aware selection logic (`buildPermissionTree`, `toggleNode`, `isNodeChecked`) behind any role editor or grant picker you build, plus listing helpers that push a permission filter into your own SQL
+- **Permission grammar, catalog, and typed keys.** Catalog-derived template-literal types mean every literal call site is verified at compile time, and every runtime-string path is verified against the catalog before evaluation
+- **`can` / `require` / `canAny` / `can.fresh` / `holds`.** In-process checks; `canAny` and `holds` are visibility affordances only, never gates; `can.fresh` bypasses all caches for destructive actions
+- **Per-request snapshots.** One provider round-trip, then synchronous checks safe inside `.map()`
+- **Four enforcement points.** Page, navigation visibility, server action, and conditional UI; the verifier catches surfaces that skip any of the four
+- **Static verification and catalog lints.** `alfiz-verify` fails the build on an exported action with no gate, a visibility affordance used as a gate, an unknown key, and client-reachable service-key material
+- **Scoped grants, revokes, expiry, and provenance.** Every grant is one row: `(subject, role-or-pattern, scope, expiry?)` with a full provenance record and an audit entry
+- **Groups, nested groups, roles, and reporting hierarchy.** Union-only inheritance throughout; the single negative layer is the personal revoke
+- **Access requests and management-layer approvals.** Requestable roles and scope types flow through a built-in staged approval workflow, including manager-chain approval
+- **Sessions and view-as.** Typed per-request sessions with admin preview that fails closed and never mis-attributes
+- **Permission metrics.** An optional observation per check, an OpenTelemetry adapter, a local aggregator, and the revocation safeguard
+- **The headless permission tree.** The wildcard-aware selection logic (`buildPermissionTree`, `toggleNode`, `isNodeChecked`) behind any role editor or grant picker you build, plus listing helpers that push a permission filter into your own SQL
 
 <Tip>
 The `@alfiz/prisma` package adds a Prisma storage driver and schema fragment so the Application layer slots straight into your existing Prisma setup; `@alfiz/mongo` does the same for MongoDB, with no schema to merge. `@alfiz/verify` ships the `alfiz-verify` CLI.
 </Tip>
 
 <Note>
-Alfiz does not issue or validate tokens, and ships no identity-provider adapter. You verify the session with your own provider — Clerk, Auth.js, or anything else — and pass the resulting user id to Alfiz. See [Sessions](/api/session) for the wiring.
+Alfiz does not issue or validate tokens, and ships no identity-provider adapter. You verify the session with your own provider, whether that is Clerk or Auth.js or anything else, and pass the resulting user id to Alfiz. See [Sessions](/api/session) for the wiring.
 </Note>
 
 ## Alfiz Cloud
@@ -79,7 +79,7 @@ When a non-engineer needs to administer access, or when your second application 
 
 <CardGroup cols={2}>
   <Card title="Dashboard" icon="gauge">
-    The Dashboard — a hosted, styled, maintained UI for managing grants, approvals, and audit history. Add admin seats and your team uses it immediately; your Application stays the org root and the only writer, because every relayed write lands in the same provider methods your local code calls.
+    A hosted, styled, maintained UI for managing grants, approvals, and audit history. Add admin seats and your team uses it immediately; your Application stays the org root and the only writer, because every relayed write lands in the same provider methods your local code calls.
   </Card>
   <Card title="Federation" icon="diagram-project">
     When you need cross-application authorization, federation adds a central **catalog registry** (namespace ownership, versioning, tombstones), cross-namespace role composition, cross-application request aggregation, and service-principal credential management.
@@ -89,7 +89,7 @@ When a non-engineer needs to administer access, or when your second application 
 <Note>
 **Alfiz is never in your request path.** Every `can()` runs in-process against your own database, so Alfiz Cloud is not a dependency of your application: it cannot add latency to a check, cannot throttle one, and cannot fail in a way that stops one. That holds in every topology, including full federation.
 
-Pricing follows from it. Alfiz Cloud bills for the work it performs — admin seats, federated applications, provisioned connectors, retained audit volume. Check volume is not a billing dimension and will not become one. See [Metering and caps](/cloud/metering).
+Pricing follows from it. Alfiz Cloud bills for the work it performs: admin seats, federated applications, provisioned connectors, retained audit volume. Check volume is not a billing dimension and will not become one. See [Metering and caps](/cloud/metering).
 </Note>
 
 ## Next steps

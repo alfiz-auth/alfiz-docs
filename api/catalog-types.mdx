@@ -1,5 +1,5 @@
 ---
-title: "Alfiz Catalog TypeScript Types — CatalogInput Reference"
+title: "Alfiz Catalog TypeScript Types: CatalogInput Reference"
 sidebarTitle: "Catalog Types"
 description: "Reference for CatalogInput, PermissionLeafInput, GroupInput, ScopeTypeInput, NavItemInput, and the derived KeyOf and PatternOf types used throughout Alfiz."
 ---
@@ -29,11 +29,11 @@ The top-level object passed to `defineCatalog`.
 </ParamField>
 
 <ParamField body="permissions" type="PermissionsInput" required>
-  The permissions, keyed by their full dotted key. Accepts a flat map, a single `group()` block, or an array mixing both — see [`PermissionsInput`](#permissionsinput) below. Group levels are inferred from the keys; nothing declares them.
+  The permissions, keyed by their full dotted key. Accepts a flat map, a single `group()` block, or an array mixing both. See [`PermissionsInput`](#permissionsinput) below. Group levels are inferred from the keys; nothing declares them.
 </ParamField>
 
 <ParamField body="imports" type="Record<string, ImportInput>" optional>
-  Permissions this application **references but does not own**, keyed by the foreign namespace — which must not be one this catalog owns. See [imported permissions](/catalog/imports).
+  Permissions this application **references but does not own**, keyed by the foreign namespace, which must not be one this catalog owns. See [imported permissions](/catalog/imports).
 
   ```ts
   interface ImportInput {
@@ -45,11 +45,11 @@ The top-level object passed to `defineCatalog`.
   }
   ```
 
-  Attaching `document` is the recommended shape: wildcards expand, `canAny` answers exactly, and a typo fails the build. Without it a wildcard is an **opaque region** — grantable and checkable, but approximated fail-closed wherever an answer would need expanding a pattern into keys. `strict: true` closes the admission half of an undocumented region.
+  Attaching `document` is the recommended shape: wildcards expand, `canAny` answers exactly, and a typo fails the build. Without it a wildcard is an **opaque region**: grantable and checkable, but approximated fail-closed wherever an answer would need expanding a pattern into keys. `strict: true` closes the admission half of an undocumented region.
 </ParamField>
 
 <ParamField body="groups" type="Record<string, GroupInput>" optional>
-  Metadata for group paths not covered by a `group()` block — typically the project level. Purely optional decoration; it cannot bring a group into existence, since groups come from the keys.
+  Metadata for group paths not covered by a `group()` block, typically the project level. Purely optional decoration; it cannot bring a group into existence, since groups come from the keys.
 </ParamField>
 
 <ParamField body="scopeTypes" type="Record<string, ScopeTypeInput>" optional>
@@ -57,17 +57,17 @@ The top-level object passed to `defineCatalog`.
 </ParamField>
 
 <ParamField body="navigation" type="readonly NavItemInput[]" optional>
-  The sidebar navigation tree. Each item's `permission` controls its visibility. References are validated by `alfiz-verify` — nav items that reference unknown permissions produce errors.
+  The sidebar navigation tree. Each item's `permission` controls its visibility. References are validated by `alfiz-verify`, so nav items that reference unknown permissions produce errors.
 </ParamField>
 
 <ParamField body="conventions" type='{ depth?: number | "any" }' optional>
   House conventions enforced by `lintCatalog` and `alfiz-verify`. `depth` is the key depth `lintCatalog` checks for, defaulting to `3`; set another number for a different house style, or `"any"` to opt out.
 
-  Deviations are **lint errors, not boot errors** — a two-level integration catalog builds and CI reports it.
+  Deviations are **lint errors and not boot errors**, so a two-level integration catalog builds and CI reports it.
 </ParamField>
 
 <ParamField body="includeAlfizInternal" type="boolean" default="true" optional>
-  When `true` (the default), Alfiz's own `alfiz_internal.*` permissions are merged into the catalog. Set to `false` only for catalogs that render no Alfiz administration UI. When false, all `alfiz_internal.*` features — including view-as — are unavailable.
+  When `true` (the default), Alfiz's own `alfiz_internal.*` permissions are merged into the catalog. Set to `false` only for catalogs that render no Alfiz administration UI. When false, all `alfiz_internal.*` features, including view-as, are unavailable.
 </ParamField>
 
 ---
@@ -85,7 +85,7 @@ type PermissionsInput =
   | readonly (LeafMap | PermissionBlock)[];
 ```
 
-A **`LeafMap`** maps full dotted keys to their leaf declarations — the whole catalog for a small app:
+A **`LeafMap`** maps full dotted keys to their leaf declarations, which is the whole catalog for a small app:
 
 ```ts
 permissions: {
@@ -100,7 +100,7 @@ A **`PermissionBlock`** is what `group()` returns: one group's metadata plus the
 function group<P extends string, L extends LeafMap>(
   path: P,
   meta: GroupInput,
-  leaves: L,          // every key must start with `${P}.` — a compile error otherwise
+  leaves: L,          // every key must start with `${P}.`, a compile error otherwise
 ): PermissionBlock<P, L>;
 
 // The metadata argument is optional:
@@ -117,14 +117,14 @@ permissions: [files, sharing, { "docs.reports.read": { kind: "read" } }]
 
 ## `PermissionLeafInput`
 
-A permission leaf is a concrete, grantable and checkable permission — the value assigned to a full dotted key in a `LeafMap`. The shorthand `true` is equivalent to an empty `PermissionLeafInput {}` and lets `defineCatalog` infer all fields.
+A permission leaf is a concrete, grantable and checkable permission: the value assigned to a full dotted key in a `LeafMap`. The shorthand `true` is equivalent to an empty `PermissionLeafInput {}` and lets `defineCatalog` infer all fields.
 
 ```ts
 type LeafInput = true | PermissionLeafInput;
 ```
 
 <ParamField body="label" type="string" optional>
-  Short human-facing name for pickers and checkboxes, e.g. `"Publish file"`. Falls back to the permission name when absent. Keep it brief — the `description` field carries longer help text.
+  Short human-facing name for pickers and checkboxes, e.g. `"Publish file"`. Falls back to the permission name when absent. Keep it brief, since the `description` field carries longer help text.
 </ParamField>
 
 <ParamField body="description" type="string" optional>
@@ -144,16 +144,16 @@ type LeafInput = true | PermissionLeafInput;
 </ParamField>
 
 <ParamField body="impliedOnAncestors" type="boolean" default="false" optional>
-  Ancestor visibility: when `true`, holding any grant of this leaf at a scope implies it on the **proper ancestors** of that scope. This enables the "a shared document shows its containing folder" pattern — a user granted access to `docs.doc:123` also passes `docs.files.read` at the folder that contains it. Off by default.
+  Ancestor visibility: when `true`, holding any grant of this leaf at a scope implies it on the **proper ancestors** of that scope. This enables the "a shared document shows its containing folder" pattern, where a user granted access to `docs.doc:123` also passes `docs.files.read` at the folder that contains it. Off by default.
 
-  The implication deliberately stops short of the global scope: an unscoped `can(user, key)` is the *everywhere* question, and a grant at one document must never answer it. `explain()` reports an implied allow with `implied: true` and names the descendant grants in `impliedBy`, leaving `matchedGrants` empty — because nothing matched *at this scope*, which is what makes it implied.
+  The implication deliberately stops short of the global scope: an unscoped `can(user, key)` is the *everywhere* question, and a grant at one document must never answer it. `explain()` reports an implied allow with `implied: true` and names the descendant grants in `impliedBy`, leaving `matchedGrants` empty, because nothing matched *at this scope*, which is what makes it implied.
 </ParamField>
 
 ---
 
 ## `GroupInput`
 
-The metadata a group path carries. Groups are folders in the permission tree and never carry keys themselves — only their leaves do. Crucially, `GroupInput` does **not** create a group: every dotted prefix of a declared key is already one. This only decorates it, via a `group()` block or the catalog's `groups` map.
+The metadata a group path carries. Groups are folders in the permission tree and never carry keys themselves; only their leaves do. Crucially, `GroupInput` does **not** create a group: every dotted prefix of a declared key is already one. This only decorates it, via a `group()` block or the catalog's `groups` map.
 
 ```ts
 export interface GroupInput {
@@ -213,9 +213,9 @@ A scope type is the static schema fact declaring a resource kind. Instances of t
     }
     ```
 
-    `submitRequest` validates answers against these prompts server-side —
+    `submitRequest` validates answers against these prompts server-side.
     required prompts must be answered, and a `select` answer must be one of
-    the declared `options` — so a hand-rolled form cannot skip one.
+    the declared `options`, so a hand-rolled form cannot skip one.
   </ParamField>
 
   <ParamField body="requestable.maxDurationMs" type="number" optional>
@@ -223,7 +223,7 @@ A scope type is the static schema fact declaring a resource kind. Instances of t
   </ParamField>
 
   <ParamField body="requestable.requireExpiry" type="boolean" default="false" optional>
-    When `true`, the request must propose an expiry — open-ended access cannot be requested for this scope type.
+    When `true`, the request must propose an expiry, so open-ended access cannot be requested for this scope type.
   </ParamField>
 
   <ParamField body="requestable.policy" type="ApprovalPolicyInput" required>
@@ -267,7 +267,7 @@ Navigation items wire permission keys to sidebar entries. Each item's `permissio
 </ParamField>
 
 <ParamField body="permission" type="PermissionPattern | readonly PermissionKey[]" required>
-  Visibility wiring: a concrete key, an array of keys (any-of), or a subtree pattern (evaluated via `canAny`). This controls visibility only — the target page still gates its own reads. `alfiz-verify` validates that every referenced key or pattern exists in the catalog.
+  Visibility wiring: a concrete key, an array of keys (any-of), or a subtree pattern (evaluated via `canAny`). This controls visibility only. The target page still gates its own reads. `alfiz-verify` validates that every referenced key or pattern exists in the catalog.
 </ParamField>
 
 <ParamField body="children" type="readonly NavItemInput[]" optional>
@@ -292,7 +292,7 @@ type AppKey = KeyOf<typeof catalog>;
 
 ### `PatternOf<Cat>`
 
-All valid patterns — concrete keys, group wildcards, and the bare `"*"`:
+All valid patterns: concrete keys, group wildcards, and the bare `"*"`:
 
 ```ts
 import type { PatternOf } from "@alfiz/core";
@@ -343,7 +343,7 @@ type RequestContext = {
 
 ### Types for the published document
 
-`defineCatalog` derives its unions from the catalog *literal*. Code that consumes the published `CatalogDocument` instead — a federated sibling, another repo — gets the same treatment through codegen:
+`defineCatalog` derives its unions from the catalog *literal*. Code that consumes the published `CatalogDocument` instead, such as a federated sibling or another repo, gets the same treatment through codegen:
 
 ```bash
 alfiz-verify codegen --catalog alfiz-catalog.json --out alfiz.gen.ts
@@ -353,7 +353,7 @@ alfiz-verify codegen --catalog alfiz-catalog.json --out alfiz.gen.ts
 import { catalogFromDocument } from "@alfiz/core";
 import type { AlfizKey, AlfizPattern, AlfizScopeId } from "./alfiz.gen.js";
 
-// TypedCatalog<K, P, S> — createAlfizClient picks the unions straight up.
+// TypedCatalog<K, P, S>: createAlfizClient picks the unions straight up.
 const catalog = catalogFromDocument<AlfizKey, AlfizPattern, AlfizScopeId>(doc);
 ```
 

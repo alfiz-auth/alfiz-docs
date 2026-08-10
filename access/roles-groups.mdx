@@ -4,11 +4,11 @@ sidebarTitle: "Roles & Groups"
 description: "Roles are named permission bundles. Groups are cohorts of users. Together they let you grant access to many people with a single row."
 ---
 
-Roles and groups are the two organizing abstractions that keep your grant table from becoming one row per user per permission. A role names a bundle of permission patterns that belong together; a group names a cohort of users that should receive access together. Assigning a role to a group is a single grant row — and every member of that group, through their subject closure, picks it up automatically.
+Roles and groups are the two organizing abstractions that keep your grant table from becoming one row per user per permission. A role names a bundle of permission patterns that belong together; a group names a cohort of users that should receive access together. Assigning a role to a group is a single grant row, and every member of that group picks it up through their subject closure automatically.
 
 ## Roles
 
-A role is a named, reusable set of permission patterns. Roles carry no negative patterns — the only negative layer in Alfiz is the personal revoke. The interface that describes a role's core shape is `RoleDef`:
+A role is a named, reusable set of permission patterns. Roles carry no negative patterns, since the only negative layer in Alfiz is the personal revoke. The interface that describes a role's core shape is `RoleDef`:
 
 ```ts
 interface RoleDef {
@@ -34,7 +34,7 @@ interface RoleRecord extends RoleDef {
 }
 ```
 
-Role **identity is the opaque `id`** — renaming a role never breaks any existing grant. An admin can change `name` and `description` freely; the grants that reference the role's `id` continue to work.
+Role **identity is the opaque `id`**, so renaming a role never breaks any existing grant. An admin can change `name` and `description` freely; the grants that reference the role's `id` continue to work.
 
 ### Creating a role
 
@@ -59,7 +59,7 @@ Use `app.updateRole(roleId, input, provenance)` to rename or re-describe a role,
 
 ### Assigning a role
 
-A role grant is an ordinary grant row — the same `createGrant` call you use for raw patterns, with `roleId` instead of `pattern`:
+A role grant is an ordinary grant row: the same `createGrant` call you use for raw patterns, with `roleId` instead of `pattern`:
 
 ```ts
 await app.createGrant({
@@ -70,10 +70,10 @@ await app.createGrant({
 });
 ```
 
-At check time, Alfiz expands the role's `patterns` and evaluates each one against the requested permission key. Granting a role gives the subject every pattern the role carries — including patterns added to the role in future updates, because grants reference the role id, not a snapshot of its patterns.
+At check time, Alfiz expands the role's `patterns` and evaluates each one against the requested permission key. Granting a role gives the subject every pattern the role carries, including patterns added to the role in future updates, because grants reference the role id, not a snapshot of its patterns.
 
 <Note>
-A grant carries exactly one of `roleId` or `pattern` — never both, never neither. Alfiz validates this at write time and rejects invalid grant rows before touching storage.
+A grant carries exactly one of `roleId` or `pattern`, never both and never neither. Alfiz validates this at write time and rejects invalid grant rows before touching storage.
 </Note>
 
 ## Groups
@@ -103,7 +103,7 @@ const editors = await app.createGroup(
   { kind: "admin", actorUserId: "root" },
 );
 
-// Set a user's group memberships. This REPLACES the full list — it is not
+// Set a user's group memberships. This REPLACES the full list. It is not
 // an add. Read the current list first if you mean to append.
 await app.setGroupMembership(
   "alice",
@@ -115,11 +115,11 @@ await app.setGroupMembership(
 const members = await app.getGroupMembers("group_editors");
 ```
 
-Group membership is stored on the user record as `groupIds: string[]`, and `setGroupMembership` overwrites that array wholesale after de-duplicating it. At subject-closure computation time, every group in the list — and every ancestor of those groups — joins the closure.
+Group membership is stored on the user record as `groupIds: string[]`, and `setGroupMembership` overwrites that array wholesale after de-duplicating it. At subject-closure computation time, every group in the list, and every ancestor of those groups, joins the closure.
 
 ### Group nesting (the inheritance DAG)
 
-A group may declare parent groups. It inherits the union of all its parents' access. The parent graph must be a DAG — Alfiz enforces this transactionally at every `setGroupParents` call. Attempting to create a cycle rejects the write with a `ProviderWriteRejectedError` whose `code` is `"graph_cycle"` and whose message names the full path:
+A group may declare parent groups. It inherits the union of all its parents' access. The parent graph must be a DAG, and Alfiz enforces this transactionally at every `setGroupParents` call. Attempting to create a cycle rejects the write with a `ProviderWriteRejectedError` whose `code` is `"graph_cycle"` and whose message names the full path:
 
 ```ts
 await app.setGroupParents(
@@ -133,12 +133,12 @@ await app.setGroupParents(
 ```
 
 <Warning>
-Cycle detection is transactional but not automatically serialized across concurrent writes. The storage driver's `runExclusive("groups", ...)` method serializes graph writes per key. If you implement a custom storage driver, you must guarantee this serialization — two individually-safe edge insertions can jointly form a cycle.
+Cycle detection is transactional but not automatically serialized across concurrent writes. The storage driver's `runExclusive("groups", ...)` method serializes graph writes per key. If you implement a custom storage driver, you must guarantee this serialization. Two individually-safe edge insertions can jointly form a cycle.
 </Warning>
 
 ### Groups never revoke
 
-Groups can only widen access — they never narrow it. The only mechanism for restricting a specific user's access is a personal revoke on that individual. This constraint is intentional: union-only inheritance is simple, predictable, and avoids the class of bugs that arise when "deny" semantics on one group override "allow" semantics on another.
+Groups can only widen access, and never narrow it. The only mechanism for restricting a specific user's access is a personal revoke on that individual. This constraint is intentional: union-only inheritance is simple, predictable, and avoids the class of bugs that arise when "deny" semantics on one group override "allow" semantics on another.
 
 ## Virtual parents
 
@@ -174,7 +174,7 @@ await app.setGroupParents(
 
 ### Dissolving a virtual parent
 
-When a virtual parent is no longer needed, call `app.dissolveVirtualParent(groupId, provenance)`. Dissolution is a **snapshot** — every unexpired grant on the virtual parent is copied down to each child group with `provenance: { kind: "dissolution", ... }`, after which the parent is deleted and the children drift freely:
+When a virtual parent is no longer needed, call `app.dissolveVirtualParent(groupId, provenance)`. Dissolution is a **snapshot**: every unexpired grant on the virtual parent is copied down to each child group with `provenance: { kind: "dissolution", ... }`, after which the parent is deleted and the children drift freely:
 
 ```ts
 await app.dissolveVirtualParent(
@@ -185,11 +185,11 @@ await app.dissolveVirtualParent(
 // Children can be edited independently going forward.
 ```
 
-Directory imports that produce cyclic group graphs are **auto-condensed**: each strongly connected component collapses into a virtual parent automatically, with a warning returned in `DirectoryImportResult.warnings`. The semantics are correct — a cycle expresses "these groups are effectively one pool" — and you can dissolve the virtual parents manually afterward.
+Directory imports that produce cyclic group graphs are **auto-condensed**: each strongly connected component collapses into a virtual parent automatically, with a warning returned in `DirectoryImportResult.warnings`. The semantics are correct, because a cycle expresses "these groups are effectively one pool", and you can dissolve the virtual parents manually afterward.
 
 ## Role-based visibility with `canAny`
 
-Use `alfiz.canAny(principal, pattern)` to check whether a user holds any permission matching a wildcard pattern. This is the right tool for deciding whether to show an admin section, a management toolbar, or a restricted menu item — it never gates a concrete action:
+Use `alfiz.canAny(principal, pattern)` to check whether a user holds any permission matching a wildcard pattern. This is the right tool for deciding whether to show an admin section, a management toolbar, or a restricted menu item. It never gates a concrete action:
 
 ```ts
 // Show the admin section only if the user has any admin permission
@@ -200,7 +200,7 @@ const showUserMgmt = await alfiz.canAny({ userId }, "alfiz_internal.*");
 ```
 
 <Warning>
-`canAny` is a **visibility affordance only** — never use it as an authorization gate. Every page and action must still call `alfiz.can(principal, key, scope)` or `alfiz.require(...)` with a concrete key. The static verifier (`alfiz-verify`) will error on `canAny` used in a gate position.
+`canAny` is a **visibility affordance only**. Never use it as an authorization gate. Every page and action must still call `alfiz.can(principal, key, scope)` or `alfiz.require(...)` with a concrete key. The static verifier (`alfiz-verify`) will error on `canAny` used in a gate position.
 </Warning>
 
 ## Built-in `alfiz_internal` permissions
@@ -233,4 +233,4 @@ await app.createGrant({
 });
 ```
 
-The `alfiz_internal` namespace is reserved and cannot be used in your own catalog definition — it is added automatically and will never collide with your application's permission tree.
+The `alfiz_internal` namespace is reserved and cannot be used in your own catalog definition. It is added automatically and will never collide with your application's permission tree.

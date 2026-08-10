@@ -1,10 +1,10 @@
 ---
-title: "snapshot() — Batch Checks in a Single Round-Trip"
+title: "snapshot(): Batch Checks in a Single Round-Trip"
 sidebarTitle: "snapshot()"
 description: "snapshot(principal) fetches all closures and grants in one provider round-trip, returning an AlfizSnapshot with synchronous can() and canAny() methods."
 ---
 
-`snapshot` is the pattern for server-rendered frameworks and any code path that performs multiple authorization checks for the same principal. Instead of making a separate async call for each check, you call `client.snapshot(principal)` once — a single provider round-trip — and then call `.can()`, `.canAny()`, `.require()`, and `.requireAny()` synchronously on the returned snapshot. Every check in the snapshot sees one consistent instant of the principal's access data, which is a stronger per-request guarantee than calling `can` repeatedly against a TTL cache that may tick over mid-render.
+`snapshot` is the pattern for server-rendered frameworks and any code path that performs multiple authorization checks for the same principal. Instead of making a separate async call for each check, you call `client.snapshot(principal)` once, for a single provider round-trip, and then call `.can()`, `.canAny()`, `.require()`, and `.requireAny()` synchronously on the returned snapshot. Every check in the snapshot sees one consistent instant of the principal's access data, which is a stronger per-request guarantee than calling `can` repeatedly against a TTL cache that may tick over mid-render.
 
 ## `client.snapshot(principal, options?)`
 
@@ -22,7 +22,7 @@ async snapshot(
 
 <ParamField body="options.scopes" type="readonly LooseScopeId<S>[]">
   Scope instances to pre-resolve for synchronous scoped checks. You only
-  need to list scopes for **hierarchical** scope types — those whose catalog
+  need to list scopes for **hierarchical** scope types, those whose catalog
   declaration has a non-null `parent`. Flat, top-level scope types (declared
   with `parent: null`) are resolved synchronously from the catalog without
   I/O, so you do not need to list them here. Scopes that appear in the
@@ -38,7 +38,7 @@ async snapshot(
 <ParamField body="options.observe" type="boolean" default="true">
   Whether checks made on this snapshot emit metrics observations. Inert
   unless the client was constructed with `metrics`. Snapshot checks are the
-  render path's conditional-UI traffic — the highest-volume shape there is,
+  render path's conditional-UI traffic, the highest-volume shape there is,
   and what `sampleRate.visibility` exists for. Pass `false` to suppress the
   whole snapshot; view-as previews do this on the previewed subject's side, so
   attribution never follows the preview.
@@ -46,7 +46,7 @@ async snapshot(
 
 <Warning>
   Checking a **hierarchical** scope the snapshot has not resolved throws
-  `UnresolvedScopeError` rather than evaluating a truncated chain — which
+  `UnresolvedScopeError` rather than evaluating a truncated chain, which
   would fail open on an ancestor revoke. Name those scopes in `scopes`, or
   extend the snapshot afterwards with `await snap.resolve(scopes)`. The error
   carries the scope, its type, whether it is declared, and the scopes this
@@ -63,12 +63,12 @@ async snapshot(
   <Expandable title="AlfizSnapshot members">
     <ResponseField name="can(key, scope?)" type="(key: K | readonly K[], scope?: LooseScopeId<S>) => boolean">
       Synchronous authorization gate. Agrees with `client.can` for every
-      pre-resolved scope. Throws for unresolved hierarchical scopes — call
+      pre-resolved scope. Throws for unresolved hierarchical scopes. Call
       `await snap.resolve([...scopes])` first.
     </ResponseField>
     <ResponseField name="canAny(pattern)" type="(pattern: P) => boolean">
       Synchronous visibility affordance. Exact, not approximate: every
-      granted scope's chain was resolved at snapshot time. Never a gate —
+      granted scope's chain was resolved at snapshot time. Never a gate.
       same rule as `client.canAny`.
     </ResponseField>
     <ResponseField name="require(key, scope?)" type="(key: K | readonly K[], scope?: LooseScopeId<S>) => void">
@@ -83,15 +83,15 @@ async snapshot(
     </ResponseField>
     <ResponseField name="heldKeys" type="ReadonlySet<PermissionKey>">
       Every concrete catalog key the principal holds somewhere. Computed
-      once per snapshot on first access — the per-request cache for
+      once per snapshot on first access, the per-request cache for
       unscoped conditional UI.
     </ResponseField>
     <ResponseField name="grantedScopes(key)" type="(key: LooseKey<K>) => { granted: Set<ScopeId>, revoked: Set<ScopeId> }">
-      Synchronous listing primitive — same result as `client.grantedScopes`
+      Synchronous listing primitive, with the same result as `client.grantedScopes`
       but without an async call.
     </ResponseField>
     <ResponseField name="explain(key, scope?)" type="(key: LooseKey<K>, scope?) => CheckExplanation & { objectClosure, active, implied, impliedBy }">
-      Synchronous explain — same result as `client.explain`.
+      Synchronous explain, with the same result as `client.explain`.
     </ResponseField>
     <ResponseField name="resolve(scopes)" type="(scopes: readonly LooseScopeId<S>[]) => Promise<this>">
       Extends the snapshot with additional pre-resolved chains, without
@@ -118,10 +118,10 @@ async snapshot(
 
 Use `client.snapshot(principal)` whenever a single request or render performs more than one check for the same principal:
 
-- **RSC (React Server Component) renders** that check multiple permissions in a single pass — inside `.map()` callbacks, conditional sections, and layout components.
+- **RSC (React Server Component) renders** that check multiple permissions in a single pass, inside `.map()` callbacks, conditional sections, and layout components.
 - **List pages** that render per-item action buttons (edit, delete, share) for every row in a result set.
 - **Route loaders** that guard the page and then conditionally load additional data based on permissions.
-- **Any helper function** that needs to call `can` without being async — pass the snapshot down instead of the client.
+- **Any helper function** that needs to call `can` without being async, pass the snapshot down instead of the client.
 
 Use `client.can` / `client.can.fresh` directly when:
 - You need a single check and are not in a server render.
@@ -131,9 +131,9 @@ Use `client.can` / `client.can.fresh` directly when:
 
 ## Staleness and freshness
 
-A snapshot is a **point-in-time view** of a principal's access. It draws from the same caches as `client.can` — a snapshot is one consistent instant of those caches, which is a *stronger* per-request guarantee (every check sees the same data), not a weaker one.
+A snapshot is a **point-in-time view** of a principal's access. It draws from the same caches as `client.can`, and a snapshot is one consistent instant of those caches, which is a *stronger* per-request guarantee (every check sees the same data), not a weaker one.
 
-For destructive actions within a render, do not re-use the snapshot — use `client.can.fresh(...)` for the destructive gate, keeping the snapshot for read checks.
+For destructive actions within a render, do not re-use the snapshot. Use `client.can.fresh(...)` for the destructive gate, keeping the snapshot for read checks.
 
 <Warning>
   A snapshot captures the subject-closure data once. Do not reuse a snapshot
@@ -158,7 +158,7 @@ export default async function DocPage({
   const scope = `docs.doc:${params.docId}`;
 
   // One round-trip for all checks on this page. `docs.doc` is a HIERARCHICAL
-  // scope type, so name it in `scopes` — the snapshot resolves its ancestor
+  // scope type, so name it in `scopes`, and the snapshot resolves its ancestor
   // chain now, and every check below stays synchronous.
   const snap = await alfiz.snapshot({ userId }, { scopes: [scope] });
 
@@ -230,7 +230,7 @@ export default async function DocsListPage() {
 import type { SnapshotOf } from "@alfiz/core";
 import { catalog } from "./catalog.js";
 
-// SnapshotOf<typeof catalog> is the typed snapshot — no hand-written params.
+// SnapshotOf<typeof catalog> is the typed snapshot, with no hand-written params.
 function renderActions(
   doc: Doc,
   snap: SnapshotOf<typeof catalog>,

@@ -1,10 +1,10 @@
 ---
-title: "can() and require() — Authorization Gates"
+title: "can() and require(): Authorization Gates"
 sidebarTitle: "can()"
 description: "can(principal, key, scope?) returns a boolean authorization decision. require() is the throwing form. can.fresh() bypasses the closure caches."
 ---
 
-`can` is the only gate shape in Alfiz. Every route handler, server action, and API endpoint that enforces access control calls `can` (or its throwing form `require`) on a concrete permission key at a concrete scope. The key is verified against your catalog before evaluation — a key the catalog does not declare raises `UnknownPermissionError`, which is a programming error, not a denial, and must never be mapped to a `403`.
+`can` is the only gate shape in Alfiz. Every route handler, server action, and API endpoint that enforces access control calls `can` (or its throwing form `require`) on a concrete permission key at a concrete scope. The key is verified against your catalog before evaluation, so a key the catalog does not declare raises `UnknownPermissionError`, which is a programming error, not a denial, and must never be mapped to a `403`.
 
 ## `can(principal, key, scope?)`
 
@@ -29,8 +29,8 @@ interface CanFn<K extends string, S extends string = string> {
 <ParamField body="principal" type="PrincipalRef" required>
   Identifies who is being checked. Either `{ userId: string }` for a human
   user or `{ serviceId: string }` for a machine principal. The client
-  resolves the full subject closure — groups, organizations, implicit
-  `directs:` and `orgof:` groups, and `everyone` — from the provider and
+  resolves the full subject closure (groups, organizations, implicit
+  `directs:` and `orgof:` groups, and `everyone`) from the provider and
   caches it for the duration of `subjectCacheTtlMs`.
 </ParamField>
 
@@ -38,13 +38,13 @@ interface CanFn<K extends string, S extends string = string> {
   A permission key (or array of keys) declared in your catalog. If you pass
   an array, the check returns `true` when the principal holds **any** of the
   listed keys at the given scope. The key is a typed string inferred from
-  your catalog — the TypeScript compiler rejects keys that are not in the
+  your catalog, so the TypeScript compiler rejects keys that are not in the
   catalog at literal call sites, and the runtime rejects them everywhere
   else.
 </ParamField>
 
 <ParamField body="scope" type="LooseScopeId<S>">
-  Optional. A scope instance id of the form `<scopeType>:<instanceId>` — for
+  Optional. A scope instance id of the form `<scopeType>:<instanceId>`, for
   example `docs.doc:abc123` or `docs.folder:project-x`. When a scope is
   provided, the client resolves its full ancestor chain and checks grants at
   the scope itself, at every ancestor, and at `*`.
@@ -55,7 +55,7 @@ interface CanFn<K extends string, S extends string = string> {
 
   <Warning>
     **Omitting `scope` means the global scope**, not "any scope". `can(p, key)`
-    asks *may they do this everywhere?* — the strictest question, and the one
+    asks *may they do this everywhere?*, the strictest question and the one
     only a global grant satisfies. The anywhere question is
     [`holds`](/api/granted-scopes), and it is never a gate.
   </Warning>
@@ -74,7 +74,7 @@ interface CanFn<K extends string, S extends string = string> {
   Resolves to `true` when the principal holds the key at the given scope
   (directly or through a covering grant higher in the hierarchy), and `false`
   in every other case including inactive principals, expired grants, and
-  suppressed grants. This method never throws for a denial — only
+  suppressed grants. This method never throws for a denial, only
   `require` throws.
 </ResponseField>
 
@@ -96,14 +96,14 @@ can.fresh(
 Use `can.fresh` in place of `can` for:
 
 - **Destructive actions** (`delete`, `purge`, `destroy_*`) where acting on a stale "yes" is irreversible.
-- **Just-in-time elevations** — time-limited grants where the expiry boundary matters at the second level, not the minute level.
+- **Just-in-time elevations.** Time-limited grants where the expiry boundary matters at the second level, not the minute level.
 - Any endpoint where a user has just had access revoked and you need to see that revocation immediately rather than waiting for the TTL to expire.
 
 <Tip>
   Pair `can.fresh` with standalone destructive permission leaves. When your
   catalog declares `delete` as its own leaf rather than bundling it with
   `update`, the fresh check only pays the cost of a single destructive
-  surface — not every check on the page.
+  surface, and not every check on the page.
 </Tip>
 
 ---
@@ -127,11 +127,11 @@ The throwing form of `can`. Identical semantics: it uses the cached path (not `f
 |-------------------|---------------------------------------------------------------|
 | `"forbidden"`     | The principal is active but does not hold the key at scope.   |
 | `"inactive"`      | The principal exists but has been deactivated.                |
-| `"unauthenticated"` | No principal at all — the identity layer produced nobody.   |
+| `"unauthenticated"` | No principal at all: the identity layer produced nobody.   |
 
 <Warning>
   Map `AccessDeniedError` to a `403` or a redirect. If you catch
-  `UnknownPermissionError` — thrown when the key is not in the catalog — map
+  `UnknownPermissionError` is thrown when the key is not in the catalog. Map
   it to a `500`. These are two distinct error classes: one is a runtime
   denial, the other is a programming mistake.
 </Warning>
@@ -142,8 +142,8 @@ The throwing form of `can`. Identical semantics: it uses the cached path (not `f
 
 Alfiz caches two things independently, both parameterized by provider invalidation events:
 
-- **Subject closure** — the principal's group memberships, org memberships, and implicit groups. Cached for `subjectCacheTtlMs` (default 30 s) and bust immediately when the provider emits a `user`, `subject`, `role`, or `all` invalidation event.
-- **Object ancestor chain** — the ancestry path from a scope instance up to `*`. Cached for `objectCacheTtlMs` (default 60 s) and bust immediately when the provider emits a `scope` event for any scope in the chain.
+- **Subject closure.** The principal's group memberships, org memberships, and implicit groups. Cached for `subjectCacheTtlMs` (default 30 s) and bust immediately when the provider emits a `user`, `subject`, `role`, or `all` invalidation event.
+- **Object ancestor chain.** The ancestry path from a scope instance up to `*`. Cached for `objectCacheTtlMs` (default 60 s) and bust immediately when the provider emits a `scope` event for any scope in the chain.
 
 Neither the grant evaluation result nor the final boolean is ever cached. Every `can` call re-evaluates the decision from freshly obtained (or cache-hit) closures.
 
@@ -164,7 +164,7 @@ if (await alfiz.can(principal, "docs.files.read")) {
 return new Response("Forbidden", { status: 403 });
 ```
 
-### Scoped gate — checking access to a specific document
+### Scoped gate: checking access to a specific document
 
 ```typescript
 async function getDocument(userId: string, docId: string) {
@@ -185,7 +185,7 @@ async function getDocument(userId: string, docId: string) {
 export async function updateDocument(docId: string, patch: DocPatch) {
   const { userId } = await getSession();
 
-  // Throws AccessDeniedError if not permitted — caught by the framework.
+  // Throws AccessDeniedError if not permitted, and caught by the framework.
   await alfiz.require(
     { userId },
     "docs.files.update_file",
@@ -202,7 +202,7 @@ export async function updateDocument(docId: string, patch: DocPatch) {
 export async function deleteDocument(docId: string) {
   const { userId } = await getSession();
 
-  // Bypass the cache — deletion is irreversible.
+  // Bypass the cache, because deletion is irreversible.
   const allowed = await alfiz.can.fresh(
     { userId },
     "docs.files.delete",

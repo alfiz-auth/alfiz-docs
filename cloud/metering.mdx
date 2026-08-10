@@ -10,29 +10,29 @@ Alfiz Cloud bills for the work it performs. The dimensions are few, they are all
 
 | Dimension | Kind | What moves it |
 |---|---|---|
-| Admin seats | Standing | Authenticated Dashboard sessions — billing starts at first sign-in, not at invite. |
-| Linked applications | Standing | Applications registered and linked. Included at no cost — the seat, not the link, is the product. |
+| Admin seats | Standing | Authenticated Dashboard sessions. Billing starts at first sign-in rather than at invite. |
+| Linked applications | Standing | Applications registered and linked. Included at no cost, because the seat is the product and the link is not. |
 | Federated applications | Standing | Member applications under the hosted org root. |
-| Provisioned connectors | Standing | Operating reconcilers for an external system — one per connector. |
+| Provisioned connectors | Standing | Operating reconcilers for an external system, one per connector. |
 | Retained audit events | Counted | Events ingested into opt-in hosted retention. |
 | Catalog publishes | Guardrail | Publishes to the registry. |
 | Org-root read-model sync | Guardrail | Snapshot pushes keeping a member application's read model current. |
 
-**Standing** dimensions bill for what exists — a seat, an application — at a monthly rate. **Counted** dimensions bill for what happened — events ingested. **Guardrail** dimensions are metered but carry generous included volumes; they exist to keep pathological automation visible, not to price ordinary use.
+**Standing** dimensions bill for what exists, such as a seat or an application, at a monthly rate. **Counted** dimensions bill for what happened, meaning events ingested. **Guardrail** dimensions are metered but carry generous included volumes; they exist to keep pathological automation visible, not to price ordinary use.
 
 ## Alfiz is never in your request path
 
-Every `can()` runs in-process against your own database. Alfiz Cloud is not a dependency of your application: it cannot add latency to a check, cannot throttle one, and cannot fail in a way that stops one. That holds in every topology, including full federation — the relay carries administrative traffic only, and the audit stream is opt-in and never sits between a request and its answer.
+Every `can()` runs in-process against your own database. Alfiz Cloud is not a dependency of your application: it cannot add latency to a check, cannot throttle one, and cannot fail in a way that stops one. That holds in every topology, including full federation, because the relay carries administrative traffic only, and the audit stream is opt-in and never sits between a request and its answer.
 
-Pricing follows from it. Alfiz Cloud bills for the work it performs — the dimensions above — and **check volume is not a billing dimension and will not become one.**
+Pricing follows from it. Alfiz Cloud bills for the work it performs, being the dimensions above, and **check volume is not a billing dimension and will not become one.**
 
 <Note>
-  [Permission metrics](/enforcement/metrics) are a different feature with a confusingly similar name. Metering counts work Alfiz Cloud performed; metrics count checks *your application* performed. Metrics are stored by the application that produced them, in its own database. The hosted dashboard can *read* them for your own administrators — the same relayed read as every other admin surface — but Alfiz Cloud stores no copy and never bills on them.
+  [Permission metrics](/enforcement/metrics) are a different feature with a confusingly similar name. Metering counts work Alfiz Cloud performed; metrics count checks *your application* performed. Metrics are stored by the application that produced them, in its own database. The hosted dashboard can *read* them for your own administrators, the same relayed read as every other admin surface, but Alfiz Cloud stores no copy and never bills on them.
 </Note>
 
 ## Reading your meters
 
-Every meter is readable over the API, exactly as the Dashboard renders it — same numbers, same server function:
+Every meter is readable over the API, exactly as the Dashboard renders it, with the same numbers and the same server function:
 
 ```text
 GET /api/v1/orgs/{org}/billing/usage
@@ -46,7 +46,7 @@ Every dimension carries a hard cap, settable per dimension:
 PUT /api/v1/orgs/{org}/billing/caps/{dimension}
 ```
 
-Crossing a cap degrades hosted convenience and nothing else — retention ingest pauses, relay cadence slows. It never degrades any locally-running capability: checks, grants, enforcement, and your own admin surfaces continue untouched, because none of them run on Alfiz Cloud in the first place.
+Crossing a cap degrades hosted convenience and nothing else: retention ingest pauses, relay cadence slows. It never degrades any locally-running capability: checks, grants, enforcement, and your own admin surfaces continue untouched, because none of them run on Alfiz Cloud in the first place.
 
 ## Prices
 
@@ -54,7 +54,7 @@ The numbers live with the tiers they belong to:
 
 <CardGroup cols={2}>
   <Card title="Linked pricing" icon="link" href="/growth/linked#pricing">
-    Admin seats and opt-in audit retention — the linked application itself is free.
+    Admin seats and opt-in audit retention. The linked application itself is free.
   </Card>
   <Card title="Federation pricing" icon="share-nodes" href="/growth/federated#pricing">
     The federation base, member applications, provisioned connectors, and carried-over seats.

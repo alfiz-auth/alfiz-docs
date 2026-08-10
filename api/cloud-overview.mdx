@@ -4,7 +4,7 @@ sidebarTitle: "REST API"
 description: "How to authenticate against the Alfiz Cloud REST API, why it has full parity with the Dashboard, and how error names map to HTTP statuses."
 ---
 
-The Alfiz Cloud REST API lives under `/api/v1`. It is the complete administrative surface of Alfiz Cloud — everything the Dashboard can do, the API can do, because they are the same thing underneath.
+The Alfiz Cloud REST API lives under `/api/v1`. It is the complete administrative surface of Alfiz Cloud: everything the Dashboard can do, the API can do, because they are the same thing underneath.
 
 ## Authentication
 
@@ -12,14 +12,14 @@ Four credentials, four shapes of caller:
 
 | Credential | Carried as | What it is |
 |---|---|---|
-| Session cookie | Cookie | A Dashboard session — the browser's credential, established by `POST /auth/sign-in`. |
-| Admin key | `Authorization: Bearer` | Acts as a named seat. Everything the seat's grants allow, the key allows — no more. |
-| Principal key | `Authorization: Bearer` | A machine subject for `{ serviceId }` evaluation — automation that holds its own grants rather than borrowing a person's. |
+| Session cookie | Cookie | A Dashboard session: the browser's credential, established by `POST /auth/sign-in`. |
+| Admin key | `Authorization: Bearer` | Acts as a named seat. Everything the seat's grants allow, the key allows, and no more. |
+| Principal key | `Authorization: Bearer` | A machine subject for `{ serviceId }` evaluation, being automation that holds its own grants rather than borrowing a person's. |
 | Publisher key | `Authorization: Bearer` | Valid for the publish endpoint only, scoped to one namespace. CI holds this and nothing else. |
 
 ## Parity with the Dashboard
 
-Every Dashboard workflow is a documented endpoint calling the same server functions — the API is not a second implementation. There is no operation the Dashboard performs that the API cannot, no meter the Dashboard renders that `GET /orgs/{org}/billing/usage` does not return, and no divergence to discover later. Parity is structural, not maintained.
+Every Dashboard workflow is a documented endpoint calling the same server functions, so the API is not a second implementation. There is no operation the Dashboard performs that the API cannot, no meter the Dashboard renders that `GET /orgs/{org}/billing/usage` does not return, and no divergence to discover later. Parity is structural, not maintained.
 
 ## The error envelope
 
@@ -29,17 +29,17 @@ Every error response carries one envelope:
 { "error": { "name": "ProviderWriteRejectedError", "code": "not_org_root", "message": "..." } }
 ```
 
-`name` identifies the error class, `code` discriminates within it where one exists, and additional fields carry structured detail — `GraphCycleError` names the full cycle path, `PromotionConflictError` carries a `conflicts` array.
+`name` identifies the error class, `code` discriminates within it where one exists, and additional fields carry structured detail, so `GraphCycleError` names the full cycle path, `PromotionConflictError` carries a `conflicts` array.
 
 | Error name | Status | Meaning |
 |---|---|---|
-| `CloudError` | 400 / 403 / 404 / 409 by `code` | Cloud-side failures — malformed input, missing entities, state conflicts; the `code` discriminates. |
+| `CloudError` | 400 / 403 / 404 / 409 by `code` | Cloud-side failures: malformed input, missing entities, state conflicts; the `code` discriminates. |
 | `ProviderWriteRejectedError` | By `code` | The provider refused a write: `not_org_root` 409, `graph_cycle` 409, `validation` 400, `not_found` 404, `conflict` 409, `unsupported` 501. |
 | `GraphCycleError` | 409 | A cycle in the group-parentage graph, surfaced by the Cloud-side editors. A relayed `setGroupParents` reports the same condition as `ProviderWriteRejectedError` with `code: "graph_cycle"`, message `cycle: a → b → a`. |
 | `AccessDeniedError` | 403 | The caller's grants do not cover the gate. An authorization answer, delivered as one. |
-| `UnknownPermissionError` | 500 | A key was checked that no catalog declares. A programming error, never an authorization answer — it fails loudly rather than quietly denying. |
-| `RegistryError` | 400 / 403 / 409 by `code` | Registry failures — malformed documents, publishes outside the key's namespace, out-of-order versions. |
-| `PromotionConflictError` | 409 | A merge surfaced conflicts — the response's `conflicts` array lists each id collision and reporting-tree conflict awaiting resolution. |
+| `UnknownPermissionError` | 500 | A key was checked that no catalog declares. A programming error, never an authorization answer. It fails loudly rather than quietly denying. |
+| `RegistryError` | 400 / 403 / 409 by `code` | Registry failures: malformed documents, publishes outside the key's namespace, out-of-order versions. |
+| `PromotionConflictError` | 409 | A merge surfaced conflicts, and the response's `conflicts` array lists each id collision and reporting-tree conflict awaiting resolution. |
 
 <Card title="Endpoints" icon="list" href="/api/cloud-endpoints">
   The full endpoint inventory, grouped by area, with gates and body semantics.

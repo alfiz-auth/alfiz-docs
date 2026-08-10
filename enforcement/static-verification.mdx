@@ -4,9 +4,9 @@ sidebarTitle: "Static Verification"
 description: "Run alfiz-verify in CI to catch ungated server actions, misused canAny() calls, and catalog violations before they reach production."
 ---
 
-`alfiz-verify` is a build-time linter that reads your source files and catalog to enforce the four-point wiring convention. It checks that every exported server action is gated, that `canAny` never appears in server-side enforcement points, that every key in the catalog is referenced by at least one gate, and that the catalog itself is internally consistent. The checks require no TypeScript language-server — they run on parsed syntax, which means they are fast enough for CI and cheap enough to run on every commit.
+`alfiz-verify` is a build-time linter that reads your source files and catalog to enforce the four-point wiring convention. It checks that every exported server action is gated, that `canAny` never appears in server-side enforcement points, that every key in the catalog is referenced by at least one gate, and that the catalog itself is internally consistent. The checks require no TypeScript language-server. They run on parsed syntax, which means they are fast enough for CI and cheap enough to run on every commit.
 
-The verifier exists because the convention document is only trustworthy if tooling backs it up. Coding agents wire authorization steps in the order they encounter them — they will skip step three of four unless a failing build stops them. `alfiz-verify` is that stop.
+The verifier exists because the convention document is only trustworthy if tooling backs it up. Coding agents wire authorization steps in the order they encounter them, so they will skip step three of four unless a failing build stops them. `alfiz-verify` is that stop.
 
 ---
 
@@ -61,8 +61,8 @@ await alfiz.can({ userId }, "docs.files.read"); // OK
 
 `alfiz-verify` scans every gate call site in your included files and navigation items in your catalog, then cross-references the full list of catalog leaves:
 
-- **Warning (`unreferenced-leaf`)** — a catalog leaf that no gate or navigation item references. This may be a dead permission or a missing enforcement point.
-- **Error (`ungated-action`)** — an exported `async` function in a `"use server"` file that contains no gate at all.
+- **Warning (`unreferenced-leaf`).** A catalog leaf that no gate or navigation item references. This may be a dead permission or a missing enforcement point.
+- **Error (`ungated-action`).** An exported `async` function in a `"use server"` file that contains no gate at all.
 
 ```
 ⚠ [unreferenced-leaf] <catalog> — "docs.files.read_history" is declared but referenced by no gate or nav item — dead permission, or missing enforcement?
@@ -71,7 +71,7 @@ await alfiz.can({ userId }, "docs.files.read"); // OK
 
 ### 3. Gate-shape linting
 
-`alfiz-verify` errors whenever a visibility affordance — `canAny`, `requireAny`, or `holds` — appears inside a server action or route handler. Visibility affordances answer "should this section exist?"; they are never authorization gates. The rule fires on **any** call to one of these names inside a server file, not only on calls that appear to guard something.
+`alfiz-verify` errors whenever a visibility affordance (`canAny`, `requireAny`, or `holds`) appears inside a server action or route handler. Visibility affordances answer "should this section exist?"; they are never authorization gates. The rule fires on **any** call to one of these names inside a server file, not only on calls that appear to guard something.
 
 ```
 ✖ [visibility-as-gate] app/api/drive/route.ts:12 — canAny() is a visibility affordance, never a gate — server actions and route handlers gate on a concrete permission (can/require*)
@@ -89,12 +89,12 @@ The rule is syntax-level and honest about its reach: an options object built els
 
 ### 4. Catalog linting
 
-`lintCatalog` runs over the loaded catalog document alongside the code scan, so one command covers the full checklist. It reports six things, and each carries its own severity — a warning does not fail the build:
+`lintCatalog` runs over the loaded catalog document alongside the code scan, so one command covers the full checklist. It reports six things, and each carries its own severity, so a warning does not fail the build:
 
 | Finding | Severity |
 |---|---|
-| A key whose depth is not **exactly** `conventions.depth` (default 3) | Error — [set or disable `depth`](#key-depth) |
-| An empty group — declared but with no permissions under it | Error |
+| A key whose depth is not **exactly** `conventions.depth` (default 3) | Error. [Set or disable `depth`](#key-depth) |
+| An empty group, declared but with no permissions under it | Error |
 | A group below the naming floor: no `read` or `read_<thing>` leaf | Error |
 | A nav `permission` that is not a valid key or pattern, or references nothing in the catalog | Error |
 | A `requestable` declaration with no resolvable policy (zero approval stages) | Error |
@@ -119,7 +119,7 @@ conventions: { depth: "any" }  // no depth check at all
 ```
 
 <Tip>
-  If depth findings are the only thing standing between you and a green build, set `{ depth: "any" }` and keep the rules that catch real problems — an ungated action, a visibility affordance used as a gate, a key no gate references. Nothing about evaluation, grants, or wildcards depends on how many segments your keys have.
+  If depth findings are the only thing standing between you and a green build, set `{ depth: "any" }` and keep the rules that catch real problems: an ungated action, a visibility affordance used as a gate, a key no gate references. Nothing about evaluation, grants, or wildcards depends on how many segments your keys have.
 </Tip>
 
 Lint findings are reported over **owned** entries only. Another application's imported keys answer to its conventions, not yours, and a finding your codebase cannot act on is the wrong kind of finding.
@@ -151,11 +151,11 @@ Lint findings are reported over **owned** entries only. Another application's im
 </ParamField>
 
 <ParamField body="exclude" type="string[]" default='["node_modules", "dist", ".next", ".git"]'>
-  Path substrings to skip. Entries in this list are matched against the full resolved path — any file whose path contains any entry is excluded.
+  Path substrings to skip. Entries in this list are matched against the full resolved path, so any file whose path contains any entry is excluded.
 </ParamField>
 
 <ParamField body="gateNames" type="string[]">
-  Additional function and method names to treat as authorization gates. **Added to** the built-in defaults (`can`, `fresh`, `require`, `requirePermission`, `gateAction`, `apiRequirePermission`) — you do not need to restate the defaults. Pass your own wrapper names here so the coverage linter recognizes actions gated through them.
+  Additional function and method names to treat as authorization gates. **Added to** the built-in defaults (`can`, `fresh`, `require`, `requirePermission`, `gateAction`, `apiRequirePermission`), so you do not need to restate the defaults. Pass your own wrapper names here so the coverage linter recognizes actions gated through them.
 </ParamField>
 
 <ParamField body="visibilityNames" type="string[]">
@@ -167,11 +167,11 @@ Lint findings are reported over **owned** entries only. Another application's im
 </ParamField>
 
 <ParamField body="forbidClientIdentifiers" type="string[]">
-  Identifier names that must never appear in a `"use client"` module. Use this to guard service-key constants — if the identifier appears in a client file, `alfiz-verify` emits a `client-reachable-secret` error and fails the build.
+  Identifier names that must never appear in a `"use client"` module. Use this to guard service-key constants: if the identifier appears in a client file, `alfiz-verify` emits a `client-reachable-secret` error and fails the build.
 </ParamField>
 
 <Note>
-`gateNames`, `visibilityNames`, and `serverFilePatterns` are **additive** in the config file. The CLI merges your entries with the built-in defaults so that forgetting to list `can` does not silently un-gate your codebase. The programmatic `verifyProject()` API uses replacement semantics — pass `[...DEFAULT_GATE_NAMES, "yourWrapper"]` explicitly when calling it directly.
+`gateNames`, `visibilityNames`, and `serverFilePatterns` are **additive** in the config file. The CLI merges your entries with the built-in defaults so that forgetting to list `can` does not silently un-gate your codebase. The programmatic `verifyProject()` API uses replacement semantics, so pass `[...DEFAULT_GATE_NAMES, "yourWrapper"]` explicitly when calling it directly.
 </Note>
 
 ---
@@ -197,13 +197,13 @@ export async function assertCanEditFile(userId: string, folderId: string) {
 }
 ```
 
-The verifier matches on the **final name** of any call expression — `client.can`, `session.require`, `gateDestructiveAction`, and `can.fresh` all match on `can`, `require`, `gateDestructiveAction`, and `fresh` respectively.
+The verifier matches on the **final name** of any call expression, so `client.can`, `session.require`, `gateDestructiveAction`, and `can.fresh` all match on `can`, `require`, `gateDestructiveAction`, and `fresh` respectively.
 
 ---
 
 ## File-level opt-out
 
-Files that authenticate outside the catalog by design — system trust domains, deploy-key surfaces, health-check endpoints — can opt out of scanning with a file-header comment:
+Files that authenticate outside the catalog by design, such as system trust domains, deploy-key surfaces and health-check endpoints, can opt out of scanning with a file-header comment:
 
 ```ts
 // alfiz-verify-ignore-file system trust domain, authenticates by deploy key
@@ -214,10 +214,10 @@ Files that authenticate outside the catalog by design — system trust domains, 
 export async function handleWebhook(req: Request) { ... }
 ```
 
-Place the pragma in the **file header**: above the first non-directive statement, inside a line or block comment. It is also valid between `"use server"` / `"use client"` directives. A reason is required — an unexplained exemption in a security tool is how exemptions rot.
+Place the pragma in the **file header**: above the first non-directive statement, inside a line or block comment. It is also valid between `"use server"` / `"use client"` directives. A reason is required, because an unexplained exemption in a security tool is how exemptions rot.
 
 <Warning>
-A pragma placed after the first non-directive statement is inert. `alfiz-verify` reports it as a warning rather than silently skipping it — you will see a `⚠ [ignored-file]` entry and the file will still be scanned.
+A pragma placed after the first non-directive statement is inert. `alfiz-verify` reports it as a warning rather than silently skipping it, so you will see a `⚠ [ignored-file]` entry and the file will still be scanned.
 </Warning>
 
 Skipped files appear in the output as `○ [ignored]` lines, with their reason, so reviewers can audit the exemption list:
@@ -239,7 +239,7 @@ await client.can(user, legacyKey);
 await client.can(user, k); // alfiz-verify-ignore-line implicit-import same bridge
 ```
 
-`-next-line` applies to the line below it. The trailing `-line` form applies to its own line, and only when it trails code — a comment alone on a line is not a trailing pragma.
+`-next-line` applies to the line below it. The trailing `-line` form applies to its own line, and only when it trails code. A comment alone on a line is not a trailing pragma.
 
 <Warning>
 The **rule name is required**, not optional. An unqualified per-line ignore is how a `client-reachable-secret` error gets silenced by someone reaching for the nearest way to quiet an unrelated warning. Name the rule it suppresses.
@@ -263,17 +263,17 @@ Every issue is printed to `stderr` in the format:
 <symbol> [<rule>] <file>:<line> — <message>
 ```
 
-- `✖` — error-severity issue
-- `⚠` — warning-severity issue
-- `○` — skipped file
+- `✖` for an error-severity issue
+- `⚠` for a warning-severity issue
+- `○` for a skipped file
 
 **Exit codes:**
 
 | Code | Meaning |
 |---|---|
-| `0` | Clean — no errors found (warnings may still be present) |
+| `0` | Clean, with no errors found (warnings may still be present) |
 | `1` | One or more error-severity issues found |
-| `2` | Config or parse failure — the config file was missing, malformed, or the catalog JSON could not be read |
+| `2` | Config or parse failure: the config file was missing, malformed, or the catalog JSON could not be read |
 
 A sample run with errors:
 

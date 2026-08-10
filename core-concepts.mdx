@@ -1,16 +1,16 @@
 ---
 title: "Core Concepts: How Alfiz Models Authorization in TypeScript"
 sidebarTitle: Core Concepts
-description: Learn Alfiz's five semantic building blocks — catalog, grants, scopes, subjects, and checks — and how they compose to model any access control policy.
+description: Learn Alfiz's five semantic building blocks (catalog, grants, scopes, subjects, and checks) and how they compose to model any access control policy.
 ---
 
-Alfiz is not a general-purpose policy engine. It ships with strong, fixed opinions about how authorization should work — five building blocks that compose cleanly, and a set of semantic rules that are stated openly rather than buried in configuration. This page walks through each building block and then summarizes the rules as a table you can keep open while you design your permission tree.
+Alfiz holds fixed opinions about how authorization works, which is why it makes a poor general-purpose policy engine. There are five building blocks, they compose cleanly, and the semantic rules that govern them are written down here instead of buried in configuration. This page walks through each block and then summarizes those rules as a table you can keep open while you design your permission tree.
 
 ---
 
 ## The catalog
 
-The catalog is your application's single source of truth for every permission key, every scope type, and the relationships between them. You declare it explicitly in TypeScript using `defineCatalog` — nothing is inferred from call sites, and nothing is configured in a dashboard.
+The catalog is your application's single source of truth for every permission key, every scope type, and the relationships between them. You declare it explicitly in TypeScript using `defineCatalog`. Nothing is inferred from call sites, and nothing is configured in a dashboard.
 
 ```ts
 import { defineCatalog } from "@alfiz/core";
@@ -29,19 +29,19 @@ export const catalog = defineCatalog({
 });
 ```
 
-Permissions are declared by their **full dotted key** — the same notation every check, grant, role pattern, and navigation entry uses. A key at a call site greps straight back to its declaration, and the group levels (`docs`, `docs.files`) are inferred from the keys rather than declared.
+Permissions are declared by their **full dotted key**, the same notation every check, grant, role pattern, and navigation entry uses. A key at a call site greps straight back to its declaration, and the group levels (`docs`, `docs.files`) are inferred from the keys, never declared.
 
-`defineCatalog` throws at boot if the catalog is structurally invalid (bad segments, undeclared scope types, a key that is also a group path). That means a broken catalog fails fast, before your server accepts any requests. Conventions — key depth, the naming floor, nav wiring — are reported by `lintCatalog` and failed by `@alfiz/verify` in CI instead, so house style is a setting rather than a boot-time law.
+`defineCatalog` throws at boot if the catalog is structurally invalid (bad segments, undeclared scope types, a key that is also a group path). That means a broken catalog fails fast, before your server accepts any requests. Conventions such as key depth, the naming floor and nav wiring are reported by `lintCatalog` and failed by `@alfiz/verify` in CI instead, so house style stays a setting you control.
 
-**Template-literal types** flow from the catalog literal to every call site. The type `KeyOf<typeof catalog>` resolves to the union `"docs.files.read" | "docs.files.update_file" | "docs.files.delete"` — plus the built-in `alfiz_internal.*` keys. Pass a misspelled key to `alfiz.can()` and TypeScript reports a compile-time error. The runtime evaluator also verifies every key before evaluating it, which closes the hole where a runtime-string path could pass for anyone holding a covering wildcard.
+**Template-literal types** flow from the catalog literal to every call site. The type `KeyOf<typeof catalog>` resolves to the union `"docs.files.read" | "docs.files.update_file" | "docs.files.delete"`, plus the built-in `alfiz_internal.*` keys. Pass a misspelled key to `alfiz.can()` and TypeScript reports a compile-time error. The runtime evaluator also verifies every key before evaluating it, which closes the hole where a runtime-string path could pass for anyone holding a covering wildcard.
 
-Beyond that, Alfiz has house conventions — a `read` leaf per group, `<verb>_<noun>` action names, a key depth — checked by `lintCatalog` and reported in CI by `@alfiz/verify`. They are **preferences with a default, not rules of the system**: nothing about evaluation, grants, patterns, or types reads them, and `conventions: { depth: "any" }` turns the depth check off entirely. Adopting Alfiz in an existing codebase means setting them to match your keys, not renaming your keys to match them.
+Beyond that, Alfiz has house conventions (a `read` leaf per group, `<verb>_<noun>` action names, a key depth) checked by `lintCatalog` and reported in CI by `@alfiz/verify`. They are **preferences with a default**. Nothing about evaluation, grants, patterns, or types reads them, and `conventions: { depth: "any" }` turns the depth check off entirely. Adopting Alfiz in an existing codebase means setting them to match your keys, not renaming your keys to match them.
 
 ---
 
 ## Grant rows
 
-A grant row is the atomic unit of access in Alfiz. Every form of access — an admin assignment, a role, a group membership, public (`everyone`) access, a time-bound elevation — reduces to the same tuple:
+A grant row is the atomic unit of access in Alfiz. Every form of access reduces to the same tuple, whether it is an admin assignment, a role, a group membership, public (`everyone`) access, or a time-bound elevation:
 
 ```
 (subject, role-or-pattern, scope, expiry?)
@@ -59,7 +59,7 @@ await app.createGrant({
 });
 ```
 
-**Provenance** records the `kind` of change (`"admin"`, `"request"`, `"import"`, `"system"`, etc.) and the actor who made it. It is validated at the top of every write — never after storage is touched — so a bad provenance cannot leave a written row with no audit entry.
+**Provenance** records the `kind` of change (`"admin"`, `"request"`, `"import"`, `"system"`, etc.) and the actor who made it. It is validated at the top of every write, before storage is touched, so a bad provenance cannot leave a written row with no audit entry.
 
 Because grants key on subject and scope *strings* (not foreign keys), deleting a principal or a resource in your database does not automatically clean up its grants. Wire `app.deleteSubject(subject, provenance)` into your user-deletion path and `app.deleteScope(scope, provenance)` into your resource-deletion path. A reused ID would inherit stranded access without this discipline.
 
@@ -81,7 +81,7 @@ A subject identifies *who* is being granted access. Alfiz recognizes several sub
 
 When Alfiz evaluates a check for a user, it first computes the **subject closure**: the complete set of subject strings that apply to that user at that moment. A user who is a member of `group:eng`, which is itself a child of `group:staff`, has a closure that includes `user:<id>`, `group:eng`, `group:staff`, `everyone`, and any relevant `org:` and manager-chain subjects.
 
-Subject closures are cached (default 30-second TTL) and busted immediately by invalidation events — so adding a user to a group or revoking a role takes effect within the TTL without requiring a restart or a manual cache flush. In multi-node or serverless deployments, opt into cross-process revalidation to tighten that bound to a configurable window regardless of TTL — see [createAlfizClient](/api/create-alfiz-client) for `revalidateAfterMs` and `cacheStore`.
+Subject closures are cached (default 30-second TTL) and busted immediately by invalidation events, so adding a user to a group or revoking a role takes effect within the TTL without requiring a restart or a manual cache flush. In multi-node or serverless deployments, opt into cross-process revalidation to tighten that bound to a configurable window regardless of TTL. See [createAlfizClient](/api/create-alfiz-client) for `revalidateAfterMs` and `cacheStore`.
 
 ---
 
@@ -89,9 +89,9 @@ Subject closures are cached (default 30-second TTL) and busted immediately by in
 
 A scope identifies *where* a grant applies. Alfiz uses three levels:
 
-- **Global (`*`)** — the grant applies everywhere. A global `docs.files.read` grant lets the subject read any file in the system.
-- **Scope instance** — a specific resource, identified by a string like `docs.doc:123` or `docs.folder:42`. The format is `<scope-type>:<id>`.
-- **Scope type** — declared in the catalog (e.g. `docs.doc` with `parent: "docs.folder"`). The parent relationship defines the hierarchy.
+- **Global (`*`).** The grant applies everywhere. A global `docs.files.read` grant lets the subject read any file in the system.
+- **Scope instance.** A specific resource, identified by a string like `docs.doc:123` or `docs.folder:42`. The format is `<scope-type>:<id>`.
+- **Scope type.** Declared in the catalog (e.g. `docs.doc` with `parent: "docs.folder"`). The parent relationship defines the hierarchy.
 
 When a check arrives for `docs.doc:123`, Alfiz builds the **object closure**: the ancestor chain from that document up to `*`. For a document nested inside a folder, the chain is `["docs.doc:123", "docs.folder:42", "*"]`. A grant on any node in that chain satisfies the check.
 
@@ -101,7 +101,7 @@ When a check arrives for `docs.doc:123`, Alfiz builds the **object closure**: th
     └── docs.doc:123 ← check target
 ```
 
-Ancestor chains are walked **O(depth)** at check time against the ancestry resolver you supply. They are cached (default 60-second TTL) and busted immediately when you call `app.notifyScopeMoved(scope)` — so moving a sensitive document into a restricted folder takes effect at once if you pair the move with that call.
+Ancestor chains are walked **O(depth)** at check time against the ancestry resolver you supply. They are cached (default 60-second TTL) and busted immediately when you call `app.notifyScopeMoved(scope)`, so moving a sensitive document into a restricted folder takes effect at once if you pair the move with that call.
 
 Grants are **stored once** at the node where they are made. Alfiz never fans grants out to descendants, which means adding a document to a folder does not require rewriting any rows.
 
@@ -114,13 +114,13 @@ Grants are **stored once** at the node where they are made. Alfiz never fans gra
 Under the hood the evaluator:
 
 1. Fetches the subject closure (from cache or provider).
-2. Builds the object closure — the ancestor chain from the target scope to `*`.
+2. Builds the object closure: the ancestor chain from the target scope to `*`.
 3. Looks for a grant row whose subject is in the closure, whose pattern matches the key, whose scope is in the object closure, and whose expiry (if any) has not passed.
 4. Checks whether any personal revoke for the user suppresses that grant.
 
 ```ts
-// Global check: does the user hold docs.files.read at the GLOBAL scope —
-// "everywhere"? This is the strictest form, not "anywhere".
+// Global check: does the user hold docs.files.read everywhere, at the
+// GLOBAL scope? This is the strictest form, and not "anywhere".
 await alfiz.can({ userId }, "docs.files.read");
 
 // Scoped check: a grant on the parent folder satisfies this.
@@ -130,13 +130,13 @@ await alfiz.can({ userId }, "docs.files.read", "docs.doc:123");
 // Never use this as an authorization gate.
 await alfiz.canAny({ userId }, "docs.files.*");
 
-// The "anywhere" question for a single key — also never a gate.
+// The "anywhere" question for a single key. Also never a gate.
 await alfiz.holds({ userId }, "docs.files.read");
 ```
 
 <Warning>
   Omitting the scope means the **global** scope, not "any scope". `can(p, key)`
-  asks *may they do this everywhere?* — the strictest question there is. The
+  asks *may they do this everywhere?*, the strictest question there is. The
   anywhere question is `holds`, and neither `holds` nor `canAny` may be used as
   a gate; `alfiz-verify` makes that a build error.
 </Warning>
@@ -150,7 +150,7 @@ await alfiz.holds({ userId }, "docs.files.read");
 await alfiz.can.fresh({ userId }, "docs.files.delete", "docs.folder:42");
 ```
 
-For server-rendered pages that call multiple checks per request, take a **snapshot** instead of calling `can` repeatedly. A snapshot fetches subject and object data once, then checks synchronously — a stronger consistency guarantee than repeated async calls, and safe inside `.map()`:
+For server-rendered pages that call multiple checks per request, take a **snapshot** instead of calling `can` repeatedly. A snapshot fetches subject and object data once, then checks synchronously. That is a stronger consistency guarantee than repeated async calls, and it is safe inside `.map()`:
 
 ```ts
 const snap = await alfiz.snapshot({ userId });
@@ -163,16 +163,16 @@ snap.heldKeys;                        // every key held at any scope
 
 ## Semantic opinions
 
-Alfiz is unopinionated about storage, transport, and deployment. It is maximally opinionated about authorization semantics. The rules below are fixed — they are not pluggable.
+Storage, transport and deployment are yours to choose. The authorization semantics below are fixed, and none of them is pluggable.
 
 | Rule | What it means |
 |---|---|
-| **Union-only inheritance** | Groups, roles, and object hierarchies only widen access. There is no way to use a group membership to narrow a permission — only personal revokes can do that. |
+| **Union-only inheritance** | Groups, roles, and object hierarchies only widen access. There is no way to use a group membership to narrow a permission; only personal revokes can do that. |
 | **Negative always wins, scope-inclusively** | A personal revoke at any scope suppresses matching access at that scope and every descendant, even if a more specific grant exists at a deeper object. |
 | **Forward-inclusive wildcards** | A stored `docs.files.*` grant covers keys added under `docs.files` in the future. This is deliberate: wildcards are a commitment to a subtree, not a snapshot of it at grant time. |
-| **Everything reduces to the grant row** | Every access surface — admin assignment, role, group membership, `everyone`, service account, time-bound elevation — is one row: `(subject, role-or-pattern, scope, expiry?)`. There is no other storage shape for access. |
-| **Closures cached, decisions not** | Subject closures and object ancestor chains are cached with configurable TTLs and event-driven invalidation. Individual check decisions are never cached — every `can()` call re-evaluates against the current (possibly cached) closure data. |
-| **Global satisfies every scoped check** | `*` is included in every object closure, so a global grant confers access at every scope. Adopting scopes in an existing system means splitting roles that currently grant globally — that split is the migration. |
+| **Everything reduces to the grant row** | Every access surface (admin assignment, role, group membership, `everyone`, service account, time-bound elevation) is one row: `(subject, role-or-pattern, scope, expiry?)`. There is no other storage shape for access. |
+| **Closures cached, decisions not** | Subject closures and object ancestor chains are cached with configurable TTLs and event-driven invalidation. Individual check decisions are never cached; every `can()` call re-evaluates against the current (possibly cached) closure data. |
+| **Global satisfies every scoped check** | `*` is included in every object closure, so a global grant confers access at every scope. Adopting scopes in an existing system means splitting roles that currently grant globally, and that split is the migration. |
 
 <Note>
   The personal-revoke layer is the **only** negative in the system. It applies to individual users, not groups or roles. A revoke at a folder scope suppresses access at that folder and every document inside it, but does not affect other subtrees.

@@ -4,7 +4,7 @@ sidebarTitle: "Approval Policies"
 description: "Approval policies define who approves access requests via auto-approval predicates, named approver roles, or management-layer routing, and in what order."
 ---
 
-An approval policy is a sequence of ordered stages attached to a requestable role or scope type. Each stage either evaluates automatically or waits for a human decision. Stages are processed in order: the first stage runs at submission, subsequent stages unlock one at a time as each preceding stage approves. A denial at any stage is final and writes nothing. Because a policy stores **stages** — not resolved approver identities — it survives org restructuring and hierarchy promotion without modification.
+An approval policy is a sequence of ordered stages attached to a requestable role or scope type. Each stage either evaluates automatically or waits for a human decision. Stages are processed in order: the first stage runs at submission, subsequent stages unlock one at a time as each preceding stage approves. A denial at any stage is final and writes nothing. Because a policy stores **stages** and never resolved approver identities, it survives org restructuring and hierarchy promotion without modification.
 
 ## The `ApprovalPolicyInput` type
 
@@ -20,16 +20,16 @@ type ApprovalStage =
   | { kind: "management"; layers?: number };
 ```
 
-You supply an `ApprovalPolicyInput` wherever a requestability declaration expects a `policy` field — on a scope type in the catalog, or inside a role's `requestable` block.
+You supply an `ApprovalPolicyInput` wherever a requestability declaration expects a `policy` field, either on a scope type in the catalog or inside a role's `requestable` block.
 
 ## Stage types
 
 ### Auto-approval predicates
 
-An `auto` stage evaluates a condition against the requester's subject closure — the same `can()` machinery that powers every check in Alfiz. There is no separate rules engine. If the predicate passes, the stage is recorded as auto-approved and the workflow immediately advances to the next stage. If it fails, the stage abstains — no decision is recorded — and the workflow advances to the next stage. Auto stages accelerate workflows; they never deny.
+An `auto` stage evaluates a condition against the requester's subject closure, using the same `can()` machinery that powers every check in Alfiz. There is no separate rules engine. If the predicate passes, the stage is recorded as auto-approved and the workflow immediately advances to the next stage. If it fails, the stage abstains without recording a decision, and the workflow advances to the next stage. Auto stages accelerate workflows; they never deny.
 
 <Warning>
-  With one exception: a failing auto stage that is the **last** stage has nothing to advance to. Since 0.7.0 such a request is **auto-denied** — the decision is recorded with `decidedBy: "auto"` and the requester can re-request when circumstances change. (Before 0.7.0 it stayed `pending` at a stage nobody could decide, resolvable only by administrative override — the failure mode the change removes.) An auto-final policy is therefore the *instant-decision* shape: predicate met approves, predicate unmet denies. If unmet predicates should escalate to a human instead, put a `named_approvers` or `management` stage after the auto stage.
+  With one exception: a failing auto stage that is the **last** stage has nothing to advance to. Since 0.7.0 such a request is **auto-denied**, and the decision is recorded with `decidedBy: "auto"` and the requester can re-request when circumstances change. (Before 0.7.0 it stayed `pending` at a stage nobody could decide, resolvable only by administrative override, which is the failure mode the change removes.) An auto-final policy is therefore the *instant-decision* shape: predicate met approves, predicate unmet denies. If unmet predicates should escalate to a human instead, put a `named_approvers` or `management` stage after the auto stage.
 </Warning>
 
 ```typescript
@@ -50,7 +50,7 @@ type AutoApprovalPredicate =
 </ParamField>
 
 <ParamField path="member_of" type="{ type: &quot;member_of&quot;; subject: SubjectId }">
-  Passes when the requester's subject closure contains the given subject. Works with any valid subject including implicit groups like `directs:<uid>` or `orgof:<uid>` — for example, `{ type: "member_of", subject: "directs:team-lead-uid" }` auto-approves everyone who reports directly to a particular manager.
+  Passes when the requester's subject closure contains the given subject. Works with any valid subject including implicit groups like `directs:<uid>` or `orgof:<uid>`, for example `{ type: "member_of", subject: "directs:team-lead-uid" }` auto-approves everyone who reports directly to a particular manager.
 </ParamField>
 
 <ParamField path="holds_pattern" type="{ type: &quot;holds_pattern&quot;; pattern: PermissionPattern }">
@@ -59,7 +59,7 @@ type AutoApprovalPredicate =
 
 ### Named approvers
 
-A `named_approvers` stage requires approval from any subject who holds an unexpired grant of the designated role — directly, or through any closure member.
+A `named_approvers` stage requires approval from any subject who holds an unexpired grant of the designated role, either directly or through any closure member.
 
 ```typescript
 { kind: "named_approvers"; roleId: string }
@@ -96,10 +96,10 @@ A `management` stage routes the request to the requester's manager, or `layers` 
 ```
 
 <Warning>
-  A policy with a `management` stage is a **configuration error** when no reporting hierarchy is populated in the provider. Alfiz surfaces this at policy attachment time (for roles) and at request submission time (for catalog scope types) — never silently skipped. Populate reporting edges via `setReportingEdge` or `importDirectory` before attaching management-layer policies.
+  A policy with a `management` stage is a **configuration error** when no reporting hierarchy is populated in the provider. Alfiz surfaces this at policy attachment time (for roles) and at request submission time (for catalog scope types), and never silently skipped. Populate reporting edges via `setReportingEdge` or `importDirectory` before attaching management-layer policies.
 </Warning>
 
-Because stages reference a layer count rather than a resolved person, they survive org-root promotion untouched. A pending request that was created with `"2 layers up"` still means exactly that after a hierarchy reorganization — the new two-layers-up manager becomes the approver at their next evaluation.
+Because stages reference a layer count rather than a resolved person, they survive org-root promotion untouched. A pending request that was created with `"2 layers up"` still means exactly that after a hierarchy reorganization: the new two-layers-up manager becomes the approver at their next evaluation.
 
 ## Policy attachment
 
@@ -225,9 +225,9 @@ await app.createRole(
 ```
 
 In this flow:
-1. **Stage 0** — runs immediately at submission. If the requester's effective access already includes `projects.admin.*`, the stage auto-approves and the workflow advances to stage 1. If it does not, the stage abstains and the workflow still advances to stage 1 — the auto stage never blocks.
-2. **Stage 1** — any user holding the `project-owner` role sees this request in their approver queue and may approve or deny it.
-3. **Stage 2** — only after stage 1 approves does the skip-level manager receive the request. Their approval writes the grant row.
+1. **Stage 0** runs immediately at submission. If the requester's effective access already includes `projects.admin.*`, the stage auto-approves and the workflow advances to stage 1. If it does not, the stage abstains and the workflow still advances to stage 1, because the auto stage never blocks.
+2. **Stage 1** shows the request to any user holding the `project-owner` role, who sees this request in their approver queue and may approve or deny it.
+3. **Stage 2** starts only after stage 1 approves, when the skip-level manager receive the request. Their approval writes the grant row.
 
 ## Requestability does not inherit
 
@@ -243,9 +243,9 @@ A policy on `docs.folder` does **not** propagate to `docs.doc`, even though docu
 
 The canonical just-in-time (JIT) access pattern combines three features:
 
-1. **`requireExpiry: true`** on the requestable role or scope type — every request must propose an expiry; open-ended requests are rejected.
-2. **`proposedExpiresAt`** in the request — the requester proposes how long they need the access; the `maxDurationMs` cap enforces an upper bound.
-3. **`can.fresh()`** at enforcement points — bypasses the subject-side cache so the grant expiry is evaluated at exactly the moment of the check, not against a potentially stale snapshot.
+1. **`requireExpiry: true`** on the requestable role or scope type, so every request must propose an expiry; open-ended requests are rejected.
+2. **`proposedExpiresAt`** in the request, where the requester proposes how long they need the access; the `maxDurationMs` cap enforces an upper bound.
+3. **`can.fresh()`** at enforcement points, which bypasses the subject-side cache so the grant expiry is evaluated at exactly the moment of the check, not against a potentially stale snapshot.
 
 ```typescript
 // Declare the scope type as JIT-only (max 8 hours, expiry required)
@@ -271,7 +271,7 @@ await alfiz.can.fresh(
   "infra.environment.deploy",
   "infra.environment:prod",
 );
-// Returns false the moment the grant's expiresAt passes —
+// Returns false the moment the grant's expiresAt passes.
 // no cache TTL delay on a destructive surface.
 ```
 

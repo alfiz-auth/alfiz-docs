@@ -1,5 +1,5 @@
 ---
-title: "alfiz-verify CLI — Static Permission Verification"
+title: "alfiz-verify CLI: Static Permission Verification"
 sidebarTitle: "alfiz-verify"
 description: "alfiz-verify checks typed permission keys, gate coverage, gate shapes, and catalog conventions. Run in CI to make ungated server actions a build failure."
 ---
@@ -28,7 +28,7 @@ alfiz-verify codegen --catalog <document.json> [--out <file>] [--prefix <Name>]
 
 Emits derived key, pattern, and scope-id type unions from a published catalog document, as a dependency-free `.ts` module. Without `--out` it writes to stdout. `--prefix` names the emitted aliases (`<Prefix>Key`, `<Prefix>Pattern`, `<Prefix>ScopeType`, `<Prefix>ScopeId`); it defaults to `Alfiz`.
 
-`defineCatalog` derives those unions from your catalog *literal*, so code importing the source module already has them. This is for everything that consumes the published **document** instead — a document is data, not a literal, so its keys reach the type system only through codegen:
+`defineCatalog` derives those unions from your catalog *literal*, so code importing the source module already has them. This is for everything that consumes the published **document** instead. A document is data rather than a literal, so its keys reach the type system only through codegen:
 
 ```bash
 # Your own catalog, consumed from another repo or a generated client
@@ -42,11 +42,11 @@ import type { AlfizKey, AlfizPattern, AlfizScopeId } from "./alfiz.gen.js";
 const catalog = catalogFromDocument<AlfizKey, AlfizPattern, AlfizScopeId>(doc);
 ```
 
-It is also how a wildcard [import](/catalog/imports) closes its key union — generate from the namespace owner's document, then pin it with `importedKeys<ZoomKey>({ ... })`. Members are sorted, so regenerating diffs exactly the catalog change. A malformed document fails here, loudly, rather than emitting types from garbage.
+It is also how a wildcard [import](/catalog/imports) closes its key union, so generate from the namespace owner's document, then pin it with `importedKeys<ZoomKey>({ ... })`. Members are sorted, so regenerating diffs exactly the catalog change. A malformed document fails here, loudly, rather than emitting types from garbage.
 
 ### The programmatic form
 
-When you generate as part of a build script rather than a shell step, call `generateCatalogTypes` directly. It returns the module source as a string — writing it is yours to do.
+When you generate inside a build script instead of a shell step, call `generateCatalogTypes` directly. It returns the module source as a string, and writing it is yours to do.
 
 ```ts
 import { generateCatalogTypes } from "@alfiz/verify";
@@ -63,7 +63,7 @@ writeFileSync("zoom.gen.ts", source);
 
 ## What it checks
 
-`alfiz-verify` runs six categories of checks on every scan. Every finding carries a rule name — the same name you use to suppress it per line, and the same name the `VerifyIssue` shape reports:
+`alfiz-verify` runs six categories of checks on every scan. Every finding carries a rule name, the same name you use to suppress it per line, and the same name the `VerifyIssue` shape reports:
 
 ### 1. Typed key validation
 
@@ -84,12 +84,12 @@ Warnings on catalog leaves that no gate or nav item references. Errors on export
 ```
 
 <Note>
-  `alfiz_internal.*` keys are exempt from coverage warnings — they are gated inside Alfiz's own admin surfaces, not your application code.
+  `alfiz_internal.*` keys are exempt from coverage warnings, because they are gated inside Alfiz's own admin surfaces, not your application code.
 </Note>
 
 ### 3. Gate-shape linting
 
-Errors when a visibility affordance — `canAny`, `requireAny`, or `holds` — is used directly as a gate in a server file. Visibility affordances tell you whether any matching key is held *somewhere*; they are not access control decisions. (`heldKeys` is a property access rather than a call, so it cannot read as a gate.)
+Errors when a visibility affordance (`canAny`, `requireAny`, or `holds`) is used directly as a gate in a server file. Visibility affordances tell you whether any matching key is held *somewhere*; they are not access control decisions. (`heldKeys` is a property access rather than a call, so it cannot read as a gate.)
 
 ```
 ✖ [visibility-as-gate] src/actions/export.ts:15 — canAny() is a visibility affordance, never a gate — server actions and route handlers gate on a concrete permission (can/require*)
@@ -107,7 +107,7 @@ Convention violations detected by running `lintCatalog` on the loaded catalog do
 
 ### 5. Import validation
 
-Permissions from a namespace your catalog neither owns nor [imports](/catalog/imports) are reported as **implicit imports** — an error when no import source is configured, a warning when one is. A reach beyond what an import *does* cover is always an error, with a did-you-mean drawn from the namespace owner's published document:
+Permissions from a namespace your catalog neither owns nor [imports](/catalog/imports) are reported as **implicit imports**: an error when no import source is configured, a warning when one is. A reach beyond what an import *does* cover is always an error, with a did-you-mean drawn from the namespace owner's published document:
 
 ```
 ✖ [unknown-import] src/actions/meet.ts:8 — "zoom.hostt" is not in the catalog (typo, or an undeclared key) — did you mean "zoom.host"?
@@ -168,7 +168,7 @@ node -e \
 
 | Code | Meaning |
 |---|---|
-| `0` | Clean — no errors (warnings may be present) |
+| `0` | Clean, with no errors (warnings may be present) |
 | `1` | One or more error-severity issues found |
 | `2` | Config file missing or unparseable, or a `serverFilePatterns` entry is an invalid RegExp |
 
@@ -203,7 +203,7 @@ Files that authenticate outside the catalog by design (system trust domains, dep
 // ... no Alfiz gates here by design
 ```
 
-The pragma must appear in the file's header region — before the first non-directive statement. Comments before or between `"use server"` / `"use client"` / `"use strict"` directives all qualify. The reason text is required: an unexplained exemption in a security tool is how exemptions rot.
+The pragma must appear in the file's header region, before the first non-directive statement. Comments before or between `"use server"` / `"use client"` / `"use strict"` directives all qualify. The reason text is required: an unexplained exemption in a security tool is how exemptions rot.
 
 <Warning>
   A pragma that appears after the header region does nothing. `alfiz-verify` reports it as a warning rather than silently dropping it, so you can see that the file is still being scanned.
@@ -244,14 +244,14 @@ jobs:
 
 ## Built-in gate and visibility names
 
-`alfiz-verify` recognizes the following names as gates and visibility affordances out of the box. The `gateNames` and `visibilityNames` config fields are **additive** — your custom wrappers extend the defaults; the defaults are always included via the CLI.
+`alfiz-verify` recognizes the following names as gates and visibility affordances out of the box. The `gateNames` and `visibilityNames` config fields are **additive**, so your custom wrappers extend the defaults; the defaults are always included via the CLI.
 
 **Default gate names:** `can`, `fresh`, `require`, `requirePermission`, `gateAction`, `apiRequirePermission`
 
 **Default visibility names:** `canAny`, `requireAny`, `holds`
 
-**Default server file patterns:** `app/.*route\.(t|j)sx?$`, `pages/api/` — the first is anchored, so it matches only paths ending in `route.ts(x)` / `route.js(x)`
+**Default server file patterns:** `app/.*route\.(t|j)sx?$`, `pages/api/`. The first is anchored, so it matches only paths ending in `route.ts(x)` / `route.js(x)`
 
 <Tip>
-  Property access is matched on the final name only. `session.require`, `client.can`, and `can.fresh` all count as gates — you do not need to add them separately.
+  Property access is matched on the final name only. `session.require`, `client.can`, and `can.fresh` all count as gates, so you do not need to add them separately.
 </Tip>

@@ -1,10 +1,10 @@
 ---
-title: "Alfiz Sessions — createSession and View-As Preview"
+title: "Alfiz Sessions: createSession and View-As Preview"
 sidebarTitle: "Sessions"
 description: "createSession() makes a typed per-request session from a verified user ID. Covers view-as admin preview, service principals, and cookie serialization."
 ---
 
-A session is the typed, per-request object your server code calls `can()` on. It carries an authenticated `actorUserId` and, optionally, a view-as state for admin preview. Sessions are the bridge between your identity provider (Clerk, Auth.js, or any other) and Alfiz's permission evaluation — Alfiz does not issue or validate tokens; you verify the token through your provider and pass the resulting user ID to `createSession`.
+A session is the typed, per-request object your server code calls `can()` on. It carries an authenticated `actorUserId` and, optionally, a view-as state for admin preview. Sessions are the bridge between your identity provider (Clerk, Auth.js, or any other) and Alfiz's permission evaluation. Alfiz does not issue or validate tokens; you verify the token through your provider and pass the resulting user ID to `createSession`.
 
 ## Creating a session
 
@@ -20,7 +20,7 @@ async function createSession<K extends string, P extends string, S extends strin
 ### `SessionOptions`
 
 <ParamField body="actorUserId" type="string" required>
-  The ID of the authenticated user, as issued by your identity provider. This is the user whose **real** permissions are checked — it is never replaced by a view-as state for access decisions.
+  The ID of the authenticated user, as issued by your identity provider. This is the user whose **real** permissions are checked. It is never replaced by a view-as state for access decisions.
 </ParamField>
 
 <ParamField body="viewAs" type="ViewAsState | null" optional>
@@ -61,10 +61,10 @@ subject's, so a preview can only ever **narrow**. It can never show the viewer
 a surface their own grants would not reach.
 
 <Note>
-  Always use `actorUserId` for audit attribution — it is never the previewed subject. Use `subjectUserId` for data-scoped surfaces (e.g., "show documents owned by this user") — it returns the previewed user's ID during a user preview, and the actor's ID otherwise.
+  Always use `actorUserId` for audit attribution. It is never the previewed subject. Use `subjectUserId` for data-scoped surfaces (e.g., "show documents owned by this user"), and it returns the previewed user's ID during a user preview, and the actor's ID otherwise.
 </Note>
 
-## `session.snapshot()` — the render path under view-as
+## `session.snapshot()`: the render path under view-as
 
 The async session methods are fine for a gate, but a render path cannot `await`
 inside `.map()`. `session.snapshot()` is the session-shaped version of the
@@ -87,7 +87,7 @@ snap.at;             // the instant this snapshot represents
 await snap.resolve(rows.map((r) => `docs.doc:${r.id}`)); // extends BOTH identities
 ```
 
-`options` — pre-resolved `scopes` and `fresh` — applies to both identities at
+`options`, meaning pre-resolved `scopes` and `fresh`, applies to both identities at
 once, so the actor and the preview are always read at the same instant.
 
 <Note>
@@ -97,7 +97,7 @@ once, so the actor and the preview are always read at the same instant.
 
 <Warning>
   Denials thrown from a session snapshot name the **actor**, not the previewed
-  identity — attribution never follows the preview. The same is true of metrics:
+  identity, so attribution never follows the preview. The same is true of metrics:
   an administrator looking through someone's eyes did not use that person's
   grants, so the previewed side is recorded with `observe: false`.
 </Warning>
@@ -120,7 +120,7 @@ type AppSession = SessionOf<typeof catalog>;
 
 ## Wiring to Clerk (Next.js example)
 
-Alfiz does not provide a Clerk adapter package — you write a thin `getAlfizSession` helper that calls Clerk's `auth()` and passes the user ID to `createSession`. This keeps the integration explicit and avoids a hard dependency on any specific Clerk version.
+Alfiz does not provide a Clerk adapter package. You write a thin `getAlfizSession` helper that calls Clerk's `auth()` and passes the user ID to `createSession`. This keeps the integration explicit and avoids a hard dependency on any specific Clerk version.
 
 ```ts
 // lib/alfiz-session.ts
@@ -160,7 +160,7 @@ export async function publishDoc(docId: string) {
 
 ## View-as: admin preview
 
-Administrators holding `alfiz_internal.access.view_as` can preview the product as either a role or an individual user. `createSession` enforces this gate automatically — passing a non-null `viewAs` without the permission throws `AccessDeniedError`.
+Administrators holding `alfiz_internal.access.view_as` can preview the product as either a role or an individual user. `createSession` enforces this gate automatically, so passing a non-null `viewAs` without the permission throws `AccessDeniedError`.
 
 ```ts
 import { createSession, serializeViewAs, parseViewAs } from "@alfiz/application";
@@ -177,7 +177,7 @@ const session = await createSession(alfiz, {
   viewAs: { kind: "user", userId: "target-user-id" },
 });
 
-// End the preview (no permission check — stopping a preview is always allowed):
+// End the preview (no permission check, since stopping a preview is always allowed):
 const session = await createSession(alfiz, {
   actorUserId: adminUserId,
   viewAs: null,
@@ -219,7 +219,7 @@ Throws `AccessDeniedError` when the actor does not hold `alfiz_internal.access.v
 
 ## Service principals
 
-For machine-to-machine authentication — background jobs, CI pipelines, internal services — Alfiz provides a local service-key shim that validates shared bearer tokens server-side.
+For machine-to-machine authentication in background jobs, CI pipelines and internal services, Alfiz provides a local service-key shim that validates shared bearer tokens server-side.
 
 ### Creating the shim
 
@@ -244,7 +244,7 @@ if (!result.ok) {
   return Response.json({ error: "Unauthorized" }, { status: 401 });
 }
 
-// result.principal is a PrincipalRef — pass it to can() like any user:
+// result.principal is a PrincipalRef, so pass it to can() like any user:
 const allowed = await alfiz.can(result.principal, "docs.files.read");
 ```
 

@@ -1,10 +1,10 @@
 ---
-title: "createApplication — Alfiz Local Provider Setup Guide"
+title: "createApplication: Alfiz Local Provider Setup Guide"
 sidebarTitle: "createApplication"
-description: "createApplication wires catalog, storage, and ancestry into the Alfiz Application — a fully local authorization engine with no external dependency."
+description: "createApplication wires catalog, storage, and ancestry into the Alfiz Application, a fully local authorization engine with no external dependency."
 ---
 
-`createApplication` wires together your catalog, your storage driver, and your object-hierarchy resolver into the Alfiz Application — a library-embedded authorization engine that runs entirely in-process. The Application implements the full provider contract (grants, revokes, roles, groups, access requests, directory ingestion, the audit log) against your own database. No external service is involved at runtime: every `can()` check resolves locally.
+`createApplication` wires together your catalog, your storage driver, and your object-hierarchy resolver into the Alfiz Application, a library-embedded authorization engine that runs entirely in-process. The Application implements the full provider contract (grants, revokes, roles, groups, access requests, directory ingestion, the audit log) against your own database. No external service is involved at runtime: every `can()` check resolves locally.
 
 ## Signature
 
@@ -16,12 +16,12 @@ function createApplication<Cat extends AnyCatalog>(
 ): AlfizApplication<Cat["$pattern"], Cat["$scope"]>
 ```
 
-Like `createAlfizClient`, the factory is generic over the catalog: it threads the catalog's derived pattern and scope-id unions onto the returned Application, so the **write** paths autocomplete too. `createGrant`, `createRevoke`, `createRole`, `submitRequest`, and `notifyScopeMoved` all take typed `pattern` and `scope` arguments at the call site — which is what makes seeding scripts and data migrations catch a typo'd pattern at compile time. Construct with `new AlfizApplication(...)` and you lose that inference.
+Like `createAlfizClient`, the factory is generic over the catalog: it threads the catalog's derived pattern and scope-id unions onto the returned Application, so the **write** paths autocomplete too. `createGrant`, `createRevoke`, `createRole`, `submitRequest`, and `notifyScopeMoved` all take typed `pattern` and `scope` arguments at the call site, which is what makes seeding scripts and data migrations catch a typo'd pattern at compile time. Construct with `new AlfizApplication(...)` and you lose that inference.
 
 ## Parameters
 
 <ParamField body="catalog" type="AnyCatalog" required>
-  The catalog produced by `defineCatalog()`. The Application validates every grant and revoke against it — unknown patterns, scope-type mismatches, and group references in key positions are all rejected at write time.
+  The catalog produced by `defineCatalog()`. The Application validates every grant and revoke against it, so unknown patterns, scope-type mismatches, and group references in key positions are all rejected at write time.
 </ParamField>
 
 <ParamField body="storage" type="StorageDriver" required>
@@ -37,7 +37,7 @@ Like `createAlfizClient`, the factory is generic over the catalog: it threads th
 
   The resolver must return the ancestor chain of `scope`, **ordered nearest-first**, ending at the global scope `"*"`. The chain excludes `scope` itself. For multi-parent scope types the result is the deduplicated union of all parents' chains.
 
-  Omit this field only for fully-global deployments where every scope is `"*"`. Any catalog that declares scope types with `parent` set (i.e., any scoped permission tree) requires an ancestry resolver — without one, scoped checks will not walk the hierarchy.
+  Omit this field only for fully-global deployments where every scope is `"*"`. Any catalog that declares scope types with `parent` set (i.e., any scoped permission tree) requires an ancestry resolver. Without one, scoped checks will not walk the hierarchy.
 </ParamField>
 
 <ParamField body="orgRoot" type="boolean" default="true" optional>
@@ -53,17 +53,17 @@ Like `createAlfizClient`, the factory is generic over the catalog: it threads th
 </ParamField>
 
 <ParamField body="events" type="{ persist?: boolean; retention?: { maxAgeMs?: number; maxRows?: number } }" optional>
-  Persist invalidation events to a sequenced log in your database, exposing them on the provider as `epoch`. This is the signal clients use (via `revalidateAfterMs`) to tighten cross-process staleness from a blind TTL to a single revalidation window. **Since 0.7.0, persistence defaults ON whenever the storage driver implements the event methods** (`appendEvents`, `headSeq`, `eventsSince`, `pruneEvents`) — both bundled drivers do. Pass `{ persist: false }` to opt out, or an explicit `{ persist: true }` to demand it (construction then fails loudly against an incapable driver, where the auto default degrades honestly to the pre-epoch contract instead). See [Cross-process invalidation](#cross-process-invalidation) below.
+  Persist invalidation events to a sequenced log in your database, exposing them on the provider as `epoch`. This is the signal clients use (via `revalidateAfterMs`) to tighten cross-process staleness from a blind TTL to a single revalidation window. **Since 0.7.0, persistence defaults ON whenever the storage driver implements the event methods** (`appendEvents`, `headSeq`, `eventsSince`, `pruneEvents`), which both bundled drivers do. Pass `{ persist: false }` to opt out, or an explicit `{ persist: true }` to demand it (construction then fails loudly against an incapable driver, where the auto default degrades honestly to the pre-epoch contract instead). See [Cross-process invalidation](#cross-process-invalidation) below.
 
   Retention defaults to 7 days / 100 000 rows, pruned opportunistically. Retention only needs to cover the longest interval between one client's revalidations; a client whose cursor predates retention gets a gap and busts everything. Event-log pruning never touches the [audit log](/enforcement/audit).
 </ParamField>
 
 <ParamField body="sod" type='{ enforce?: "off" | "reject" }' optional>
-  What a grant write violating a catalog-declared [separation-of-duty constraint](/access/separation-of-duties) does. `"off"` (default): constraints are detective only — read `listSodViolations()`. `"reject"`: a user-subject grant that would create a **new** violation is rejected with code `conflict`; group- and role-shaped writes always pass through and remain the report's job.
+  What a grant write violating a catalog-declared [separation-of-duty constraint](/access/separation-of-duties) does. `"off"` (default): constraints are detective only, so read `listSodViolations()`. `"reject"`: a user-subject grant that would create a **new** violation is rejected with code `conflict`; group- and role-shaped writes always pass through and remain the report's job.
 </ParamField>
 
 <ParamField body="audit" type="{ hashChain?: boolean }" optional>
-  `hashChain: true` makes every audit entry carry a SHA-256 hash over its canonical serialization plus the previous entry's hash, making edits, deletions, and reordering detectable with `verifyAuditChain`. Chained appends serialize through `runExclusive("audit", …)` — multi-node deployments need the driver's cross-process lock for the chain to stay linear. Off by default. See [Audit log](/enforcement/audit).
+  `hashChain: true` makes every audit entry carry a SHA-256 hash over its canonical serialization plus the previous entry's hash, making edits, deletions, and reordering detectable with `verifyAuditChain`. Chained appends serialize through `runExclusive("audit", …)`, so multi-node deployments need the driver's cross-process lock for the chain to stay linear. Off by default. See [Audit log](/enforcement/audit).
 </ParamField>
 
 <ParamField body="groupTopologyTtlMs" type="number" default="30000" optional>
@@ -71,11 +71,11 @@ Like `createAlfizClient`, the factory is generic over the catalog: it threads th
 </ParamField>
 
 <ParamField body="metrics" type="{ bucketMs?: number; retentionMs?: number }" optional>
-  Store permission-usage metrics: rolling counter buckets keyed by grant id, revoke id, role id, permission key, and scope type, fed by `reportMetrics` and read back by `getGrantUsage`, `getRevokeUsage`, `getRoleUsage`, `getPermissionUsage`, and `getScopeTypeUsage` — the data behind the [revocation safeguard](/api/metrics). Off by default.
+  Store permission-usage metrics: rolling counter buckets keyed by grant id, revoke id, role id, permission key, and scope type, fed by `reportMetrics` and read back by `getGrantUsage`, `getRevokeUsage`, `getRoleUsage`, `getPermissionUsage`, and `getScopeTypeUsage`, the data behind the [revocation safeguard](/api/metrics). Off by default.
 
   `bucketMs` is the bucket granularity, defaulting to one day; storage is bounded by attributed rows × retention ÷ granularity, so this is the knob that trades resolution for rows. `retentionMs` defaults to 90 days, pruned opportunistically off the write path.
 
-  Requires a storage driver implementing `recordMetrics`, `readMetrics`, and `pruneMetrics` — the `AlfizMetric` model in the Prisma fragment. Construction throws when they are missing, on the same reasoning as `events.persist`: silently accepting metrics that go nowhere would make every safeguard read a confident zero.
+  Requires a storage driver implementing `recordMetrics`, `readMetrics`, and `pruneMetrics`, backed by the `AlfizMetric` model in the Prisma fragment. Construction throws when they are missing, on the same reasoning as `events.persist`: silently accepting metrics that go nowhere would make every safeguard read a confident zero.
 
   <Note>
     A deployment that only wants numbers in its own metrics stack does **not** need this. Point the client's `metrics.observer` at OpenTelemetry or a local aggregator and store nothing here.
@@ -92,7 +92,7 @@ Like `createAlfizClient`, the factory is generic over the catalog: it threads th
 
 <Tabs>
   <Tab title="orgRoot: true (default)">
-    The Application is the **org root**: it owns organizational-domain data — groups, roles, global grants and revokes, the reporting tree — and is the sole writer of it. This is the correct setting for standalone single-organization deployments.
+    The Application is the **org root**: it owns organizational-domain data (groups, roles, global grants and revokes, the reporting tree) and is the sole writer of it. This is the correct setting for standalone single-organization deployments.
   </Tab>
   <Tab title="orgRoot: false">
     The org root lives elsewhere; this Application holds organizational-domain data as a **synced read model**. Local writes to org-domain data (global-scope grants, groups, reporting edges, user provisioning) are rejected with `ProviderWriteRejectedError`. Use this setting in federated deployments where a central service manages the org layer and the local Application only handles resource-scoped grants.
@@ -128,7 +128,7 @@ const ancestry: AncestryResolver = async (scope) => {
 <Note>
   If you move a resource (change its parent pointer), call `app.notifyScopeMoved(scope)` from the same code path. This emits the `scope` invalidation event that immediately busts cached ancestor chains. Without it, staleness is bounded only by the client's object-chain TTL (default 60 seconds).
 
-  `notifyScopeMoved` returns a `Promise<void>` that resolves once the move event is durable (with `events.persist` on) — `await` it before returning success from the endpoint that performed the move if you need other processes to see the invalidation before the response ships. Fire-and-forget callers need no change.
+  `notifyScopeMoved` returns a `Promise<void>` that resolves once the move event is durable (with `events.persist` on), so `await` it before returning success from the endpoint that performed the move if you need other processes to see the invalidation before the response ships. Fire-and-forget callers need no change.
 </Note>
 
 ## Cross-process invalidation
@@ -147,7 +147,7 @@ const app = createApplication({
 });
 
 // Optional: on long-lived nodes, tail the log for push-like invalidation
-// between client revalidations. Correctness never depends on this — it's
+// between client revalidations. Correctness never depends on this. It's
 // sugar over the same log the client already validates against.
 const poller = startEventPoller(app, { intervalMs: 5_000 });
 process.on("SIGTERM", () => poller.stop());
@@ -155,9 +155,9 @@ process.on("SIGTERM", () => poller.stop());
 
 Compatibility:
 
-- The Prisma schema fragment ships two new additive models (`AlfizEpoch`, `AlfizEvent`). Merge and migrate as usual — no backfill, no seed. See the `@alfiz/prisma` README.
+- The Prisma schema fragment ships two new additive models (`AlfizEpoch`, `AlfizEvent`). Merge and migrate as usual, with no backfill and no seed. See the `@alfiz/prisma` README.
 - Multi-node deployments should already be passing a database advisory lock to `prismaDriver`; event appends serialize under the same lock.
-- Custom storage drivers keep compiling — the four event methods and `getRoles` are all optional. When `events.persist` is on and the driver doesn't implement the event methods, construction fails loudly rather than silently degrading.
+- Custom storage drivers keep compiling, because the four event methods and `getRoles` are all optional. When `events.persist` is on and the driver doesn't implement the event methods, construction fails loudly rather than silently degrading.
 
 See the client's [`revalidateAfterMs` and `cacheStore` options](/api/create-alfiz-client) for the read-side configuration.
 
@@ -205,7 +205,7 @@ export const catalog = defineCatalog({
   },
 });
 
-// Stand-in for your own tables — in production this reads your rows.
+// Stand-in for your own tables. In production this reads your rows.
 const parents = new Map<string, string | null>([
   ["docs.doc:123", "docs.folder:42"],
   ["docs.folder:42", null],
@@ -214,7 +214,7 @@ const parents = new Map<string, string | null>([
 const app = createApplication({
   catalog,
   storage: memoryDriver(),
-  // `docs.doc` declares a parent, so it IS hierarchical — omitting `ancestry`
+  // `docs.doc` declares a parent, so it IS hierarchical, and omitting `ancestry`
   // installs a resolver that returns no ancestors, and a check at
   // `docs.doc:123` would then miss a grant on its folder. Omit `ancestry`
   // only when every scope type is `parent: null`.

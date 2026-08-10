@@ -1,13 +1,13 @@
 ---
 title: "Alfiz Standalone: Complete Authorization, One Application"
 sidebarTitle: Standalone
-description: "Two npm packages and your own database — the complete Alfiz feature set, with no external service on your request path."
+description: "Two npm packages and your own database, with the complete Alfiz feature set and no external service on your request path."
 ---
 
-A standalone deployment is exactly what it sounds like: your application, your database, and two npm packages. No hosted service sits on your request path, no external dependency is required beyond the database you already run, and nothing is withheld. Every feature Alfiz ships — permission grammar, scoped grants, groups, roles, access requests, management-layer approvals, sessions and view-as, permission metrics — is fully available the moment you call `createApplication`.
+A standalone deployment is exactly what it sounds like: your application, your database, and two npm packages. No hosted service sits on your request path, no external dependency is required beyond the database you already run, and nothing is withheld. Every feature Alfiz ships is available the moment you call `createApplication`: permission grammar, scoped grants, groups, roles, access requests, management-layer approvals, sessions and view-as, and permission metrics.
 
 <Note>
-  Standalone is a finished place to stand, not a trial. Most deployments stay here permanently, and nothing about staying is a compromise: the feature set is complete, no capability is gated behind a paid tier, and the pages that follow describe answers to *organizational* problems — a non-engineer who needs to administer access, a second application — not to missing capability.
+  Standalone is a finished place to stand. Most deployments stay here permanently, and nothing about staying is a compromise: the feature set is complete and no capability is gated behind a paid tier. The pages that follow answer *organizational* problems, such as a non-engineer who needs to administer access or a second application arriving. None of them is a gap in what standalone can do.
 </Note>
 
 ## What standalone means
@@ -16,10 +16,10 @@ Standalone is the composition of two packages:
 
 <CardGroup cols={2}>
   <Card title="@alfiz/core" icon="cube">
-    The **Client**: the evaluator. Grammar, catalog, typed keys, check shapes, closure caches, the headless permission tree, and the listing helpers. Every capability is a pure function over provider-supplied data — no storage, no I/O of its own.
+    The **Client**: the evaluator. Grammar, catalog, typed keys, check shapes, closure caches, the headless permission tree, and the listing helpers. Every capability is a pure function over provider-supplied data, with no storage and no I/O of its own.
   </Card>
   <Card title="@alfiz/application" icon="database">
-    The **Application**: your local provider. Implements the provider contract against your own database through a storage seam. In standalone mode, it is the org root — the single authoritative home of all organizational data.
+    The **Application**: your local provider. Implements the provider contract against your own database through a storage seam. In standalone mode it is the org root: the single authoritative home of all organizational data.
   </Card>
 </CardGroup>
 
@@ -29,23 +29,23 @@ Your database is the only infrastructure requirement. Swap in `@alfiz/prisma` fo
 
 The full feature set, locally, with no external dependency:
 
-- **Permission grammar and catalog** — declare every permission in code; template-literal types verify every call site at compile time
-- **Four enforcement points** — page gate, navigation visibility, server action, conditional UI; `alfiz-verify` proves coverage in CI
-- **Scoped grants with expiry** — grant a role or a permission pattern at any scope, optionally time-bound, with provenance on every row
-- **Groups and nested groups** — user cohorts with union-only inheritance; cycle detection enforced on every parentage write
-- **Roles** — named bundles of permission patterns; forward-inclusive wildcards absorb future keys automatically
-- **Reporting hierarchy** — a `reports-to` edge per user drives implicit groups (`directs:<id>`, `orgof:<id>`) usable as grant subjects and approval predicates
-- **Access requests with management-layer approvals** — requestable roles and scope types; multi-stage workflows; management-chain routing resolved against your locally-stored hierarchy
-- **Sessions and view-as** — typed per-request sessions, plus admin preview that intersects the actor with the previewed identity and attributes denials to the actor
-- **Permission metrics** — an optional structured observation per check, an OpenTelemetry adapter, a local aggregator, and the revocation safeguard
-- **The headless permission tree** — `buildPermissionTree`, `toggleNode`, and `isNodeChecked`: the wildcard-aware selection logic behind any role editor or grant picker you build, rendering from your catalog with no markup of its own
-- **Listing helpers** — `grantedScopes` plus `planListing` and the SQL-fragment builders, so a permission-filtered list becomes one indexed query instead of a per-row check
+- **Permission grammar and catalog.** Declare every permission in code; template-literal types verify every call site at compile time
+- **Four enforcement points.** Page gate, navigation visibility, server action, conditional UI; `alfiz-verify` proves coverage in CI
+- **Scoped grants with expiry.** Grant a role or a permission pattern at any scope, optionally time-bound, with provenance on every row
+- **Groups and nested groups.** User cohorts with union-only inheritance; cycle detection enforced on every parentage write
+- **Roles.** Named bundles of permission patterns; forward-inclusive wildcards absorb future keys automatically
+- **Reporting hierarchy.** A `reports-to` edge per user drives implicit groups (`directs:<id>`, `orgof:<id>`) usable as grant subjects and approval predicates
+- **Access requests with management-layer approvals.** Requestable roles and scope types; multi-stage workflows; management-chain routing resolved against your locally-stored hierarchy
+- **Sessions and view-as.** Typed per-request sessions, plus admin preview that intersects the actor with the previewed identity and attributes denials to the actor
+- **Permission metrics.** An optional structured observation per check, an OpenTelemetry adapter, a local aggregator, and the revocation safeguard
+- **The headless permission tree.** `buildPermissionTree`, `toggleNode`, and `isNodeChecked`: the wildcard-aware selection logic behind any role editor or grant picker you build, rendering from your catalog with no markup of its own
+- **Listing helpers.** `grantedScopes` plus `planListing` and the SQL-fragment builders, so a permission-filtered list becomes one indexed query instead of a per-row check
 
 ## The Application is the org root
 
 In standalone mode, `orgRoot` defaults to `true`. That means your Application is the single authoritative writer of all organizational-domain data: user groups and their nesting, role definitions, the reporting hierarchy, global-scope grants and revokes, and approval policies attached to those entities.
 
-When you later [link to Alfiz Cloud](/growth/linked) or [federate](/growth/federated), the org root can move — but in standalone, it never needs to leave.
+When you later [link to Alfiz Cloud](/growth/linked) or [federate](/growth/federated), the org root can move, but in standalone it never needs to leave.
 
 ## Runtime checks never leave your application
 
@@ -99,7 +99,7 @@ await alfiz.can.fresh({ userId }, "docs.files.delete", "docs.folder:9"); // bypa
   </Step>
 
   <Step title="Create the Application">
-    Pass your catalog, a storage driver, and an ancestry resolver. `orgRoot` defaults to `true` — you do not need to set it explicitly in standalone mode.
+    Pass your catalog, a storage driver, and an ancestry resolver. `orgRoot` defaults to `true`, so you do not need to set it explicitly in standalone mode.
 
     ```ts src/authz/app.ts
     import { parentPointerResolver } from "@alfiz/core";
@@ -113,12 +113,12 @@ await alfiz.can.fresh({ userId }, "docs.files.delete", "docs.folder:9"); // bypa
       catalog,
       storage,
       ancestry: parentPointerResolver((scope) => db.parentOf(scope)),
-      orgRoot: true,                   // default — shown here for clarity
+      orgRoot: true,                   // the default, shown here for clarity
     });
     ```
 
     <Tip>
-      The `ancestry` resolver is the reason runtime checks stay local forever. It resolves a scope's ancestor chain against your own tables — no external service can substitute for it.
+      The `ancestry` resolver is the reason runtime checks stay local forever. It resolves a scope's ancestor chain against your own tables, and no external service can substitute for it.
     </Tip>
   </Step>
 
@@ -135,7 +135,7 @@ await alfiz.can.fresh({ userId }, "docs.files.delete", "docs.folder:9"); // bypa
 
     ```ts
     const snap = await alfiz.snapshot({ userId }); // one provider round-trip
-    snap.can("docs.files.read");                    // sync — safe inside .map()
+    snap.can("docs.files.read");                    // sync, safe inside .map()
     snap.canAny("docs.*");                          // visibility only, never a gate
     snap.holds("docs.files.update_file");           // "should this button exist at all"
     await snap.resolve(rowScopes);                  // extend after querying
@@ -148,7 +148,7 @@ await alfiz.can.fresh({ userId }, "docs.files.delete", "docs.folder:9"); // bypa
     ```ts
     // When a user is deleted or offboarded:
     await app.deleteSubject(`user:${userId}`, provenance);
-    // Reversible alternative — blocks all access until re-activated:
+    // Reversible alternative, blocking all access until re-activated:
     await app.setUserActive(userId, false, provenance);
 
     // When a resource is deleted:
@@ -170,16 +170,16 @@ Standalone is the right starting point for any organization with a single applic
 
 ## The growth path
 
-Standalone is a complete system, not a limited tier. When your needs grow, the path forward is additive and reversible:
+Standalone is a complete system. When your needs grow, the path forward is additive and reversible:
 
 <CardGroup cols={2}>
   <Card title="Link to Alfiz Cloud" icon="link" href="/growth/linked">
-    When a non-engineer needs to administer access, link your Application to get the Alfiz Cloud dashboard and admin seats. Your Application stays the org root and sole writer — nothing architectural changes.
+    When a non-engineer needs to administer access, link your Application to get the Alfiz Cloud dashboard and admin seats. Your Application stays the org root and sole writer, and nothing architectural changes.
   </Card>
   <Card title="Federate" icon="share-nodes" href="/growth/federated">
     When a second application arrives, or when you need provisioned third-party integrations, federation moves the org root to Alfiz Cloud and unlocks cross-application role composition.
   </Card>
   <Card title="Share one database" icon="database" href="/operations/shared-store">
-    When a second application already runs against the same operational database, partitioned storage lets both Applications share the Alfiz tables with strict isolation — and the mesh adds granted cross-application access with no new infrastructure.
+    When a second application already runs against the same operational database, partitioned storage lets both Applications share the Alfiz tables with strict isolation, and the mesh adds granted cross-application access with no new infrastructure.
   </Card>
 </CardGroup>

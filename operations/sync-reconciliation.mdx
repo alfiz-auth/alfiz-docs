@@ -8,7 +8,7 @@ Two failure modes in any authorization store are silent by nature: a directory s
 
 ## Authoritative directory import
 
-`importDirectory` is upsert-only by default — safe for partial snapshots, and exactly wrong for offboarding: a user who disappears from the directory keeps `active: true`, their memberships, and their reporting edge until someone notices. `{ authoritative: true }` makes the snapshot the truth of every dataset it carries:
+`importDirectory` is upsert-only by default. That is safe for partial snapshots and exactly wrong for offboarding: a user who disappears from the directory keeps `active: true`, their memberships, and their reporting edge until someone notices. `{ authoritative: true }` makes the snapshot the truth of every dataset it carries:
 
 ```ts
 const result = await app.importDirectory(snapshot, "scim:okta", {
@@ -23,32 +23,32 @@ Per dataset, precisely:
 
 | Snapshot carries | Authoritative behavior |
 |---|---|
-| `users` | Stored users absent from it are **deactivated** — every check answers no within the staleness bound. Never deleted: rows stay for audit, and `deleteSubject` remains the deliberate id-retirement path. |
-| `memberships` | Users the map no longer lists lose their memberships in **directory-managed groups** (the snapshot's `groups` section, plus condensation-minted virtual parents). Locally-authored groups are never touched — the directory is authoritative only over what it owns. A memberships map with no `groups` section skips the sweep with a warning rather than guessing. |
-| `reportingEdges` | Stored edges the snapshot does not assert are **cleared**. A stale edge silently routes approvals to someone who left — worse than an unpopulated one, which at least fails loudly at policy creation. |
+| `users` | Stored users absent from it are **deactivated**, so every check answers no within the staleness bound. They are never deleted: rows stay for audit, and `deleteSubject` remains the deliberate id-retirement path. |
+| `memberships` | Users the map no longer lists lose their memberships in **directory-managed groups** (the snapshot's `groups` section, plus condensation-minted virtual parents). Locally-authored groups are never touched, because the directory is authoritative only over what it owns. A memberships map with no `groups` section skips the sweep with a warning rather than guessing. |
+| `reportingEdges` | Stored edges the snapshot does not assert are **cleared**. A stale edge silently routes approvals to someone who left, which is worse than an unpopulated one that at least fails loudly at policy creation. |
 
-Datasets the snapshot omits are untouched in either mode, groups are never deleted here (a vanished directory group may still be referenced by grants — that finding belongs to the reconciliation below), and every deprovisioning action is audited with its reason.
+Datasets the snapshot omits are untouched in either mode, groups are never deleted here (a vanished directory group may still be referenced by grants, and that finding belongs to the reconciliation below), and every deprovisioning action is audited with its reason.
 
 Wire your SCIM endpoint or HRIS export to produce a `DirectorySnapshot` and run authoritative imports on a schedule; the warnings array is your sync-health signal, and a growing `deactivatedUsers` count with an empty directory diff is the classic sign the mapping broke.
 
 ## Row reconciliation
 
-Grants and revokes reference subjects and scopes as **opaque strings** — deliberately, since your users and resources live in your tables — so the database offers no referential backstop. The documented discipline is calling `deleteSubject` / `deleteScope` / `notifyScopeMoved` alongside your own deletions and moves; `reconcileRows` is the detection that discipline previously lacked:
+Grants and revokes reference subjects and scopes as **opaque strings**, by design, since your users and resources live in your tables. The database therefore offers no referential backstop. The documented discipline is calling `deleteSubject` / `deleteScope` / `notifyScopeMoved` alongside your own deletions and moves; `reconcileRows` is the detection that discipline used to lack:
 
 ```ts
 const report = await app.reconcileRows({
   userExists: async (id) => (await db.user.count({ where: { id } })) > 0,
   scopeExists: async (scope) => resolveResource(scope) !== null,
 });
-// report.orphanedGrants     — rows whose user/org/scope no longer exists,
+// report.orphanedGrants     rows whose user/org/scope no longer exists,
 //                             plus group rows naming no stored group
 // report.orphanedRevokes
-// report.danglingRoleGrants — rows naming a role this store no longer defines
+// report.danglingRoleGrants rows naming a role this store no longer defines
 ```
 
 You supply existence predicates over *your* tables; group- and role-referencing rows are checked against Alfiz's own storage with no callback. Predicates you omit are simply not checked. Implicit subjects (`directs:x`, `orgof:x`) check the user behind them.
 
-**Detection is write-free** — run it nightly and alert on non-empty. Then sweep deliberately:
+**Detection is write-free**, so run it nightly and alert on non-empty. Then sweep deliberately:
 
 ```ts
 await app.reconcileRows({
@@ -59,10 +59,10 @@ await app.reconcileRows({
 });
 ```
 
-Sweeping deletes orphans through the same audited paths as any other removal, emits the invalidation events, and records a summary entry. Two boundaries are deliberate: `danglingRoleGrants` are **reported, never swept** — the row's subject and scope are real, and deleting it could mask a role-sync bug — and a sweep without provenance is rejected before anything is touched.
+Sweeping deletes orphans through the same audited paths as any other removal, emits the invalidation events, and records a summary entry. Two boundaries are deliberate. `danglingRoleGrants` are **reported and never swept**, because the row's subject and scope are real and deleting it could mask a role-sync bug. And a sweep without provenance is rejected before anything is touched.
 
 <Warning>
-The sharp edge this exists for: grants key on id **strings**. If your host reuses identifiers (serial user ids, re-slugged resources), a stranded row is not garbage — it is live access waiting for the id to come back. Run detection before enabling reuse-prone id schemes, and keep `deleteSubject` in the offboarding path rather than relying on reconciliation to catch up.
+The sharp edge this exists for: grants key on id **strings**. If your host reuses identifiers (serial user ids, re-slugged resources), a stranded row is not garbage. It is live access waiting for the id to come back. Run detection before enabling reuse-prone id schemes, and keep `deleteSubject` in the offboarding path rather than relying on reconciliation to catch up.
 </Warning>
 
 ## How the three layers fit

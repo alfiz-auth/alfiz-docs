@@ -1,10 +1,10 @@
 ---
 title: "Get Started with Alfiz: Install, Define, and Check"
 sidebarTitle: "Quickstart"
-description: "Install Alfiz, define your first permission catalog, wire a storage driver, grant access, and run your first can() check — all in under ten minutes."
+description: "Install Alfiz, define your first permission catalog, wire a storage driver, grant access, and run your first can() check, all in under ten minutes."
 ---
 
-Alfiz ships as two packages you install today. `@alfiz/core` holds the evaluator — the catalog, grammar, closures, and check logic. `@alfiz/application` wraps a storage driver into the full local provider. You define your permissions in TypeScript, wire up storage, and every `can()` check runs in-process against your own database with no external round-trip.
+Alfiz ships as two packages you install today. `@alfiz/core` holds the evaluator: the catalog, grammar, closures, and check logic. `@alfiz/application` wraps a storage driver into the full local provider. You define your permissions in TypeScript, wire up storage, and every `can()` check runs in-process against your own database with no external round-trip.
 
 This page gets you from an empty project to a passing scoped check. It uses the in-memory driver so you can run it immediately; [swapping in Prisma or MongoDB](/api/storage-drivers) is a two-line change at the end.
 
@@ -48,18 +48,18 @@ This page gets you from an empty project to a passing scoped check. It uses the 
     });
     ```
 
-    Permissions are declared by their **full dotted key** — the same notation
+    Permissions are declared by their **full dotted key**, the same notation
     every check, grant, role pattern, and nav entry uses, so a key at a call
     site greps straight back to its declaration. Group levels (`docs`,
     `docs.files`) are inferred from the keys; you never declare them.
 
     <Note>
-      `parent` is a commitment, not a hint. A type declared `parent: null` has
+      `parent` is a commitment rather than a hint. A type declared `parent: null` has
       the ancestor chain `[scope, "*"]` **by declaration**, which is what lets
       a snapshot check it synchronously without consulting your resolver.
       Omitting `parent` means exactly the same thing. If folders should nest
-      inside folders, name the type as its own parent —
-      `"docs.folder": { parent: "docs.folder" }` — and it becomes
+      inside folders, name the type as its own parent
+      (`"docs.folder": { parent: "docs.folder" }`) and it becomes
       hierarchical like `docs.doc`.
     </Note>
   </Step>
@@ -88,7 +88,7 @@ This page gets you from an empty project to a passing scoped check. It uses the 
 
     `parentPointerResolver` builds a resolver from a **synchronous**
     parent-pointer lookup. When your parent lookup hits the database, write
-    the resolver directly instead — an `AncestryResolver` is any function from
+    the resolver directly instead. An `AncestryResolver` is any function from
     a scope id to its ancestor chain, nearest-first, and it may be async:
 
     ```ts
@@ -112,7 +112,7 @@ This page gets you from an empty project to a passing scoped check. It uses the 
 
   <Step title="Grant access">
     Every form of access is one row. Grant to a user, a group, an org,
-    `everyone`, or a service — the shape does not change.
+    `everyone`, or a service, and the shape does not change.
 
     ```ts
     await app.createGrant({
@@ -129,13 +129,13 @@ This page gets you from an empty project to a passing scoped check. It uses the 
 
   <Step title="Run your first check">
     ```ts
-    // true — the grant on folder:42 covers the document inside it
+    // true: the grant on folder:42 covers the document inside it
     await alfiz.can({ userId: "jane" }, "docs.files.read", "docs.doc:123");
 
-    // false — nothing grants Jane anything on this folder
+    // false: nothing grants Jane anything on this folder
     await alfiz.can({ userId: "jane" }, "docs.files.read", "docs.folder:99");
 
-    // The throwing form. This one passes — the same folder grant covers it —
+    // The throwing form. This one passes, covered by the same folder grant,
     // but on a denial it throws AccessDeniedError instead of returning false.
     await alfiz.require({ userId: "jane" }, "docs.files.update_file", "docs.doc:123");
 
@@ -144,12 +144,13 @@ This page gets you from an empty project to a passing scoped check. It uses the 
     ```
 
     The grant was made once, at the folder. Alfiz never fans grants out to
-    descendants — the check walks *up* the ancestor chain instead, so adding a
+    descendants. The check walks *up* the ancestor chain instead, so adding a
     document to a folder rewrites no rows.
 
     <Warning>
-      `can` with **no scope** means the **global** scope — "may they do this
-      everywhere?", the strictest question, not "may they do this anywhere?".
+      `can` with **no scope** means the **global** scope. It asks "may they do
+      this everywhere?", the strictest question, and not "may they do this
+      anywhere?".
       The anywhere question is [`holds`](/api/granted-scopes), and it is never
       a gate.
     </Warning>
@@ -163,13 +164,13 @@ This page gets you from an empty project to a passing scoped check. It uses the 
     ```ts
     const snap = await alfiz.snapshot({ userId: "jane" }, { scopes: ["docs.doc:123"] });
 
-    snap.can("docs.files.read", "docs.doc:123"); // sync — safe inside .map()
+    snap.can("docs.files.read", "docs.doc:123"); // sync, safe inside .map()
     snap.canAny("docs.files.*");                 // sync visibility
     snap.holds("docs.files.share");              // "should this button exist at all"
     snap.heldKeys;                               // every key held at any scope
     ```
 
-    A snapshot is one consistent instant of the caches — a *stronger*
+    A snapshot is one consistent instant of the caches, a *stronger*
     per-request guarantee than repeated `can` calls. Pre-resolve the
     hierarchical scopes you intend to check with `{ scopes: [...] }`; for a
     list page whose row ids are not known until after the query, extend it
@@ -193,7 +194,7 @@ export const app = createApplication({
 });
 ```
 
-On MongoDB, there is no schema to merge — point `@alfiz/mongo` at a
+On MongoDB there is no schema to merge. Point `@alfiz/mongo` at a
 database:
 
 ```ts
@@ -206,7 +207,7 @@ export const app = createApplication({
 });
 ```
 
-Nothing else changes — the catalog, the client, and every call site are
+Nothing else changes. The catalog, the client, and every call site are
 identical. See [Storage drivers](/api/storage-drivers) for the schema fragment
 and the full setup.
 
@@ -227,11 +228,11 @@ await app.notifyScopeMoved("docs.doc:123");         // when you change a parent 
 
 <CardGroup cols={2}>
   <Card title="Core Concepts" icon="book-open" href="/core-concepts">
-    The five building blocks — catalog, grants, scopes, subjects, and checks — and the semantic rules that are fixed rather than configurable.
+    The five building blocks (catalog, grants, scopes, subjects, checks) and the semantic rules that are fixed rather than configurable.
   </Card>
 
   <Card title="The four enforcement points" icon="shield-check" href="/enforcement/four-points">
-    Where checks belong: page, navigation, server action, and conditional UI — and which shape each one takes.
+    Where checks belong: page, navigation, server action, and conditional UI, and which shape each one takes.
   </Card>
 
   <Card title="Static verification" icon="circle-check" href="/enforcement/static-verification">
@@ -239,6 +240,6 @@ await app.notifyScopeMoved("docs.doc:123");         // when you change a parent 
   </Card>
 
   <Card title="Per-request snapshots" icon="camera" href="/api/snapshot">
-    One provider round-trip per request, then synchronous checks — the recommended pattern for server-rendered frameworks.
+    One provider round-trip per request, then synchronous checks. The recommended pattern for server-rendered frameworks.
   </Card>
 </CardGroup>

@@ -4,7 +4,7 @@ sidebarTitle: "Access reviews"
 description: "The computed per-user entitlement rollup a reviewer signs, the drift report that keeps forward-inclusive wildcards reviewable, and the write-back path an external IGA uses."
 ---
 
-SOX ITGC, SOC 2 (CC6.2/6.3), ISO 27001 (A.5.18), and PCI DSS 7.2.4 all expect periodic user access reviews. Alfiz does not ship review *campaigns* — reviewer assignment, escalation, and attestation workflows are what your IGA (Entra ID Governance, Okta IGA, ConductorOne, Opal, Veza) or your ticketing system already does well. What Alfiz ships is the part only it can do: **computed, attributable answers** to what each person can actually do, and the reports that keep those answers true between cycles.
+SOX ITGC, SOC 2 (CC6.2/6.3), ISO 27001 (A.5.18), and PCI DSS 7.2.4 all expect periodic user access reviews. Alfiz does not ship review *campaigns*. Reviewer assignment, escalation, and attestation workflows are what your IGA (Entra ID Governance, Okta IGA, ConductorOne, Opal, Veza) or your ticketing system already does well. Alfiz ships the part only it can do: **computed, attributable answers** to what each person can actually do, and the reports that keep those answers true between cycles.
 
 ## The entitlement export
 
@@ -19,7 +19,7 @@ const report = await app.exportEntitlements();
 //   entitlements: [{
 //     key: "docs.files.read",
 //     held: true,                       // revokes applied, expiry filtered
-//     sources: [{                      // the "why" — and the write-back handle
+//     sources: [{                      // the "why", and the write-back handle
 //       grantId: "g_123",
 //       subject: "group:eng",          // arrived through Engineering
 //       roleId: "role_reader",
@@ -31,7 +31,7 @@ const report = await app.exportEntitlements();
 // }, …]
 ```
 
-What a reviewer reads: capability (`held`), not rows. What remediation uses: the `sources` — each names the grant row to revoke or end-date, and a personal revoke covers the "remove this one person from inherited access" case. **Write-back is the ordinary API**; there is no parallel remediation surface to integrate.
+What a reviewer reads: capability (`held`), not rows. What remediation uses: the `sources`. Each one names the grant row to revoke or end-date, and a personal revoke covers the "remove this one person from inherited access" case. **Write-back is the ordinary API**; there is no parallel remediation surface to integrate.
 
 Candidates default to every user the store can name (records plus user-subject grant rows); pass `{ userIds }` for a population your host enumerates. Pair each export with the [audit cursor](/enforcement/audit) for the evidence trail, and with [`listSodViolations`](/access/separation-of-duties) for the conflicts page of the same review.
 
@@ -56,7 +56,7 @@ const drift = await app.listWildcardDrift({ sinceVersion: 12 });
 // }
 ```
 
-The review loop: record the catalog version each cycle certifies; open the next cycle with `listWildcardDrift({ sinceVersion })`; every finding is a grant or assigned role now conferring more than what was signed. Expired grants and unassigned roles are excluded — they confer nothing. `removedKeys` surfaces tombstone candidates in the other direction.
+The review loop: record the catalog version each cycle certifies; open the next cycle with `listWildcardDrift({ sinceVersion })`; every finding is a grant or assigned role now conferring more than what was signed. Expired grants and unassigned roles are excluded, since they confer nothing. `removedKeys` surfaces tombstone candidates in the other direction.
 
 <Note>
 Drift needs catalog history. The bundled drivers retain it (the Prisma schema's optional `AlfizCatalogVersion` model); a schema without the model answers `unsupported` rather than wrongly.
@@ -66,9 +66,9 @@ Drift needs catalog history. The bundled drivers retain it (the Prisma schema's 
 
 - **Ingest:** run `exportEntitlements()` on the IGA's collection schedule and map `userId` + `entitlements[].key` (+ per-source `scope`) onto its entitlement model. The export is deterministic JSON; diffing two runs is the IGA's incremental feed.
 - **Certify:** campaigns, reviewer routing, and attestations live in the IGA. Alfiz's reporting hierarchy (`getReportingEdges`) can seed reviewer assignment.
-- **Remediate:** the IGA's revoke decision calls your endpoint, which calls `deleteGrant` / `createRevoke` / an expiry update — audited like every write. A review that cannot remediate is not a control; this one closes the loop with three ordinary calls.
+- **Remediate:** the IGA's revoke decision calls your endpoint, which calls `deleteGrant` / `createRevoke` / an expiry update, audited like every write. A review that cannot remediate is not a control, and this one closes the loop with three ordinary calls.
 - **Evidence:** the audit export (cursor paging, optional [hash chain](/enforcement/audit)) is the record that the remediation happened.
 
 ## What is deliberately not built
 
-First-party campaign objects — population snapshots with reviewer state machines — would duplicate the half of IGA tooling that is workflow, not authorization. The primitives above are the half that must come from the authorization layer because only it can compute them. If you operate no IGA, the export plus a spreadsheet and the audit trail is a defensible small-company review; the ingredients do not expire if you later adopt one.
+First-party campaign objects, meaning population snapshots with reviewer state machines, would duplicate the half of IGA tooling that is workflow rather than authorization. The primitives above are the half that must come from the authorization layer because only it can compute them. If you operate no IGA, the export plus a spreadsheet and the audit trail is a defensible small-company review; the ingredients do not expire if you later adopt one.

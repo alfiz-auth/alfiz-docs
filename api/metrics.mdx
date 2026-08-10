@@ -1,5 +1,5 @@
 ---
-title: "Metrics API — Observations, Sampling, Aggregation, and Usage Reads"
+title: "Metrics API: Observations, Sampling, Aggregation, and Usage Reads"
 sidebarTitle: "Metrics"
 description: "Reference for CheckObservation, the metrics client option, createMetricsAggregator, otelMetricsObserver, createProviderMetricsSink, the usage reads, and revocationSafeguard."
 ---
@@ -23,7 +23,7 @@ metrics?: {
 <ParamField body="observer" type="MetricsObserver | MetricsObserver[]" required>
   `(observation: CheckObservation) => void`, called synchronously from the
   check path. An array fans out, isolating failures per sink. Do cheap work
-  only — a slow observer is latency on your request path.
+  only, because a slow observer is latency on your request path.
 </ParamField>
 
 <ParamField body="sampleRate" type="number | { gate, visibility }" default="1">
@@ -37,7 +37,7 @@ metrics?: {
     In the object form, `gate` defaults to `1` but `visibility` defaults to
     **the resolved gate rate**, not to `1`. So `{ gate: 0.1 }` samples
     visibility traffic at `0.1` too. Set both explicitly whenever you set
-    either — `{ gate: 1, visibility: 0.02 }` is the shape you usually want,
+    either, and `{ gate: 1, visibility: 0.02 }` is the shape you usually want,
     because one render fires hundreds of visibility checks and gates
     correspond one-to-one with user actions.
   </Warning>
@@ -55,7 +55,7 @@ metrics?: {
 </ParamField>
 
 <ParamField body="onError" type="(error: unknown) => void">
-  Receives errors thrown by an observer. Unset means silently ignored — the
+  Receives errors thrown by an observer. Unset means silently ignored.
   right default for a lossy counter, the wrong one for debugging it.
 </ParamField>
 
@@ -86,13 +86,13 @@ interface CheckObservation {
 
 <ParamField body="externalPermission" type="boolean">
   Present and `true` when this check named a permission admitted by
-  `externalPermissions: "warn"` or `"allow"` — one no catalog declares. This
+  `externalPermissions: "warn"` or `"allow"`, meaning one no catalog declares. This
   is how you count what still needs an `imports` declaration, from the same
   stream that counts everything else.
 </ParamField>
 
 <ParamField body="gate" type="boolean">
-  `true` for `can` and `require` — the shapes that authorize an action.
+  `true` for `can` and `require`, the shapes that authorize an action.
   `false` for the visibility shapes, which drive conditional UI and vastly
   outnumber gates. Keep the two apart in any counter you build.
 </ParamField>
@@ -108,7 +108,7 @@ interface CheckObservation {
 </ParamField>
 
 <ParamField body="scope" type="string">
-  The scope instance — present only for scope types opted into instance
+  The scope instance, present only for scope types opted into instance
   counting via `scopeInstances`.
 </ParamField>
 
@@ -153,7 +153,7 @@ function otelMetricsObserver(options: {
 }): MetricsObserver
 ```
 
-`@opentelemetry/api` is not a dependency of Alfiz. `OtelMeter` is the structural subset the adapter uses — `createCounter(name, options)` returning something with `add(value, attributes)` — which a real `Meter` satisfies without a cast.
+`@opentelemetry/api` is not a dependency of Alfiz. `OtelMeter` is the structural subset the adapter uses: `createCounter(name, options)` returning something with `add(value, attributes)`, which a real `Meter` satisfies without a cast.
 
 Emits `alfiz.checks`, and with `attribution` on, `alfiz.grant.matched`, `alfiz.grant.sole_match`, `alfiz.revoke.matched`, and `alfiz.role.matched`.
 
@@ -218,7 +218,7 @@ Delivery is fire-and-forget: nothing awaits the chain, so a slow or failing stor
 
 ## Usage reads
 
-Available on any provider whose `capabilities().metrics` is `true` — the Application with `metrics: {}`, and hosted providers pointed at one.
+Available on any provider whose `capabilities().metrics` is `true`, meaning the Application with `metrics: {}`, and hosted providers pointed at one.
 
 ```typescript
 app.getGrantUsage(query?):      Promise<RowUsage[]>
@@ -228,7 +228,7 @@ app.getPermissionUsage(query?): Promise<PermissionUsage[]>
 app.getScopeTypeUsage(query?):  Promise<PermissionUsage[]>
 ```
 
-`query` is `{ ids?: string[]; since?: number; until?: number }` — `ids` filters to specific rows or keys, `since` is inclusive and `until` exclusive, both epoch ms, defaulting to the provider's full retention window.
+`query` is `{ ids?: string[]; since?: number; until?: number }`. `ids` filters to specific rows or keys, `since` is inclusive and `until` exclusive, both epoch ms, defaulting to the provider's full retention window.
 
 ```typescript
 interface RowUsage {
@@ -258,9 +258,9 @@ interface PermissionUsage {
 }
 ```
 
-Gate and visibility counts are reported separately and never summed — forty thousand renders and twelve actions are different numbers.
+Gate and visibility counts are reported separately and never summed, since forty thousand renders and twelve actions are different numbers.
 
-`buckets` (0.5.1) is the same per-bucket series `RowUsage` carries: the totals are exactly that list summed, so one read gives you both the headline number and the shape of it over time. Buckets with no traffic are absent rather than zero-filled — you know the window and the granularity, so a dense axis is yours to fill.
+`buckets` (0.5.1) is the same per-bucket series `RowUsage` carries: the totals are exactly that list summed, so one read gives you both the headline number and the shape of it over time. Buckets with no traffic are absent rather than zero-filled. You know the window and the granularity, so a dense axis is yours to fill.
 
 ## `revocationSafeguard(usage, options?)`
 
@@ -281,7 +281,7 @@ function revocationSafeguard(
 }
 ```
 
-Pure — bind it in any UI. It keys on `soleMatch`, never on `matched`, and never claims that an unused grant is safe to remove.
+Pure, so bind it in any UI. It keys on `soleMatch`, never on `matched`, and never claims that an unused grant is safe to remove.
 
 | `level` | When | Meaning |
 | --- | --- | --- |
@@ -302,4 +302,4 @@ createApplication({
 });
 ```
 
-Requires a storage driver implementing `recordMetrics`, `readMetrics`, and `pruneMetrics` — the memory and Prisma drivers do. Construction throws if they are missing, rather than accepting batches that go nowhere. The Prisma schema fragment adds one model, `AlfizMetric`; retention compaction runs opportunistically and off the write path.
+Requires a storage driver implementing `recordMetrics`, `readMetrics`, and `pruneMetrics`, which the memory and Prisma drivers do. Construction throws if they are missing, rather than accepting batches that go nowhere. The Prisma schema fragment adds one model, `AlfizMetric`; retention compaction runs opportunistically and off the write path.

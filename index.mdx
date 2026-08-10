@@ -4,7 +4,7 @@ sidebarTitle: "Home"
 description: "Scoped permissions for TypeScript applications: declare your catalog in code, verify it in CI, and check it in your own process against your own database."
 ---
 
-Alfiz is scoped permissions for TypeScript applications. You declare a permission catalog — every permission key, every scope type — in the codebase that enforces it. Every `can()` check runs in-process against your own database. Nothing Alfiz operates is on your request path.
+Alfiz is scoped permissions for TypeScript applications. You declare a permission catalog, every permission key and every scope type, in the codebase that enforces it. Every `can()` check runs in-process against your own database. Nothing Alfiz operates is on your request path.
 
 <CardGroup cols={2}>
   <Card title="Quickstart" icon="rocket" href="/quickstart">
@@ -23,7 +23,7 @@ Alfiz is scoped permissions for TypeScript applications. You declare a permissio
 
 ## Is Alfiz for you?
 
-Alfiz is selected by the shape of the problem, not the size of the company. It fits if you recognize one of these:
+What qualifies you is the shape of your problem, not the size of your company. It fits if you recognize one of these:
 
 | If this is your situation | What answers it |
 |---|---|
@@ -33,7 +33,7 @@ Alfiz is selected by the shape of the problem, not the size of the company. It f
 | You don't want an authorization service on your request path. | [In-process checks against your own database](/enforcement/check-shapes) |
 | You want a typo in a permission key to be a build error. | [Catalog-derived template-literal types](/api/catalog-types) |
 
-If a single role column is genuinely enough for your application, it will stay enough — and Alfiz is more machinery than you need.
+If a single role column is genuinely enough for your application, it will stay enough, and Alfiz is more machinery than you need.
 
 ## Four commitments
 
@@ -45,7 +45,7 @@ If a single role column is genuinely enough for your application, it will stay e
     `can()` runs in-process against your own database. Nothing Alfiz operates is on your request path, so nothing it does can slow or stop a check.
   </Card>
   <Card title="Typed end to end" icon="brackets-curly">
-    Keys and patterns are template-literal types derived from your catalog. An unknown permission key is a compile error, not a silent `false`.
+    Keys and patterns are template-literal types derived from your catalog. An unknown permission key is a compile error rather than a silent `false`.
   </Card>
   <Card title="Verified in CI" icon="circle-check">
     `alfiz-verify` proves the two directions match: nothing is enforced that isn't declared, and the build warns on anything declared that no gate references.
@@ -76,7 +76,7 @@ If a single role column is genuinely enough for your application, it will stay e
     ```ts
     const allowed = await alfiz.can({ userId }, "docs.files.read", "docs.doc:123");
     ```
-    Every check is typed against your catalog — unknown keys are compile errors.
+    Every check is typed against your catalog, so unknown keys are compile errors.
   </Step>
 </Steps>
 
@@ -84,14 +84,14 @@ If a single role column is genuinely enough for your application, it will stay e
 
 | Package | Purpose |
 |---|---|
-| `@alfiz/core` | Client: grammar, catalog, check shapes, caches, headless tree logic — plus the provider contract and its OpenAPI wire form |
+| `@alfiz/core` | Client: grammar, catalog, check shapes, caches, headless tree logic, plus the provider contract and its OpenAPI wire form |
 | `@alfiz/application` | Application: the local provider against your database, plus both halves of the Provider API wire |
 | `@alfiz/prisma` | Prisma storage driver for the Application |
 | `@alfiz/mongo` | MongoDB storage driver for the Application |
 | `@alfiz/verify` | `alfiz-verify` CLI for static call-site verification |
 
-The packages above are complete on their own — groups, roles, reporting hierarchy, access requests, approvals, sessions, and permission metrics all run against your own database with no external dependency. [Alfiz Cloud](/cloud/overview) adds hosted administration and cross-application federation when you want them, and is never required.
+The packages above are complete on their own. Groups, roles, reporting hierarchy, access requests, approvals, sessions, and permission metrics all run against your own database with no external dependency. [Alfiz Cloud](/cloud/overview) adds hosted administration and cross-application federation when you want them, and is never required.
 
 <Note>
-  Check volume is not a billing dimension and will not become one. Alfiz Cloud bills for the work it performs — admin seats, federated applications, connectors, retained audit volume. See [Metering and caps](/cloud/metering).
+  Check volume is not a billing dimension and will not become one. Alfiz Cloud bills for the work it performs: admin seats, federated applications, connectors, retained audit volume. See [Metering and caps](/cloud/metering).
 </Note>

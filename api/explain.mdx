@@ -1,10 +1,10 @@
 ---
-title: "explain() — Understand Why Access Was Granted or Denied"
+title: "explain(): Understand Why Access Was Granted or Denied"
 sidebarTitle: "explain()"
 description: "explain(principal, key, scope?) returns a full CheckExplanation showing which grants, roles, and closures produced the authorization decision."
 ---
 
-`explain` is the auditability surface of Alfiz. It runs the same evaluation as `can` — producing an identical boolean outcome — but returns the full working: which grant rows matched, which revoke rows suppressed them, what the computed object closure was, and whether the result was reached through ancestor implication rather than a direct grant match. Use `explain` when debugging unexpected access decisions, building audit UIs, or powering "why can you see this?" transparency features in your product.
+`explain` is the auditability surface of Alfiz. It runs the same evaluation as `can`, producing an identical boolean outcome, but returns the full working: which grant rows matched, which revoke rows suppressed them, what the computed object closure was, and whether the result was reached through ancestor implication rather than a direct grant match. Use `explain` when debugging unexpected access decisions, building audit UIs, or powering "why can you see this?" transparency features in your product.
 
 ## `client.explain(principal, key, scope?)`
 
@@ -30,13 +30,13 @@ async explain(
 
 <ParamField body="key" type="LooseKey<K>" required>
   A concrete permission key declared in your catalog. Unlike `canAny`, you
-  cannot pass a wildcard pattern here — `explain` always explains a specific
+  cannot pass a wildcard pattern here. `explain` always explains a specific
   leaf. The key is verified against the catalog before evaluation; an unknown
   key raises `UnknownPermissionError`.
 </ParamField>
 
 <ParamField body="scope" type="ScopeId">
-  Optional. The scope instance to explain the decision at — for example
+  Optional. The scope instance to explain the decision at, for example
   `docs.doc:abc123`. Omit for a global-scope explanation. When provided,
   the object closure (scope → ancestors → `*`) is included in the return
   value.
@@ -45,7 +45,7 @@ async explain(
 ### Return value
 
 <ResponseField name="allowed" type="boolean">
-  `true` when the principal currently holds the key at the given scope —
+  `true` when the principal currently holds the key at the given scope.
   identical to what `client.can(principal, key, scope)` would return.
 </ResponseField>
 
@@ -59,7 +59,7 @@ async explain(
 
 <ResponseField name="matchedRevokes" type="RevokeRow[]">
   Personal revoke rows that suppress the access. When `matchedRevokes` is
-  non-empty, `allowed` is always `false` — revokes always win, regardless
+  non-empty, `allowed` is always `false`, because revokes always win, regardless
   of how many matching grants exist. Each `RevokeRow` carries its `id`,
   `userId`, `pattern`, `scope`, and `provenance`.
 </ResponseField>
@@ -67,7 +67,7 @@ async explain(
 <ResponseField name="objectClosure" type="ScopeId[]">
   The resolved ancestor chain of the requested scope: `[scope, ...ancestors,
   "*"]`. For a global-scope check this is `["*"]`. This is the set against
-  which grants and revokes were matched — it tells you exactly which ancestor
+  which grants and revokes were matched. It tells you exactly which ancestor
   scopes were in scope for the evaluation.
 </ResponseField>
 
@@ -88,8 +88,8 @@ async explain(
 
 <ResponseField name="impliedBy" type="GrantRow[]">
   The grants at a *descendant* scope that produced an implied allow. Empty
-  unless `implied` is `true`. `matchedGrants` keeps its exact meaning — rows
-  matching at the requested scope — so this is where "which grant, and at
+  unless `implied` is `true`. `matchedGrants` keeps its exact meaning: rows
+  matching at the requested scope, so this is where "which grant, and at
   which scope, implied this?" is answered.
 </ResponseField>
 
@@ -97,15 +97,15 @@ async explain(
 
 ## When to use `explain`
 
-`explain` is a **diagnostic and auditability tool**, not a gate. Do not replace `can` with `explain` on hot paths — `explain` does the same evaluation work and returns more data, which means it allocates more objects and is more expensive to call at high frequency.
+`explain` is a **diagnostic and auditability tool**, not a gate. Do not replace `can` with `explain` on hot paths, because `explain` does the same evaluation work and returns more data, which means it allocates more objects and is more expensive to call at high frequency.
 
 Use `explain` for:
 
-- **Debugging during development** — unexpected `true` or `false` from `can` in tests.
-- **Audit log UIs** — displaying "why does this user have access to this document?" alongside the grant history.
-- **"Why can you see this?" transparency features** — showing users which of their roles granted them access.
-- **Access review tooling** — surface the grant provenance chain to reviewers.
-- **Automated tests** — asserting that a specific grant row (by id or pattern) is the one conferring a permission.
+- **Debugging during development.** Unexpected `true` or `false` from `can` in tests.
+- **Audit log UIs.** Displaying "why does this user have access to this document?" alongside the grant history.
+- **"Why can you see this?" transparency features.** Showing users which of their roles granted them access.
+- **Access review tooling.** Surface the grant provenance chain to reviewers.
+- **Automated tests.** Asserting that a specific grant row (by id or pattern) is the one conferring a permission.
 
 <Note>
   `explain` draws from the same caches as `can`. If you need a fresh
@@ -144,7 +144,7 @@ const explanation = await alfiz.explain(
 );
 
 if (!explanation.active) {
-  console.log("Principal is inactive — no access regardless of grants.");
+  console.log("Principal is inactive, so no access regardless of grants.");
 } else if (explanation.matchedRevokes.length > 0) {
   console.log("Access suppressed by personal revokes:");
   for (const revoke of explanation.matchedRevokes) {
@@ -219,7 +219,7 @@ async function WhyCanISeeThis({
 ### Using snapshot.explain for synchronous access in renders
 
 ```typescript
-// Take one snapshot, then explain synchronously — no extra async.
+// Take one snapshot, then explain synchronously, with no extra async.
 const snap = await alfiz.snapshot({ userId }, { scopes: [`docs.doc:${docId}`] });
 
 const explanation = snap.explain("docs.files.read", `docs.doc:${docId}`);

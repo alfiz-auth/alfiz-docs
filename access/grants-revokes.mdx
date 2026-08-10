@@ -1,10 +1,10 @@
 ---
 title: "Grants, Revokes, and Effective Access"
 sidebarTitle: "Grants & Revokes"
-description: "Learn the grant tuple that powers every access decision in Alfiz — subject, pattern, scope, expiry — and how personal revokes override group grants."
+description: "Learn the grant tuple that powers every access decision in Alfiz (subject, pattern, scope, expiry) and how personal revokes override group grants."
 ---
 
-Every authorization decision in Alfiz reduces to one atomic data structure: the grant row. Roles, group memberships, public access, approved requests, machine scopes, and time-bounded elevations are all expressed as, or ultimately resolve to, the same tuple of four fields. Understanding how that tuple works — and how the single negative layer (the personal revoke) interacts with it — gives you a complete mental model of how Alfiz evaluates every `can()` call.
+Every authorization decision in Alfiz reduces to one atomic data structure: the grant row. Roles, group memberships, public access, approved requests, machine scopes, and time-bounded elevations are all expressed as, or ultimately resolve to, the same tuple of four fields. Understanding how that tuple works, and how the single negative layer (the personal revoke) interacts with it, gives you a complete mental model of how Alfiz evaluates every `can()` call.
 
 ## The grant row
 
@@ -25,15 +25,15 @@ interface GrantRow {
 }
 ```
 
-Exactly one of `roleId` or `pattern` is set on any given row — a grant either names a role (and inherits all that role's patterns) or carries a raw permission pattern directly. The scope defaults to `*` (the global scope) when omitted. The `provenance` field records who or what created the row; it is required on every write.
+Exactly one of `roleId` or `pattern` is set on any given row. A grant either names a role (and inherits all that role's patterns) or carries a raw permission pattern directly. The scope defaults to `*` (the global scope) when omitted. The `provenance` field records who or what created the row; it is required on every write.
 
 <Note>
-A grant with `scope: "*"` satisfies every scoped check — the global scope is in every object closure. Granting someone `docs.files.read` globally means they can read every document, regardless of which folder it lives in.
+A grant with `scope: "*"` satisfies every scoped check, because the global scope is in every object closure. Granting someone `docs.files.read` globally means they can read every document, regardless of which folder it lives in.
 </Note>
 
 ## Provenance
 
-Every grant and every revoke carries a `provenance` field. This is not optional metadata — it is a required part of every write and is validated before any row is stored:
+Every grant and every revoke carries a `provenance` field. It is a required part of every write, validated before any row is stored:
 
 ```ts
 type Provenance =
@@ -46,7 +46,7 @@ type Provenance =
   | { kind: "system"; note?: string };
 ```
 
-Provenance answers the audit question "where did this row come from?" for every row in the system — whether it was created by an administrator, approved from a request, copied during a virtual-parent dissolution, bulk-imported from a directory sync, or produced by an integration reconciler.
+Provenance answers the audit question "where did this row come from?" for every row in the system, whether it was created by an administrator, approved from a request, copied during a virtual-parent dissolution, bulk-imported from a directory sync, or produced by an integration reconciler.
 
 ## Creating a grant
 
@@ -95,11 +95,11 @@ await app.createGrant({
 
 </CodeGroup>
 
-For bulk writes — migrations, tenant provisioning, directory syncs — use `app.createGrants(inputs, provenance)`. It validates every input before writing any row, emits one audit entry for the batch, and fires one invalidation event per distinct subject rather than one per row.
+For bulk writes such as migrations, tenant provisioning and directory syncs, use `app.createGrants(inputs, provenance)`. It validates every input before writing any row, emits one audit entry for the batch, and fires one invalidation event per distinct subject rather than one per row.
 
 ## Revoking access
 
-A revoke is a personal exclusion. Only individual users may hold revokes — groups and service principals do not. The revoke row shape is:
+A revoke is a personal exclusion. Only individual users may hold revokes; groups and service principals do not. The revoke row shape is:
 
 ```ts
 interface RevokeRow {
@@ -132,7 +132,7 @@ await app.createRevoke({
 });
 ```
 
-## Negative always wins — scope-inclusively
+## Negative always wins, scope-inclusively
 
 A revoke at any scope suppresses matching access at that scope **and every descendant scope**, regardless of where the positive grant sits. This rule is fixed and not configurable.
 
@@ -140,19 +140,19 @@ The consequences are deliberate:
 
 - A revoke at `docs.folder:9` suppresses grants on `docs.doc:123` (a child of folder 9), even if the grant was made directly on that document.
 - A global revoke (`scope: "*"`) suppresses matching access everywhere.
-- A scoped revoke does not suppress access in *other* subtrees — it is surgical, not a global erasure.
+- A scoped revoke does not suppress access in *other* subtrees. It is surgical rather than a global erasure.
 
 <Warning>
-A typo'd revoke pattern would silently fail open — the one direction a mistake must never take. Alfiz validates that every revoke pattern exists in the catalog and rejects unknown patterns at write time.
+A typo'd revoke pattern would silently fail open, which is the one direction a mistake must never take. Alfiz validates that every revoke pattern exists in the catalog and rejects unknown patterns at write time.
 </Warning>
 
 ## Effective access formula
 
 Alfiz evaluates a check by combining three things:
 
-1. **The subject closure** — the user, every group they belong to (and those groups' ancestors), their organizations, and `everyone`.
-2. **The object closure** — the target scope, every ancestor scope, and `*`.
-3. **The revoke set** — the user's personal revokes whose pattern matches and whose scope appears anywhere in the object closure.
+1. **The subject closure.** The user, every group they belong to (and those groups' ancestors), their organizations, and `everyone`.
+2. **The object closure.** The target scope, every ancestor scope, and `*`.
+3. **The revoke set.** The user's personal revokes whose pattern matches and whose scope appears anywhere in the object closure.
 
 The check passes when at least one unexpired grant row connects a member of the subject closure to a member of the object closure with a matching pattern, **and** no personal revoke at any scope in the object closure suppresses it.
 
@@ -170,7 +170,7 @@ It returns `true` only when `matchedRevokes` is empty and `matchedGrants` is non
 
 ## Expiry
 
-Grants accept an optional `expiresAt` (epoch milliseconds). An expired grant stops matching checks exactly as a deleted one would, but the row remains in storage for audit purposes — you can always answer "who had access to this document last Tuesday."
+Grants accept an optional `expiresAt` (epoch milliseconds). An expired grant stops matching checks exactly as a deleted one would, but the row remains in storage for audit purposes, so you can always answer "who had access to this document last Tuesday."
 
 ```ts
 // Grant that expires in 24 hours
@@ -184,7 +184,7 @@ await app.createGrant({
 ```
 
 <Tip>
-Use `can.fresh({ userId }, key, scope)` for operations that follow a just-granted time-bounded elevation — it bypasses the subject-side cache and re-evaluates immediately.
+Use `can.fresh({ userId }, key, scope)` for operations that follow a just-granted time-bounded elevation. It bypasses the subject-side cache and re-evaluates immediately.
 </Tip>
 
 ## Listing a user's effective permissions
@@ -197,7 +197,7 @@ const keys = await alfiz.heldKeys({ userId: "alice" });
 ```
 
 <Note>
-`heldKeys` answers "what can this person do anywhere?" It uses `keyHeldAnywhere` semantics: a scoped revoke narrows one subtree but does not erase a key held elsewhere. This is the right question for conditional UI — "should this button exist at all" — when the concrete scope is not yet known.
+`heldKeys` answers "what can this person do anywhere?" It uses `keyHeldAnywhere` semantics: a scoped revoke narrows one subtree but does not erase a key held elsewhere. This is the right question for conditional UI, meaning "should this button exist at all", when the concrete scope is not yet known.
 </Note>
 
 To understand *why* a specific check passed or failed, use `alfiz.explain(principal, key, scope?)`. It returns a `CheckExplanation` with the matched grants, matched revokes, and the final `allowed` verdict:
@@ -216,4 +216,4 @@ console.log(result.allowed);        // false
 console.log(result.matchedRevokes); // [{ pattern: "docs.files.delete", scope: "docs.folder:9", ... }]
 ```
 
-The explanation is purely data-derived — "why can (or can't) Alice do this here" is answerable from rows, not from re-derivation by hand.
+The explanation is purely data-derived. "Why can (or can't) Alice do this here" is answerable from rows, without re-deriving anything by hand.

@@ -1,14 +1,14 @@
 ---
 title: "The Alfiz Cloud Catalog Registry: Namespaces, Versions, and Tombstones"
 sidebarTitle: "Registry"
-description: "The registry holds each application's published catalog as a versioned, namespaced contract — additions need no coordination, removals are tombstones, and drift is reported by name."
+description: "The registry holds each application's published catalog as a versioned, namespaced contract: additions need no coordination, removals are tombstones, and drift is reported by name."
 ---
 
-The **catalog registry** is where each application's permission catalog becomes an organizational contract. An application publishes its namespace; the registry versions it, enforces ownership — no application can define another's keys — and makes the published tree consumable by roles, grants, and requests across the organization. The registry stores what your code declared; it never invents vocabulary of its own.
+The **catalog registry** is where each application's permission catalog becomes an organizational contract. An application publishes its namespace; the registry versions it and enforces ownership, so no application can define another's keys, and makes the published tree consumable by roles, grants, and requests across the organization. The registry stores what your code declared; it never invents vocabulary of its own.
 
 ## Publishing a namespace
 
-Publish from CI with a **publisher key** — a namespace-scoped credential that can call the publish endpoint and nothing else. The payload is the `CatalogDocument` produced by `catalog.toDocument()`:
+Publish from CI with a **publisher key**, a namespace-scoped credential that can call the publish endpoint and nothing else. The payload is the `CatalogDocument` produced by `catalog.toDocument()`:
 
 ```ts scripts/publish-catalog.ts
 import { catalog } from "../src/authz/catalog";
@@ -23,21 +23,21 @@ await fetch("https://alfiz.dev/api/v1/registry/publish", {
 });
 ```
 
-The body accepts an optional `expectedVersion` for compare-and-set publishes. The same publish is available from the application page in the Dashboard — both paths call the same server function.
+The body accepts an optional `expectedVersion` for compare-and-set publishes. The same publish is available from the application page in the Dashboard, and both paths call the same server function.
 
 ## Versions are monotonic
 
-Versions increase monotonically per namespace, and out-of-order publishes are rejected. A rollback deploy that republishes an older document does not — cannot — un-publish newer keys: the registry refuses the stale version, and the newer contract stands. Roles and grants referencing recently-added keys never dangle because a deploy went backwards.
+Versions increase monotonically per namespace, and out-of-order publishes are rejected. A rollback deploy that republishes an older document cannot un-publish newer keys: the registry refuses the stale version, and the newer contract stands. Roles and grants referencing recently-added keys never dangle because a deploy went backwards.
 
 ## Additions need no coordination
 
-Adding a permission to your catalog requires no registry-side ceremony beyond the publish itself. Forward-inclusive wildcards absorb new keys the moment they are published — a role granting `docs.files.*` covers a `docs.files.archive` permission added a year later, with no role edit and no re-grant.
+Adding a permission to your catalog requires no registry-side ceremony beyond the publish itself. Forward-inclusive wildcards absorb new keys the moment they are published, so a role granting `docs.files.*` covers a `docs.files.archive` permission added a year later, with no role edit and no re-grant.
 
 ## Removals are tombstones
 
-Removal is never deletion. A key that disappears from a published document is **tombstoned**: it stops matching checks immediately, but it remains visible in the registry as deprecated — with its history intact. Grant rows referencing it are not silently rewritten.
+Removal is never deletion. A key that disappears from a published document is **tombstoned**: it stops matching checks immediately, but it remains visible in the registry as deprecated, with its history intact. Grant rows referencing it are not silently rewritten.
 
-The **drift report** closes the loop: it names every role and every grant still referencing keys no longer published by any application. You review and migrate them deliberately — the registry surfaces the debt; it does not pay it down behind your back.
+The **drift report** closes the loop: it names every role and every grant still referencing keys no longer published by any application. You review and migrate them deliberately. The registry surfaces the debt; it does not pay it down behind your back.
 
 ```text
 GET /api/v1/orgs/{org}/registry/drift
@@ -54,17 +54,17 @@ curl -H "authorization: Bearer $ALFIZ_ADMIN_KEY" \
 npx alfiz-verify codegen --catalog zoom.catalog.json --prefix Zoom --out zoom.gen.ts
 ```
 
-The generated types make cross-namespace references — a role bundling `docs.files.*` with `zoom.host` — compile-checked in the consuming codebase, exactly as local keys are.
+The generated types make cross-namespace references, so a role bundling `docs.files.*` with `zoom.host` is compile-checked in the consuming codebase, exactly as local keys are.
 
 Commit that document and declare the slice you interface with as an [import](/catalog/imports). The consuming catalog then treats those keys as its own for typing, verification, and grants, while `toDocument()` keeps publishing only what you actually own.
 
 ## What each application consumes
 
-The drift report above reads roles and grants. It cannot see **code** — an application whose catalog still imports a tombstoned key looks clean until its next deploy.
+The drift report above reads roles and grants. It cannot see **code**, so an application whose catalog still imports a tombstoned key looks clean until its next deploy.
 
 Publishing the import manifest closes that gap. It is a separate artifact from the catalog on purpose: what you announce is vocabulary others may write grants against, what you consume is a dependency only others can warn you about.
 
-`publishImports` writes a versioned manifest to **your own Application's storage** — it posts nothing to the registry, and needs no network. Alfiz Cloud reads it back over the relay like any other provider operation. The op is optional: it needs a driver implementing `putImports` / `getImports` (the `AlfizImports` model in the Prisma fragment), and `capabilities().imports` reports whether yours has it.
+`publishImports` writes a versioned manifest to **your own Application's storage**. It posts nothing to the registry, and needs no network. Alfiz Cloud reads it back over the relay like any other provider operation. The op is optional: it needs a driver implementing `putImports` / `getImports` (the `AlfizImports` model in the Prisma fragment), and `capabilities().imports` reports whether yours has it.
 
 ```ts
 await app.publishImports(catalog.toImportManifest(), provenance);

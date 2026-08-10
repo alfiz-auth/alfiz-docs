@@ -4,7 +4,7 @@ sidebarTitle: "Overview"
 description: "Alfiz access requests let users propose a grant tuple with a justification and route it through configurable approval stages before writing any access."
 ---
 
-Access requests give users a way to ask for permissions they don't currently hold. Rather than bypassing your authorization model, a request is a proposed grant tuple — `(requester, role-or-pattern, scope, expiry?)` — that sits in a pending workflow until every approval stage clears. When the final stage approves, that approval **is** the act of writing the grant row. Denial writes nothing. The request system adds no new access semantics; it is a workflow that gates row creation.
+Access requests give users a way to ask for permissions they don't currently hold. Rather than bypassing your authorization model, a request is a proposed grant tuple, `(requester, role-or-pattern, scope, expiry?)`, that sits in a pending workflow until every approval stage clears. When the final stage approves, that approval **is** the act of writing the grant row. Denial writes nothing. The request system adds no new access semantics; it is a workflow that gates row creation.
 
 ## What a request is
 
@@ -14,7 +14,7 @@ Every access request is an `AccessRequest` object with a proposed grant payload,
 interface AccessRequest {
   id: string;
   requesterUserId: string;
-  /** Exactly one of roleId / pattern — same rule as the grant row itself. */
+  /** Exactly one of roleId / pattern, the same rule as the grant row itself. */
   roleId?: string | undefined;
   pattern?: PermissionPattern | undefined;
   scope: ScopeId;
@@ -27,7 +27,7 @@ interface AccessRequest {
   stageIndex: number;
   /**
    * Stages snapshotted at submission. Stages reference layers and roles,
-   * never resolved people — they survive hierarchy changes and org-root
+   * never resolved people, so they survive hierarchy changes and org-root
    * promotion, resolving at evaluation time.
    */
   stages: readonly ApprovalStage[];
@@ -88,7 +88,7 @@ defineCatalog({
 </CodeGroup>
 
 <Note>
-  Global access (scope `*`) is always requested through requestable **roles**, not patterns. Pattern requests require a scope whose type declares `requestable` — the requestability declaration lives on the scope type, not the permission itself.
+  Global access (scope `*`) is always requested through requestable **roles**, not patterns. Pattern requests require a scope whose type declares `requestable`, because the requestability declaration lives on the scope type, not the permission itself.
 </Note>
 
 ## Submitting a request
@@ -122,7 +122,7 @@ const request = await app.submitRequest({
 ```
 
 <Tip>
-  If the requestability declaration sets `maxDurationMs`, Alfiz enforces the cap automatically. Omitting `proposedExpiresAt` when a cap is set does not bypass it — the cap becomes the expiry.
+  If the requestability declaration sets `maxDurationMs`, Alfiz enforces the cap automatically. Omitting `proposedExpiresAt` when a cap is set does not bypass it. The cap becomes the expiry.
 </Tip>
 
 At submission, Alfiz runs any leading auto-approval stages immediately. If every stage passes at once, the request resolves to `approved` and the grant row is written before `submitRequest` returns.
@@ -137,7 +137,7 @@ At submission, Alfiz runs any leading auto-approval stages immediately. If every
     Every stage passed. If all stages were `auto` predicates and every predicate evaluated to `true`, the request resolves without any human decision. The grant row is written atomically with the state transition.
   </Accordion>
   <Accordion title="approved">
-    A human approver advanced the final stage. The grant row is written as part of that decision — approval **is** row creation, with full provenance linking the row back to the request.
+    A human approver advanced the final stage. The grant row is written as part of that decision. Approval **is** row creation, with full provenance linking the row back to the request.
   </Accordion>
   <Accordion title="denied">
     Any approver at any stage denied the request. No grant row is written. Denial at any stage is final.
@@ -146,7 +146,7 @@ At submission, Alfiz runs any leading auto-approval stages immediately. If every
 
 ## Time-bound requests and just-in-time access
 
-A request may carry a `proposedExpiresAt` timestamp. When approved, the resulting grant row carries that expiry. This pairs naturally with `can.fresh` on destructive or sensitive surfaces — `can.fresh` bypasses the subject-side cache and evaluates the grant's expiry at the moment of the check, so temporary elevation takes effect and expires precisely.
+A request may carry a `proposedExpiresAt` timestamp. When approved, the resulting grant row carries that expiry. This pairs naturally with `can.fresh` on destructive or sensitive surfaces, since `can.fresh` bypasses the subject-side cache and evaluates the grant's expiry at the moment of the check, so temporary elevation takes effect and expires precisely.
 
 ```typescript
 // The canonical just-in-time pattern:
@@ -159,8 +159,8 @@ await alfiz.can.fresh({ userId }, "docs.files.delete", "docs.folder:9");
 
 The requestability declaration can enforce time bounds from the catalog side:
 
-- `requireExpiry: true` — every request to this role or scope type must propose an expiry; Alfiz rejects open-ended requests.
-- `maxDurationMs` — caps how far into the future `proposedExpiresAt` may be, even if `requireExpiry` is not set.
+- `requireExpiry: true` means every request to this role or scope type must propose an expiry; Alfiz rejects open-ended requests.
+- `maxDurationMs` caps how far into the future `proposedExpiresAt` may be, even if `requireExpiry` is not set.
 
 ## Where requests live
 
@@ -169,7 +169,7 @@ Requests are homed where the resulting grant row would live:
 - **Global-scope requests** (role requests with no scope, or with scope `*`) run on the org root Application. If your Application is not the org root, submitting a global-scope request is rejected.
 - **Instance-scoped requests** (pattern requests targeting `scopeType:id`) run on the Application that owns that scope.
 
-Under federation, the `AccessRequest` shape is identical against every provider — workflows deepen without migration.
+Under federation, the `AccessRequest` shape is identical against every provider, so workflows deepen without migration.
 
 ## Approver operations
 
@@ -177,7 +177,7 @@ Under federation, the `AccessRequest` shape is identical against every provider 
   <Step title="List your queue">
     Call `listApproverQueue(approverUserId)` to fetch every pending request the given user may currently decide, based on their role grants and position in the reporting hierarchy.
 
-    There is a third source of eligibility: an **administrative override**. A holder of `alfiz_internal.requests.decide_request` at the global scope may decide any stage, and those requests appear in their queue too. It is the escape hatch for a stage nobody can fill — a `named_approvers` stage whose role has no holders, or a `management` stage for a user with no manager.
+    There is a third source of eligibility: an **administrative override**. A holder of `alfiz_internal.requests.decide_request` at the global scope may decide any stage, and those requests appear in their queue too. It is the escape hatch for a stage nobody can fill, such as a `named_approvers` stage whose role has no holders, or a `management` stage for a user with no manager.
 
     ```typescript
     const queue = await app.listApproverQueue("manager-uid");
@@ -222,7 +222,7 @@ Every request write rejects through `ProviderWriteRejectedError`, whose `code` t
 | Requesting a role that is not requestable | `validation` | `role <name> is not requestable` |
 
 <Note>
-Approver entitlement is resolved **at decision time**, not when the request was filed — the manager chain and role membership are read fresh. A reorg between submission and decision routes the request correctly.
+Approver entitlement is resolved **at decision time** rather than when the request was filed. The manager chain and role membership are read fresh. A reorg between submission and decision routes the request correctly.
 </Note>
 
 `@alfiz/core` also exports `RequestStateError`, thrown by the pure `applyDecision` helper when a decision is applied to a non-pending request. You only see it if you drive the state machine yourself; the Application converts the same condition into the `conflict` rejection above.
@@ -240,5 +240,5 @@ Alfiz ships no request UI. What it ships is everything the UI needs, on the Appl
 `submitRequest` validates the justification against the declared prompts server-side regardless of what your form did, so a hand-rolled client cannot skip a required answer.
 
 <Note>
-For the role editor and grant picker that sit alongside these, `@alfiz/core` ships the wildcard-aware permission tree — `buildPermissionTree`, `toggleNode`, `isNodeChecked`, `isNodeIndeterminate`, and `nodePattern`. It is selection logic and state, not markup: whole-group selection stores the `<group>.*` pattern, which is what makes forward-inclusion real rather than a snapshot.
+For the role editor and grant picker that sit alongside these, `@alfiz/core` ships the wildcard-aware permission tree (`buildPermissionTree`, `toggleNode`, `isNodeChecked`, `isNodeIndeterminate`, and `nodePattern`. It is selection logic and state, not markup: whole-group selection stores the `<group>.*` pattern, which is what makes forward-inclusion real rather than a snapshot.
 </Note>

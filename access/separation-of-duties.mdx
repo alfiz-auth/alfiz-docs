@@ -1,10 +1,10 @@
 ---
 title: "Separation of Duties: Declarative Exclusions, Union-Only Evaluation"
 sidebarTitle: "Separation of duties"
-description: "Declare mutually exclusive permission sets in the catalog. Alfiz reports every principal who crosses them — and can reject the grant that would — without a deny entering the hot path."
+description: "Declare mutually exclusive permission sets in the catalog. Alfiz reports every principal who crosses them, and can reject the grant that would, without a deny entering the hot path."
 ---
 
-"No one may hold both Vendor Admin and Payment Approver" is a SOX staple, and a construct union-only systems historically could not express. Alfiz expresses it **without breaking union-only evaluation**: a separation-of-duty (SoD) constraint is catalog data, evaluated *detectively* off the hot path — and, when you opt in, *preventively* at grant time. `can()` never consults a constraint; inheritance still only widens; precedence is still one rule.
+"No one may hold both Vendor Admin and Payment Approver" is a SOX staple, and a construct union-only systems historically could not express. Alfiz expresses it **without breaking union-only evaluation**: a separation-of-duty (SoD) constraint is catalog data, evaluated *detectively* off the hot path and, when you opt in, *preventively* at grant time. `can()` never consults a constraint; inheritance still only widens; precedence is still one rule.
 
 ## Declaring constraints
 
@@ -35,10 +35,10 @@ A constraint is two or more **pattern sets**. Holding access matching patterns f
 
 Declarations are validated at boot, with the failure modes that would make a constraint lie rejected loudly:
 
-- fewer than two sets, or an empty set — cannot express an exclusion;
-- a pattern matching no declared permission — a typo, not a control;
-- a key falling in two sets of the same constraint — every holder would be a violator, which is a declaration bug;
-- a pattern reaching into an [open import region](/catalog/imports) — a constraint over keys the catalog cannot enumerate cannot be checked, and a control that silently checks nothing is worse than a refusal.
+- fewer than two sets, or an empty set, which cannot express an exclusion;
+- a pattern matching no declared permission, which is a typo and not a control;
+- a key falling in two sets of the same constraint, since every holder would be a violator, which is a declaration bug;
+- a pattern reaching into an [open import region](/catalog/imports), because a constraint over keys the catalog cannot enumerate cannot be checked, and a control that silently checks nothing is worse than a refusal.
 
 ## The detective report
 
@@ -53,11 +53,11 @@ const report = await app.listSodViolations();
 //     ] }] }]
 ```
 
-Evaluation runs over the same closure supply every check uses, so it sees what `can()` sees: access inherited through groups and roles, expiry filtered, and **revokes respected fail-closed** — a violation names only access the user genuinely holds right now, and a personal revoke on one side clears it.
+Evaluation runs over the same closure supply every check uses, so it sees what `can()` sees: access inherited through groups and roles, expiry filtered, and **revokes respected fail-closed**, so a violation names only access the user genuinely holds right now, and a personal revoke on one side clears it.
 
 Scope is deliberately ignored: Vendor Admin on project A plus Payment Approver on project B still co-locates both capabilities in one person, which is what the control exists to prevent. A deployment that wants scoped tolerance splits the constraint.
 
-Candidates are every user the store can name — user records plus user-subject grant rows. Access arriving purely through `everyone` or an org subject reaches users the store never heard of; pass `{ userIds }` to check a population you enumerate yourself. Run the report on a schedule and alert on non-empty; it is a read, with no writes and no locks.
+Candidates are every user the store can name: user records plus user-subject grant rows. Access arriving purely through `everyone` or an org subject reaches users the store never heard of; pass `{ userIds }` to check a population you enumerate yourself. Run the report on a schedule and alert on non-empty; it is a read, with no writes and no locks.
 
 ## Preventive enforcement, opt-in
 
@@ -75,13 +75,13 @@ await app.createGrant({ subject: "user:eve", pattern: "erp.payments.approve_paym
 
 The boundary of enforcement is explicit rather than hidden:
 
-- Only a **user-subject** grant that would create a **new** violation is rejected. Pre-existing violations never block unrelated writes — the report owns those.
+- Only a **user-subject** grant that would create a **new** violation is rejected. Pre-existing violations never block unrelated writes, because the report owns those.
 - **Group- and role-shaped writes pass through.** Rejecting them would mean evaluating every member on a write path; the detective report catches the members a group write violated. The test suite pins this boundary.
 
 The default posture is detective-only (`enforce: "off"`): observe first, tighten once the report is clean.
 
 ## Why detective-first is the design
 
-A *preventive-only* SoD in a union-only system would need a deny somewhere in evaluation, and denies in evaluation are exactly the bug class Alfiz's precedence model exists to exclude. Keeping constraints out of `can()` preserves every invariant the system is built on — cycle condensation, merge safety, single-rule precedence — while making the control expressible, reportable, and (at the grant edge, where it is cheap and precise) enforceable.
+A *preventive-only* SoD in a union-only system would need a deny somewhere in evaluation, and denies in evaluation are exactly the bug class Alfiz's precedence model exists to exclude. Keeping constraints out of `can()` preserves every invariant the system is built on (cycle condensation, merge safety, single-rule precedence) while making the control expressible, reportable, and (at the grant edge, where it is cheap and precise) enforceable.
 
 For the export a reviewer signs alongside this report, see [Access reviews](/operations/access-reviews).

@@ -1,10 +1,10 @@
 ---
-title: "Alfiz Storage Drivers — Memory, Prisma, and MongoDB Reference"
+title: "Alfiz Storage Drivers: Memory, Prisma, and MongoDB Reference"
 sidebarTitle: "Storage Drivers"
-description: "memoryDriver() for tests, prismaDriver() and mongoDriver() for production. All satisfy the StorageDriver interface — swap without changing any application logic."
+description: "memoryDriver() for tests, prismaDriver() and mongoDriver() for production. All satisfy the StorageDriver interface, so you can swap one for another without changing any application logic."
 ---
 
-The storage seam is the single interface a database must satisfy to host an Alfiz Application. All application semantics — graph integrity, request workflows, org-root gating, the audit log — live above the seam in the Application layer and are identical regardless of which driver you use. Drivers store and retrieve; they never interpret. All IDs are assigned by the Application.
+The storage seam is the single interface a database must satisfy to host an Alfiz Application. All application semantics (graph integrity, request workflows, org-root gating, the audit log) live above the seam in the Application layer and are identical regardless of which driver you use. Drivers store and retrieve; they never interpret. All IDs are assigned by the Application.
 
 ## The `StorageDriver` interface
 
@@ -29,20 +29,20 @@ One additional method, `runExclusive(key, fn)`, serializes graph writes per key 
 
 ### Optional methods
 
-The following methods are optional. Custom drivers can omit them and keep compiling — the Application either falls back to a slower path or fails loudly at construction if the feature depending on them is turned on.
+The following methods are optional. Custom drivers can omit them and keep compiling, and the Application either falls back to a slower path or fails loudly at construction if the feature depending on them is turned on.
 
 | Method | Enables | Falls back to |
 |---|---|---|
-| `getRoles(ids)` | Batched role fetch on the closure-supply path — one call per miss instead of one per referenced role | Parallel `getRole` per id |
-| `appendEvents`, `headSeq`, `eventsSince`, `pruneEvents` | The Application's `events: { persist: true }` option — a persisted invalidation log for cross-process cache revalidation | Construction throws when `events.persist` is on without them |
+| `getRoles(ids)` | Batched role fetch on the closure-supply path, with one call per miss instead of one per referenced role | Parallel `getRole` per id |
+| `appendEvents`, `headSeq`, `eventsSince`, `pruneEvents` | The Application's `events: { persist: true }` option, a persisted invalidation log for cross-process cache revalidation | Construction throws when `events.persist` is on without them |
 | `putImports`, `getImports` | `publishImports` / `getPublishedImports`, and the drift report that names roles still referencing a tombstoned key | `capabilities().imports` reports `false`; the methods are absent |
-| `recordMetrics`, `readMetrics`, `pruneMetrics` | The Application's `metrics: {}` option — stored usage counters and the revocation safeguard | Construction throws when `metrics` is on without them |
+| `recordMetrics`, `readMetrics`, `pruneMetrics` | The Application's `metrics: {}` option, with stored usage counters and the revocation safeguard | Construction throws when `metrics` is on without them |
 
-`memoryDriver` and `mongoDriver` implement the event-log methods out of the box (`mongoDriver` omits catalog history and metrics — see [its section](#mongodriver)). `prismaDriver` includes each group only when the corresponding delegate is present on the client you hand it — so if you merged only the ten core models and generated your client, `events: { persist: true }` and `metrics: {}` will still throw at construction. Add the [optional models](#optional-models), migrate, and regenerate first.
+`memoryDriver` and `mongoDriver` implement the event-log methods out of the box (`mongoDriver` omits catalog history and metrics; see [its section](#mongodriver)). `prismaDriver` includes each group only when the corresponding delegate is present on the client you hand it, so if you merged only the ten core models and generated your client, `events: { persist: true }` and `metrics: {}` will still throw at construction. Add the [optional models](#optional-models), migrate, and regenerate first.
 
 ## `memoryDriver()`
 
-The in-memory driver is the reference implementation of the storage seam. It is complete and correct — every Application feature works with it — making it the natural choice for unit tests, local development, and ephemeral deployments.
+The in-memory driver is the reference implementation of the storage seam. It is complete and correct. Every Application feature works with it, which makes it the natural choice for unit tests, local development, and ephemeral deployments.
 
 ```ts
 import { memoryDriver } from "@alfiz/application";
@@ -57,7 +57,7 @@ const app = createApplication({
 });
 ```
 
-Each call to `memoryDriver()` returns an independent, empty store. Two calls produce two isolated stores — useful for testing multi-tenant scenarios or provider federation in-process.
+Each call to `memoryDriver()` returns an independent, empty store. Two calls produce two isolated stores, which helps when testing multi-tenant scenarios or provider federation in-process.
 
 <Warning>
   The memory driver is not persistent. Everything is lost when the process exits. Use it for tests and local dev only; use `prismaDriver` (or a custom driver) for anything you need to survive a restart.
@@ -76,7 +76,7 @@ describe("document access", () => {
   let alfiz: ReturnType<typeof createAlfizClient<typeof catalog>>;
 
   beforeEach(() => {
-    // Fresh isolated store per test — no teardown needed.
+    // Fresh isolated store per test, with no teardown needed.
     app = createApplication({ catalog, storage: memoryDriver() });
     alfiz = createAlfizClient({ catalog, provider: app });
   });
@@ -100,7 +100,7 @@ describe("document access", () => {
 
 ## `prismaDriver`
 
-The Prisma driver is the production driver shipped in `@alfiz/prisma`. It maps the `StorageDriver` interface onto a generated Prisma client without taking `@prisma/client` as a hard dependency — it operates against a structural delegate interface instead.
+The Prisma driver is the production driver shipped in `@alfiz/prisma`. It maps the `StorageDriver` interface onto a generated Prisma client without taking `@prisma/client` as a hard dependency. It operates against a structural delegate interface instead.
 
 ### Installation
 
@@ -121,7 +121,7 @@ const prisma = new PrismaClient();
 const storage = prismaDriver(prisma);
 ```
 
-Pass the `PrismaClient` instance directly. Any Prisma client generated from a schema containing the Alfiz models satisfies the `AlfizPrismaDelegates` interface structurally — no cast required.
+Pass the `PrismaClient` instance directly. Any Prisma client generated from a schema containing the Alfiz models satisfies the `AlfizPrismaDelegates` interface structurally, with no cast required.
 
 ### `PrismaDriverOptions`
 
@@ -165,7 +165,7 @@ interface AlfizPrismaDelegates {
   alfizCatalog: AlfizCatalogDelegate;
   alfizAudit: AlfizAuditDelegate;
 
-  // Optional — omit the model and the driver omits the matching methods.
+  // Optional: omit the model and the driver omits the matching methods.
   alfizImports?: AlfizImportsDelegate;
   alfizEpoch?: AlfizEpochDelegate;
   alfizEvent?: AlfizEventDelegate;
@@ -188,9 +188,9 @@ const storage = prismaDriver(mockDb);
 
 ### Schema fragment (v2)
 
-Add the following models to your `schema.prisma`. These are a fragment — they have no `datasource` or `generator` blocks and inherit yours. All models are prefixed `Alfiz` to avoid colliding with your own models.
+Add the following models to your `schema.prisma`. These are a fragment, so they have no `datasource` or `generator` blocks and inherit yours. All models are prefixed `Alfiz` to avoid colliding with your own models.
 
-Since 0.8.0 the fragment is **v2**: every model carries an `app` partition discriminator (`@default("")`) and every primary key and index is a composite led by it, so several Applications can [share one set of tables](/operations/shared-store). A single-application deployment changes nothing — an unpartitioned driver reads and writes partition `""`, which is where a migrated v1 dataset lands. Upgrading from v1 is a column-add plus PK/index rebuilds; see the [0.8.0 changelog entry](/changelog#0-8-0-shared-store-topologies-partitioned-storage-and-the-mesh).
+Since 0.8.0 the fragment is **v2**: every model carries an `app` partition discriminator (`@default("")`) and every primary key and index is a composite led by it, so several Applications can [share one set of tables](/operations/shared-store). A single-application deployment changes nothing, because an unpartitioned driver reads and writes partition `""`, which is where a migrated v1 dataset lands. Upgrading from v1 is a column-add plus PK/index rebuilds; see the [0.8.0 changelog entry](/changelog#0-8-0-shared-store-topologies-partitioned-storage-and-the-mesh).
 
 ```prisma
 /// The atomic grant tuple: (subject, role-or-pattern, scope, expiry?).
@@ -211,7 +211,7 @@ model AlfizGrant {
   @@index([app, roleId])
 }
 
-/// Personal revoke — the single negative layer; only users hold revokes.
+/// Personal revoke: the single negative layer; only users hold revokes.
 model AlfizRevoke {
   app        String @default("")
   id         String
@@ -302,7 +302,7 @@ model AlfizRequest {
   @@index([app, requesterUserId])
 }
 
-/// The published catalog — a versioned singleton per partition (id = 1).
+/// The published catalog: a versioned singleton per partition (id = 1).
 model AlfizCatalog {
   app      String @default("")
   id       Int    @default(1)
@@ -333,22 +333,22 @@ model AlfizAudit {
 ```
 
 <Note>
-  Timestamps (`createdAt`, `expiresAt`, `at`, etc.) are stored as `BigInt` (epoch milliseconds) for lossless round-tripping with the core types' `number` fields. IDs are opaque strings assigned by the Application — no `autoincrement` or `cuid()` is used. No Prisma relations or cascades are declared; referential integrity between Alfiz rows is enforced by the Application layer above the seam.
+  Timestamps (`createdAt`, `expiresAt`, `at`, etc.) are stored as `BigInt` (epoch milliseconds) for lossless round-tripping with the core types' `number` fields. IDs are opaque strings assigned by the Application, with no `autoincrement` or `cuid()` used. No Prisma relations or cascades are declared; referential integrity between Alfiz rows is enforced by the Application layer above the seam.
 </Note>
 
 ### Optional models
 
-Four more models are additive. Leave them out and everything above still works; add one when you turn on the feature that needs it. Each corresponds to an optional delegate, and **the Application refuses loudly at construction** rather than silently degrading when you enable a feature whose model is missing.
+Four more models are additive. Leave them out and everything above still works; add one when you turn on the feature that needs it. Each corresponds to an optional delegate, and **the Application refuses loudly at construction** when you enable a feature whose model is missing.
 
 | Model | Enables | Without it |
 |---|---|---|
 | `AlfizImports` | `publishImports` / `getPublishedImports` | `capabilities().imports` is `false`; the import methods are absent |
 | `AlfizEpoch` + `AlfizEvent` | Event persistence (the 0.7.0 default) and so client revalidation | Persistence silently stays off under the auto default; an explicit `events: { persist: true }` **throws** |
-| `AlfizCatalogVersion` | Catalog history per publish — `listCatalogVersions`, `listWildcardDrift` | Drift answers `unsupported` |
+| `AlfizCatalogVersion` | Catalog history per publish, for `listCatalogVersions`, `listWildcardDrift` | Drift answers `unsupported` |
 | `AlfizMetric` | `metrics: {}` on the Application, `getGrantUsage` and the other usage reads | `createApplication` **throws** when `metrics` is set |
 
 ```prisma
-/// The consumed-vocabulary manifest — catalog.toImportManifest().
+/// The consumed-vocabulary manifest, from catalog.toImportManifest().
 model AlfizImports {
   app      String @default("")
   id       Int    @default(1)
@@ -368,7 +368,7 @@ model AlfizCatalogVersion {
   @@id([app, version])
 }
 
-/// The invalidation-log head — a singleton per partition (id = 1). One tiny
+/// The invalidation-log head: a singleton per partition (id = 1). One tiny
 /// indexed read answers "did anything change anywhere?", which is the
 /// cross-process cache-freshness signal behind `revalidateAfterMs`.
 model AlfizEpoch {
@@ -380,7 +380,7 @@ model AlfizEpoch {
   @@id([app, id])
 }
 
-/// Persisted invalidation events, contiguous by `seq` within a partition —
+/// Persisted invalidation events, contiguous by `seq` within a partition.
 /// the same events the in-process stream carries, durable so other
 /// processes can replay them.
 model AlfizEvent {
@@ -397,7 +397,7 @@ model AlfizEvent {
 /// Rolling permission-usage counters: one row per counter per time bucket
 /// (daily by default), keyed by grant id, revoke id, role id, permission
 /// key, or scope type. Counters accumulate across app servers. Nothing here
-/// is access data — dropping the table loses metrics and changes no decision.
+/// is access data. Dropping the table loses metrics and changes no decision.
 model AlfizMetric {
   app       String @default("")
   bucket    BigInt
@@ -414,7 +414,7 @@ model AlfizMetric {
 
 ## `mongoDriver`
 
-The MongoDB driver ships in `@alfiz/mongo` and implements the seam directly over the official `mongodb` package — there is no schema to merge and no code generation step. Collections and their hot-path indexes are created lazily on first use; every row is stored with its Alfiz id as Mongo's `_id` for free uniqueness and point reads.
+The MongoDB driver ships in `@alfiz/mongo` and implements the seam directly over the official `mongodb` package, so there is no schema to merge and no code generation step. Collections and their hot-path indexes are created lazily on first use; every row is stored with its Alfiz id as Mongo's `_id` for free uniqueness and point reads.
 
 ### Installation
 
@@ -447,7 +447,7 @@ const storage = mongoDriver(client.connect().then((c) => c.db("alfiz")));
 ### `MongoDriverOptions`
 
 <ParamField body="leaseMs" type="number" default="10000" optional>
-  Lease duration for the cross-process graph lock, in milliseconds. `runExclusive` is an in-process mutex plus a best-effort lease in the `locks` collection, so two nodes writing group parentage at the same moment cannot jointly form a cycle — no `lock` option to configure, unlike the Prisma driver. An expired lease is stolen, so a crashed holder cannot wedge writes forever.
+  Lease duration for the cross-process graph lock, in milliseconds. `runExclusive` is an in-process mutex plus a best-effort lease in the `locks` collection, so two nodes writing group parentage at the same moment cannot jointly form a cycle. There is no `lock` option to configure, unlike the Prisma driver. An expired lease is stolen, so a crashed holder cannot wedge writes forever.
 </ParamField>
 
 <ParamField body="partition" type="string" optional>
@@ -455,26 +455,26 @@ const storage = mongoDriver(client.connect().then((c) => c.db("alfiz")));
 </ParamField>
 
 <ParamField body="layout" type='"collections" | "rows"' default="collections" optional>
-  How `partition` lands in the shared `Db`. `"collections"` prefixes every collection (`docs_grants`, `docs_epoch`, `docs_locks`, …) — physically unforgettable, but a parallel collection set per application. `"rows"` (since 0.8.1) keeps **one** shared collection set: every document carries an `app` discriminator, `_id` becomes the compound `{ app, id }`, and every index leads with `app` — the same shape as the Prisma v2 tables, so the collection list stays flat however many applications share the `Db`. `"rows"` requires an explicit `partition` (Mongo has no migrated-in-place default dataset the way SQL does), and the rule is one layout per shared `Db` — a `"rows"` driver cannot see documents written without the discriminator. Both layouts pass the same isolation and mesh conformance suites.
+  How `partition` lands in the shared `Db`. `"collections"` prefixes every collection (`docs_grants`, `docs_epoch`, `docs_locks`, …), which is physically unforgettable but a parallel collection set per application. `"rows"` (since 0.8.1) keeps **one** shared collection set: every document carries an `app` discriminator, `_id` becomes the compound `{ app, id }`, and every index leads with `app`, the same shape as the Prisma v2 tables, so the collection list stays flat however many applications share the `Db`. `"rows"` requires an explicit `partition` (Mongo has no migrated-in-place default dataset the way SQL does), and the rule is one layout per shared `Db`, because a `"rows"` driver cannot see documents written without the discriminator. Both layouts pass the same isolation and mesh conformance suites.
 </ParamField>
 
 ### What this driver supports
 
-The event-log methods work out of the box, so `events: { persist: true }` and client revalidation need no extra setup — the right posture for serverless. Because the lease already serializes across processes, the driver qualifies for [mesh write edges](/operations/shared-store#write-edges) as shipped. Two features are not implemented: catalog **history** (only the head is kept, so the wildcard-drift report answers `unsupported` rather than wrongly) and the rolling **metrics** methods (`metrics: {}` refuses at construction). Every value the driver assigns into a query document is checked to be the expected primitive first, so an object-shaped value off the wire (`{"subject": {"$ne": null}}`) can never be read as a query operator.
+The event-log methods work out of the box, so `events: { persist: true }` and client revalidation need no extra setup, the right posture for serverless. Because the lease already serializes across processes, the driver qualifies for [mesh write edges](/operations/shared-store#write-edges) as shipped. Two features are not implemented: catalog **history** (only the head is kept, so the wildcard-drift report answers `unsupported` rather than wrongly) and the rolling **metrics** methods (`metrics: {}` refuses at construction). Every value the driver assigns into a query document is checked to be the expected primitive first, so an object-shaped value off the wire (`{"subject": {"$ne": null}}`) can never be read as a query operator.
 
 ## Partitioned storage: several Applications, one backend
 
-Both database drivers take a `partition` option pinning the driver — at construction, irrevocably — to one application's slice of a shared backend. Isolation is strict and pinned by a published conformance suite; the applications interact in no way unless you opt into the [mesh](/operations/shared-store). The rule in shared tables is **all partitioned or none**: an application that omits the option lands in partition `""` (Prisma) or the unprefixed collections (Mongo) beside any legacy data.
+Both database drivers take a `partition` option pinning the driver, at construction and irrevocably, to one application's slice of a shared backend. Isolation is strict and pinned by a published conformance suite; the applications interact in no way unless you opt into the [mesh](/operations/shared-store). The rule in shared tables is **all partitioned or none**: an application that omits the option lands in partition `""` (Prisma) or the unprefixed collections (Mongo) beside any legacy data.
 
 ```ts
 const docs = prismaDriver(prisma, { partition: "docs", lock });
 const billing = prismaDriver(prisma, { partition: "billing", lock });
-// or, over one Mongo Db — prefix-per-partition, or one shared collection set:
+// or, over one Mongo Db: prefix-per-partition, or one shared collection set:
 const docs = mongoDriver(db, { partition: "docs" });
 const docs = mongoDriver(db, { partition: "docs", layout: "rows" });
 ```
 
-See [Shared-store topologies](/operations/shared-store) for the full picture — what collides without partitioning, the mesh's access edges, and the org partition.
+See [Shared-store topologies](/operations/shared-store) for the full picture: what collides without partitioning, the mesh's access edges, and the org partition.
 
 ## Multi-node deployments
 
@@ -482,7 +482,7 @@ The default in-process mutex inside the memory driver and the Prisma driver only
 
 ## Implementing a custom driver
 
-If you use a database without a bundled driver — DynamoDB, a raw SQL driver, or similar — implement `StorageDriver` directly. The interface is in `@alfiz/application`:
+If you use a database without a bundled driver, such as DynamoDB or a raw SQL driver, implement `StorageDriver` directly. The interface is in `@alfiz/application`:
 
 ```ts
 import type { StorageDriver } from "@alfiz/application";
@@ -497,10 +497,10 @@ export function myCustomDriver(): StorageDriver {
 }
 ```
 
-Conventions a custom driver has to get right — and since 0.7.0, a published conformance suite that checks them for you:
+Conventions a custom driver has to get right, and since 0.7.0 a published conformance suite that checks them for you:
 
 ```ts
-// my-driver.test.ts — the whole file
+// my-driver.test.ts, the whole file
 import { test } from "vitest"; // or any runner; the cases use node:assert
 import {
   driverContractCases,
@@ -511,12 +511,12 @@ import {
 for (const c of driverContractCases) test(c.name, () => c.run(makeDriver()));
 ```
 
-The suite covers the row round-trips, the audit ordering and filters below, catalog history, and — the case that matters most for correctness — **`runExclusive` serialization**, which is what keeps graph-cycle detection sound under concurrency. A driver that fails it is unsound multi-node, not merely non-conforming.
+The suite covers the row round-trips, the audit ordering and filters below, catalog history, and the case that matters most for correctness, **`runExclusive` serialization**, which is what keeps graph-cycle detection sound under concurrency. A driver that fails it is unsound multi-node, not merely non-conforming.
 
-Since 0.8.0 the suite also exports `isolationContractCases(makePartitionedDriver)` and `meshContractCases(makePartitionedDriver)`. A custom driver claiming multi-application support over one backend is graded against the same isolation bar the bundled drivers pass — including the failure directions that leak silently: the unfiltered lists, the singletons, event-log sequencing, and the audit-chain seed. See [Shared-store topologies](/operations/shared-store).
+Since 0.8.0 the suite also exports `isolationContractCases(makePartitionedDriver)` and `meshContractCases(makePartitionedDriver)`. A custom driver claiming multi-application support over one backend is graded against the same isolation bar the bundled drivers pass, including the failure directions that leak silently: the unfiltered lists, the singletons, event-log sequencing, and the audit-chain seed. See [Shared-store topologies](/operations/shared-store).
 
 The conventions the suite pins:
 
-- **Absent rows return `null`** — not `undefined`, and never a thrown error. Both bundled drivers follow this.
-- **Audit order is (`at`, then `id`)**, and `listAudit({ limit })` returns the NEWEST `limit` events in that order, not the oldest — while `listAudit({ cursor })` returns the first `limit` strictly *after* the cursor, ascending, for export paging. The memory driver slices from the end; the Prisma driver orders ascending and takes `-limit`.
+- **Absent rows return `null`**, never `undefined` and never a thrown error. Both bundled drivers follow this.
+- **Audit order is (`at`, then `id`)**, and `listAudit({ limit })` returns the NEWEST `limit` events in that order rather than the oldest, while `listAudit({ cursor })` returns the first `limit` strictly *after* the cursor, ascending, for export paging. The memory driver slices from the end; the Prisma driver orders ascending and takes `-limit`.
 - **Catalog history is optional but honest**: implement `getCatalogVersion`/`listCatalogVersions` (and retain a row per `putCatalog`) to enable the [wildcard-drift report](/operations/access-reviews#wildcard-drift-what-changed-since-you-certified); omit them and the report answers `unsupported` rather than wrongly.

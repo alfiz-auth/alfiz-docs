@@ -4,13 +4,13 @@ sidebarTitle: "Navigation Wiring"
 description: "The Alfiz catalog carries navigation entries that control which menu items render for each user, based on their actual permissions evaluated client-side."
 ---
 
-The catalog is not just a list of permissions — it also carries the navigation structure your application renders. By declaring menu items alongside the permissions that govern them, you give `alfiz-verify` everything it needs to confirm that nav visibility and page-level gates are consistent, and you keep the permission-to-UI mapping in one place rather than scattered across layout files.
+The catalog carries the navigation structure your application renders alongside the permissions themselves. By declaring menu items alongside the permissions that govern them, you give `alfiz-verify` everything it needs to confirm that nav visibility and page-level gates are consistent, and you keep the permission-to-UI mapping in one place instead of scattered across layout files.
 
 ## How navigation visibility works
 
 Navigation visibility is evaluated by `canAny()`. When a user loads your application, each nav item's `permission` field is tested against what the user actually holds. Items for which the user holds nothing under the declared pattern simply do not render.
 
-This evaluation happens on your server, like every other check — `canAny` reads your own database through the provider, and the synchronous form is `snapshot.canAny`, taken once per request. What makes it a **display optimization** rather than a security gate is not where it runs but what it answers: whether the user holds *anything* under the pattern. The page the nav item points to must gate itself independently with `require` on a concrete key.
+This evaluation happens on your server, like every other check. `canAny` reads your own database through the provider, and the synchronous form is `snapshot.canAny`, taken once per request. What makes it a **display optimization** rather than a security gate is what it answers: whether the user holds *anything* under the pattern. The page the nav item points to must gate itself independently with `require` on a concrete key.
 
 <Warning>
   Navigation visibility is **not** a security gate. A user who knows a URL can navigate directly to a page regardless of whether the nav item rendered for them. Every page, server action, and route handler must gate itself with `require` on a concrete key. `alfiz-verify` errors when it finds `canAny()` used as a gate in a server action or route handler.
@@ -38,15 +38,15 @@ export interface NavItemInput {
 <ParamField body="permission" type="PermissionPattern | readonly PermissionKey[]">
   The visibility condition. Accepts three forms:
 
-  - **A concrete key** — `"docs.files.read"`. The item renders when the user holds exactly this permission.
-  - **An array of keys** — `["docs.files.read", "docs.files.update_file"]`. The item renders when the user holds *any* key in the list.
-  - **A wildcard pattern** — `"docs.*"` or `"docs.files.*"`. The item renders when the user holds *any* permission under the pattern. This is the most common form for top-level nav sections.
+  - **A concrete key**, such as `"docs.files.read"`. The item renders when the user holds exactly this permission.
+  - **An array of keys**, such as `["docs.files.read", "docs.files.update_file"]`. The item renders when the user holds *any* key in the list.
+  - **A wildcard pattern**, such as `"docs.*"` or `"docs.files.*"`. The item renders when the user holds *any* permission under the pattern. This is the most common form for top-level nav sections.
 
-  `alfiz-verify` checks that every value here resolves against the catalog — unknown keys and patterns that match nothing are lint errors.
+  `alfiz-verify` checks that every value here resolves against the catalog, so unknown keys and patterns that match nothing are lint errors.
 </ParamField>
 
 <ParamField body="children" type="readonly NavItemInput[]">
-  Nested nav items. Child visibility is evaluated independently — a child can render even when its parent pattern would not match, though in practice parent items are almost always broader patterns that cover their children.
+  Nested nav items. Child visibility is evaluated independently, so a child can render even when its parent pattern would not match, though in practice parent items are almost always broader patterns that cover their children.
 </ParamField>
 
 ## `canAny` vs. `can`
@@ -54,7 +54,7 @@ export interface NavItemInput {
 <Accordion title="Why two methods?">
   `can` is a gate. It returns a yes/no decision about a **concrete, enumerated permission** at a specific scope. Use it at every enforcement point: page guards, server actions, and route handlers.
 
-  `canAny` is a visibility affordance. It returns true when the user holds *anything* under a pattern — it does not name what they can do, only whether there is something. Use it exclusively for rendering decisions: show this nav section, show this sidebar category, show this menu group.
+  `canAny` is a visibility affordance. It returns true when the user holds *anything* under a pattern. It does not name what they can do, only whether there is something. Use it exclusively for rendering decisions: show this nav section, show this sidebar category, show this menu group.
 
   The rule is architectural: `can` is provable at a specific path in your codebase; `canAny` is not. `alfiz-verify` enforces this distinction by erroring when `canAny` appears in a server action or route handler.
 </Accordion>
@@ -182,7 +182,7 @@ export const catalog = defineCatalog({
 ```ts page.tsx (gate example)
 // app/(portal)/files/page.tsx
 // The nav item rendered because canAny("docs.files.*") was true.
-// The page still gates independently — visibility is not access.
+// The page still gates independently. Visibility is not access.
 export default async function FilesPage() {
   await alfiz.require(actor, "docs.files.read");
   // ...
@@ -191,15 +191,15 @@ export default async function FilesPage() {
 </CodeGroup>
 
 <Tip>
-  Keep parent nav items' `permission` patterns broad enough to cover all their children. If a user holds `docs.files.create` but not `docs.files.read`, a parent item gated on `docs.files.*` will still render — and the children will show only the items the user actually holds. This is the intended behavior.
+  Keep parent nav items' `permission` patterns broad enough to cover all their children. If a user holds `docs.files.create` but not `docs.files.read`, a parent item gated on `docs.files.*` will still render, and the children will show only the items the user actually holds. This is the intended behavior.
 </Tip>
 
 ## What `alfiz-verify` checks
 
 When you run `alfiz-verify`, it lints every `permission` value in your navigation:
 
-- **Unknown key or pattern** — a nav permission that doesn't appear in the catalog is an error. This catches typos and references to permissions you renamed.
-- **Pattern matching no keys** — a wildcard that currently matches nothing is a warning (the catalog may be growing and the pattern is intentional, but you should confirm).
-- **`canAny` used as a gate** — any file where `canAny` guards a server action or exported handler is an error.
+- **Unknown key or pattern.** A nav permission that doesn't appear in the catalog is an error. This catches typos and references to permissions you renamed.
+- **Pattern matching no keys.** A wildcard that currently matches nothing is a warning (the catalog may be growing and the pattern is intentional, but you should confirm).
+- **`canAny` used as a gate.** Any file where `canAny` guards a server action or exported handler is an error.
 
 These checks mean you can refactor permissions confidently: rename a tab, and the verifier immediately surfaces every nav entry that still references the old name.

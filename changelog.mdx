@@ -4,42 +4,42 @@ sidebarTitle: "Changelog"
 description: "Every Alfiz release, from 0.2.0 to 0.8.1. What shipped, what changed, and what broke across @alfiz/core, @alfiz/application, @alfiz/prisma, @alfiz/mongo, and @alfiz/verify."
 ---
 
-Alfiz is pre-1.0 and moves deliberately. Each release addresses a concrete gap in how authorization is modeled, checked, or maintained. The entries below mirror the library's own `CHANGELOG.md` — what shipped and, where a release broke something, exactly what you have to change.
+Alfiz is pre-1.0 and moves deliberately. Each release addresses a concrete gap in how authorization is modeled, checked, or maintained. The entries below mirror the library's own `CHANGELOG.md`: what shipped and, where a release broke something, exactly what you have to change.
 
 <Note>
   Alfiz is pre-1.0. Semantics are not frozen, and breaking changes ship under
   minor and patch numbers when the change is worth more than the version
-  etiquette — 0.5.2 carries two of them, and 0.6.0 replaces a wire format.
+  etiquette. 0.5.2 carries two of them, and 0.6.0 replaces a wire format.
   Read the **Breaking** section of every entry between your version and your
   target before upgrading.
 </Note>
 
-All five packages version together: `@alfiz/core`, `@alfiz/application`, `@alfiz/prisma`, `@alfiz/mongo`, and `@alfiz/verify` — `@alfiz/mongo` shipped between 0.7.1 and 0.8.0 at 0.1.0 and joined the release train at 0.8.0.
+All five packages version together: `@alfiz/core`, `@alfiz/application`, `@alfiz/prisma`, `@alfiz/mongo`, and `@alfiz/verify`. `@alfiz/mongo` shipped between 0.7.1 and 0.8.0 at 0.1.0 and joined the release train at 0.8.0.
 
 ---
 
-## 0.8.1 — `@alfiz/mongo` row partitioning: one shared collection set
+## 0.8.1: `@alfiz/mongo` row partitioning: one shared collection set
 
-0.8.0's Mongo partitioning was a collection prefix per application (`docs_grants`, `docs_epoch`, …) — the physically stronger mechanism, but with several co-tenants it multiplies the collection list, and that clutter is the first thing anyone sees in Compass. This release adds the row-partitioned alternative, matching the Prisma v2 layout exactly:
+0.8.0's Mongo partitioning was a collection prefix per application (`docs_grants`, `docs_epoch`, …), the physically stronger mechanism, but with several co-tenants it multiplies the collection list, and that clutter is the first thing anyone sees in Compass. This release adds the row-partitioned alternative, matching the Prisma v2 layout exactly:
 
 ```ts
 const docs    = mongoDriver(db, { partition: "docs",    layout: "rows" });
 const billing = mongoDriver(db, { partition: "billing", layout: "rows" });
 ```
 
-`layout: "rows"` keeps **one** shared set of collections (`grants`, `epoch`, `locks`, …) however many applications share the `Db`: every document carries an `app` discriminator (stripped on read), `_id` becomes the compound `{ app, id }` — Alfiz ids are only unique per partition, and the compound key keeps uniqueness and point reads free — every index leads with `app`, and lease keys are partition-scoped. `crossProcess` still holds, so the layout qualifies for [mesh write edges](/operations/shared-store#write-edges) unchanged, and the full conformance surface (base contract, event log, isolation, mesh) passes over one shared `Db` under both layouts.
+`layout: "rows"` keeps **one** shared set of collections (`grants`, `epoch`, `locks`, …) however many applications share the `Db`: every document carries an `app` discriminator (stripped on read), `_id` becomes the compound `{ app, id }` because Alfiz ids are only unique per partition, and the compound key keeps uniqueness and point reads free; every index leads with `app`, and lease keys are partition-scoped. `crossProcess` still holds, so the layout qualifies for [mesh write edges](/operations/shared-store#write-edges) unchanged, and the full conformance surface (base contract, event log, isolation, mesh) passes over one shared `Db` under both layouts.
 
-Two rules, stated plainly: `"rows"` **requires an explicit `partition`** — unlike SQL, Mongo has no migrated-in-place `""` dataset, and a row-partitioned query cannot see documents written without the discriminator — and you pick **one layout per shared `Db`**. The default (`"collections"`) layout is byte-identical to 0.8.0; existing deployments change nothing. All five packages move to 0.8.1 in lockstep with no other code changes. See [Storage drivers](/api/storage-drivers#mongodriver).
+Two rules, stated plainly: `"rows"` **requires an explicit `partition`**, because unlike SQL, Mongo has no migrated-in-place `""` dataset, and a row-partitioned query cannot see documents written without the discriminator. And you pick **one layout per shared `Db`**. The default (`"collections"`) layout is byte-identical to 0.8.0; existing deployments change nothing. All five packages move to 0.8.1 in lockstep with no other code changes. See [Storage drivers](/api/storage-drivers#mongodriver).
 
 ---
 
-## 0.8.0 — shared-store topologies: partitioned storage and the mesh
+## 0.8.0: shared-store topologies: partitioned storage and the mesh
 
 <Warning>
   `@alfiz/prisma` requires the **v2 schema fragment**: every `Alfiz*` model
   gains an `app` partition discriminator (`@default("")`) with composite
   keys led by it. The migration is a column-add plus PK/index rebuilds, and
-  a migrated single-application deployment sees **no behavior change** — an
+  a migrated single-application deployment sees **no behavior change**, because an
   unpartitioned driver reads and writes partition `""`, which is where your
   rows land. Regenerate your client after migrating; a v1-generated client
   no longer satisfies the delegate types, by design. Read the Breaking
@@ -48,11 +48,11 @@ Two rules, stated plainly: `"rows"` **requires an explicit `partition`** — unl
 
 Two Applications can now share one database. Two layers, each useful alone, both pinned by 101 new conformance and integration tests (938 → 1,039):
 
-**Partitioned storage.** A `partition` option on both database drivers pins a driver — at construction, irrevocably — to one application's slice of the backend: a collection prefix on Mongo, a type-enforced `app` discriminator on Prisma (the delegate types *require* it on every query shape, so a forgotten tenant clause is a compile error, not a cross-tenant scan). Strict isolation, zero interaction, and a new `isolationContractCases` suite grading any driver against the same bar — including the silent failure directions: unfiltered lists, the singletons, event-log sequencing, and the audit-chain seed. `memoryBackend()` is the in-memory analogue for tests. See [Storage drivers](/api/storage-drivers).
+**Partitioned storage.** A `partition` option on both database drivers pins a driver, at construction and irrevocably, to one application's slice of the backend: a collection prefix on Mongo, a type-enforced `app` discriminator on Prisma (the delegate types *require* it on every query shape, so a forgotten tenant clause is a compile error, not a cross-tenant scan). Strict isolation, zero interaction, and a new `isolationContractCases` suite grading any driver against the same bar, including the silent failure directions: unfiltered lists, the singletons, event-log sequencing, and the audit-chain seed. `memoryBackend()` is the in-memory analogue for tests. See [Storage drivers](/api/storage-drivers).
 
-**The mesh.** Opt-in granted access between partitions, built on one invariant: the storage seam never learns cross-partition addressing. A registry in a reserved meta-partition records members, read/write edges (write implies read), and the org designation; `openPeerApplication(mesh, "billing")` is the single edge-checked road into a neighboring partition — a full in-process Application over the neighbor's *published catalog*, so cross-app writes pass the owner's validation and graph integrity, audit into the owner's log with cross-app provenance, and emit invalidation events into the owner's log (which in a mesh **is** the invalidation transport). Write edges enforce the multi-node prerequisites fail-loudly: cross-process `runExclusive` (Mongo's lease qualifies as shipped; Prisma needs `options.lock`) and the persisted event log. First-party imports (`mesh: { connection, imports: true }`) resolve imported namespaces against live neighbors under read edges and merge peer global-scope grants and roles into closure supply — checks still never leave your process. A designated **org partition** can home organizational-domain data for the whole mesh, with `promoteOrgPartition` as the audited handoff and members booting `orgRoot: false`. `startMeshEventPoller` tails every partition you hold an edge to; `meshContractCases` pins all of it in the driver suite. See [Shared-store topologies](/operations/shared-store).
+**The mesh.** Opt-in granted access between partitions, built on one invariant: the storage seam never learns cross-partition addressing. A registry in a reserved meta-partition records members, read/write edges (write implies read), and the org designation; `openPeerApplication(mesh, "billing")` is the single edge-checked road into a neighboring partition: a full in-process Application over the neighbor's *published catalog*, so cross-app writes pass the owner's validation and graph integrity, audit into the owner's log with cross-app provenance, and emit invalidation events into the owner's log (which in a mesh **is** the invalidation transport). Write edges enforce the multi-node prerequisites fail-loudly: cross-process `runExclusive` (Mongo's lease qualifies as shipped; Prisma needs `options.lock`) and the persisted event log. First-party imports (`mesh: { connection, imports: true }`) resolve imported namespaces against live neighbors under read edges and merge peer global-scope grants and roles into closure supply, and checks still never leave your process. A designated **org partition** can home organizational-domain data for the whole mesh, with `promoteOrgPartition` as the audited handoff and members booting `orgRoot: false`. `startMeshEventPoller` tails every partition you hold an edge to; `meshContractCases` pins all of it in the driver suite. See [Shared-store topologies](/operations/shared-store).
 
-**And the MongoDB driver.** `@alfiz/mongo` implements the storage seam directly over the official `mongodb` package — no schema to merge, no codegen; collections and indexes are created lazily. The event-log methods work out of the box (the right posture for serverless); catalog history and metrics are honestly absent (`unsupported` / construction refusal rather than wrong answers); and every value reaching a query document is type-checked first, so operator-shaped input off the wire is rejected as data, never executed as a query. See [Storage drivers](/api/storage-drivers#mongodriver).
+**And the MongoDB driver.** `@alfiz/mongo` implements the storage seam directly over the official `mongodb` package, with no schema to merge and no codegen; collections and indexes are created lazily. The event-log methods work out of the box (the right posture for serverless); catalog history and metrics are honestly absent (`unsupported` / construction refusal rather than wrong answers); and every value reaching a query document is type-checked first, so operator-shaped input off the wire is rejected as data, never executed as a query. See [Storage drivers](/api/storage-drivers#mongodriver).
 
 Stated plainly, because the guarantee differs by mechanism: mesh isolation is **cooperative, not adversarial**. Every member holds credentials to the whole table set; deployments needing adversarial isolation use separate schemas or databases with separate credentials.
 
@@ -65,11 +65,11 @@ Stated plainly, because the guarantee differs by mechanism: mesh isolation is **
 
 ---
 
-## 0.7.0 — the enterprise release: safe by default, reviewable by construction
+## 0.7.0: the enterprise release: safe by default, reviewable by construction
 
 <Warning>
-  Two defaults flip to their safe settings — event persistence on the
-  Application and epoch revalidation on the Client — and a failing **final**
+  Two defaults flip to their safe settings, event persistence on the
+  Application and epoch revalidation on the Client, and a failing **final**
   `auto` approval stage now **denies** instead of stranding the request.
   Each change has a one-line opt-out restoring the old behavior; read the
   Breaking section.
@@ -77,15 +77,15 @@ Stated plainly, because the guarantee differs by mechanism: mesh isolation is **
 
 The theme throughout this release: things that were possible are now *declared*, things that were the integrator's silent obligation are now *detected*, and the safe configuration is now the *default* one.
 
-**Licensing, finally coherent.** Every package ships `"license": "MIT"` and a `LICENSE` file — the previous `UNLICENSED` marker contradicted the pricing page's "MIT, forever", and the marker was the error. A `SECURITY.md` with a disclosure contact ships in the repository.
+**Licensing, finally coherent.** Every package ships `"license": "MIT"` and a `LICENSE` file. The previous `UNLICENSED` marker contradicted the pricing page's "MIT, forever", and the marker was the error. A `SECURITY.md` with a disclosure contact ships in the repository.
 
-**Safe caching by default.** With a driver that can persist events (both bundled drivers can), the Application persists them by default, and a Client attached to an epoch-bearing provider revalidates by default (5 s window). The default cross-process revocation bound drops from the blind 30 s TTL to the revalidation window. New: `strict: true` on the client — the incident switch that makes every check bypass both cache tiers. See [Caching & staleness](/enforcement/caching).
+**Safe caching by default.** With a driver that can persist events (both bundled drivers can), the Application persists them by default, and a Client attached to an epoch-bearing provider revalidates by default (5 s window). The default cross-process revocation bound drops from the blind 30 s TTL to the revalidation window. New: `strict: true` on the client, the incident switch that makes every check bypass both cache tiers. See [Caching & staleness](/enforcement/caching).
 
-**Separation of duties.** Catalog-declared exclusion constraints (`constraints.sod`), a detective report (`listSodViolations`), and opt-in preventive rejection at grant time — with `can()` never consulting a constraint. See [Separation of duties](/access/separation-of-duties).
+**Separation of duties.** Catalog-declared exclusion constraints (`constraints.sod`), a detective report (`listSodViolations`), and opt-in preventive rejection at grant time, with `can()` never consulting a constraint. See [Separation of duties](/access/separation-of-duties).
 
 **The condition seam.** `requiresCondition: true` on a permission makes every gate carry an application predicate, enforced at runtime (`MissingConditionError`) and in CI (`missing-condition`). Alfiz still evaluates no attributes. See [Conditions](/enforcement/conditions).
 
-**Reviewability.** `exportEntitlements()` (the per-user effective-access rollup an IGA ingests), catalog **version history** per publish, and `listWildcardDrift({ sinceVersion })` — which grants absorbed which keys since the version you certified. See [Access reviews](/operations/access-reviews).
+**Reviewability.** `exportEntitlements()` (the per-user effective-access rollup an IGA ingests), catalog **version history** per publish, and `listWildcardDrift({ sinceVersion })`, which reports which grants absorbed which keys since the version you certified. See [Access reviews](/operations/access-reviews).
 
 **Audit, specified.** `listAuditEvents` gains `actor`/`action`/`from`/`to` filters and (`at`, `id`) cursor paging for export; optional tamper-evidence via `audit: { hashChain: true }` and `verifyAuditChain`. Retention is stated plainly: Alfiz never prunes audit. See [Audit log](/enforcement/audit).
 
@@ -100,49 +100,49 @@ The theme throughout this release: things that were possible are now *declared*,
 - A failing **final** `auto` stage auto-denies (recorded, `decidedBy: "auto"`) instead of leaving the request pending at a stage nobody can decide. Non-final auto stages still abstain and fall through. Want human escalation on an unmet predicate? End the policy with a `named_approvers` or `management` stage.
 - `events.persist` defaults **on** when the driver implements the event methods; opt out with `events: { persist: false }`.
 - `revalidateAfterMs` defaults to `5_000` against an epoch-bearing provider; its type widens to `number | false`, and `false` restores TTL-only caching.
-- Audit log order is now (`at`, `id`) in every driver; same-millisecond entries order by id. `AlfizAudit` gains `prevHash`/`hash` columns and an `@@index([at, id])`; `AlfizCatalogVersion` is a new optional model — merge the updated schema fragment and migrate.
+- Audit log order is now (`at`, `id`) in every driver; same-millisecond entries order by id. `AlfizAudit` gains `prevHash`/`hash` columns and an `@@index([at, id])`; `AlfizCatalogVersion` is a new optional model, so merge the updated schema fragment and migrate.
 - `putCatalog` takes an optional third `publishedAt` parameter; two optional history methods join the storage interface. Existing drivers compile unchanged; without them, drift answers `unsupported`.
 
 ---
 
-## 0.6.0 — the provider seam, made explicit
+## 0.6.0: the provider seam, made explicit
 
 <Warning>
   The relay module is replaced by the **Alfiz Provider API**. If you mounted
   `createRelayHandler` or called `createRelayProvider`, read the Breaking
-  section — the rename is mechanical, but the wire format underneath changed
+  section. The rename is mechanical, but the wire format underneath changed
   shape, so both ends of a link must upgrade together.
 </Warning>
 
-The provider contract has always been the system's single load-bearing interface, implemented identically by the local Application and by Alfiz Cloud. What it lacked was enforcement: the contract lived only as a TypeScript interface, and its wire form lived only as an implementation detail — a single `{ op, args }` RPC endpoint with positional arguments, describable to another language only by reading the source. This release makes the Client/Provider split explicit, in three artifacts that cannot drift.
+The provider contract has always been the system's single load-bearing interface, implemented identically by the local Application and by Alfiz Cloud. What it lacked was enforcement: the contract lived only as a TypeScript interface, and its wire form lived only as an implementation detail: a single `{ op, args }` RPC endpoint with positional arguments, describable to another language only by reading the source. This release makes the Client/Provider split explicit, in three artifacts that cannot drift.
 
 **The abstract class.** `AlfizProviderBase` (`@alfiz/core`) is the contract as an implementation root. Exactly two kinds of provider extend it, by design:
 
-- `AlfizApplication` (`@alfiz/application`) — the **local** provider, against your own database. Standalone, the org root; unchanged in what it does.
-- `HostedProvider` (also `@alfiz/application`) — the **hosted** provider: an API connection wrapped in the abstract class, the seam the hosted Dashboard, data-plane-less admin consumers, and Federation attach through. Fetch-only; it lives next to the handler that serves its far side, so both halves of the wire ship together.
+- `AlfizApplication` (`@alfiz/application`) is the **local** provider, against your own database. Standalone, the org root; unchanged in what it does.
+- `HostedProvider` (also `@alfiz/application`) is the **hosted** provider: an API connection wrapped in the abstract class, the seam the hosted Dashboard, data-plane-less admin consumers, and Federation attach through. Fetch-only; it lives next to the handler that serves its far side, so both halves of the wire ship together.
 
 The base class carries only what is invariant across every implementation: the abstract statement of the contract (checked against the `AlfizProvider` interface at compile time), the invalidation-listener plumbing both implementations shared verbatim, `ingestEvents` for epoch replay, and the uniform rejection helper. A Client still attaches to the interface and still cannot observe which implementation it got.
 
-**The operation manifest.** `PROVIDER_OPERATIONS` (`@alfiz/core`) names every wire-crossing operation with its read/write kind and capability gate. A compile-time assertion holds it in exact correspondence with the interface: add a contract method without a manifest entry — or a manifest entry naming nothing — and the build fails, naming the drifted method.
+**The operation manifest.** `PROVIDER_OPERATIONS` (`@alfiz/core`) names every wire-crossing operation with its read/write kind and capability gate. A compile-time assertion holds it in exact correspondence with the interface: add a contract method without a manifest entry, or a manifest entry naming nothing, and the build fails, naming the drifted method.
 
-**The OpenAPI document.** The Alfiz Provider API (`openapi/alfiz-provider.v1.yaml`, shipped in the `@alfiz/core` package) fixes the contract's wire form, and the test suite holds it to the manifest: one `POST {base}/v1/{op}` per operation, named-field JSON bodies, object results, and a typed-error envelope under correct HTTP statuses. The document is normative and language-agnostic — the reason it exists. A provider (or consumer) in any other language is "the abstract class's surface, served over this API"; nothing about the wire is discoverable only by reading TypeScript.
+**The OpenAPI document.** The Alfiz Provider API (`openapi/alfiz-provider.v1.yaml`, shipped in the `@alfiz/core` package) fixes the contract's wire form, and the test suite holds it to the manifest: one `POST {base}/v1/{op}` per operation, named-field JSON bodies, object results, and a typed-error envelope under correct HTTP statuses. The document is normative and language-agnostic, which is the reason it exists. A provider (or consumer) in any other language is "the abstract class's surface, served over this API"; nothing about the wire is discoverable only by reading TypeScript.
 
-The wire conventions, stated once: every operation is a POST with a JSON object body of named parameters (`{}` when there are none); every success is a `200` with a JSON **object** — never a bare array, primitive, or `null` — so any response can grow a field without a wire break; every failure carries the typed envelope, with the status as a transport hint (`403` `not_org_root`, `409` `conflict`/`graph_cycle`, `422` `validation`, `404` `not_found`, `501` `unsupported`). `ProviderWriteRejectedError` codes and `GraphCycleError` paths survive the wire and re-throw intact, so a dashboard renders "cycle: a → b → a" identically for local and remote writes. The live `onInvalidate` stream still never crosses: the epoch operations remain the cross-process invalidation transport.
+The wire conventions, stated once: every operation is a POST with a JSON object body of named parameters (`{}` when there are none); every success is a `200` with a JSON **object**, never a bare array or primitive or `null`, so any response can grow a field without a wire break; every failure carries the typed envelope, with the status as a transport hint (`403` `not_org_root`, `409` `conflict`/`graph_cycle`, `422` `validation`, `404` `not_found`, `501` `unsupported`). `ProviderWriteRejectedError` codes and `GraphCycleError` paths survive the wire and re-throw intact, so a dashboard renders "cycle: a → b → a" identically for local and remote writes. The live `onInvalidate` stream still never crosses: the epoch operations remain the cross-process invalidation transport.
 
 See [Provider API setup](/cloud/provider-api) for the full connection guide.
 
 ### Breaking
 
 - `createRelayHandler` → `createProviderHandler` (`@alfiz/application`). Mount it under a **catch-all** so `POST {base}/v1/{op}` reaches it; the old single-endpoint mount no longer matches anything.
-- `createRelayProvider` / `RelayProvider` → `createHostedProvider` / `HostedProvider` (still `@alfiz/application`). The constructor target is unchanged (`url`, `secret`, `timeoutMs`, `fetchImpl`) — `url` is now the base URL below which `/v1/{op}` paths are appended.
+- `createRelayProvider` / `RelayProvider` → `createHostedProvider` / `HostedProvider` (still `@alfiz/application`). The constructor target is unchanged (`url`, `secret`, `timeoutMs`, `fetchImpl`), and `url` is now the base URL below which `/v1/{op}` paths are appended.
 - The wire format changed from `{ op, args }` positional RPC at one URL to per-operation paths with named-field bodies, per the OpenAPI document. **Both ends of a link must upgrade together.**
 - `RelayTransportError` → `ProviderTransportError`; protocol-level rejections (bad credentials, unknown op, malformed body) surface as `ProviderTransportError` with the status, while provider-domain errors re-throw typed exactly as before. `RelayWireError` → `ProviderWireError`; `toWireError` → `toProviderWireError`; `RELAY_PROTOCOL_VERSION` → `PROVIDER_API_VERSION` (now `1`, carried in the path prefix and the `ping` result's `api` field). `RelayPingResult` → `ProviderPingResult`.
-- `OrgSnapshot` and `ApplyOrgSnapshotInput` moved to `@alfiz/core` — they are wire-contract types now, alongside `ProviderWireError` and the operation manifest. `@alfiz/application` still re-exports them, so existing imports keep compiling.
+- `OrgSnapshot` and `ApplyOrgSnapshotInput` moved to `@alfiz/core`. They are wire-contract types now, alongside `ProviderWireError` and the operation manifest. `@alfiz/application` still re-exports them, so existing imports keep compiling.
 - Capability-gated absences (epoch off, no metrics store, no storage for the snapshot ops) now answer with `ProviderWriteRejectedError` code `unsupported` under a `501`, where the relay answered with a `RelayProtocolError` inside a `200`.
 
 ---
 
-## 0.5.2 — imported permissions
+## 0.5.2: imported permissions
 
 <Warning>
   A patch number carrying two breaking changes. `alfiz-verify` will report call
@@ -169,9 +169,9 @@ defineCatalog({
 });
 ```
 
-Attaching the owner's `document` is the recommended shape, and the difference is concrete: with it, wildcards expand, `canAny` answers exactly, and `zoom.hostt` fails the build. Without it a wildcard is an **opaque region** — declared, grantable, and checkable, but approximated wherever an answer would need expanding a pattern into keys. Those approximations are fail-closed.
+Attaching the owner's `document` is the recommended shape, and the difference is concrete: with it, wildcards expand, `canAny` answers exactly, and `zoom.hostt` fails the build. Without it a wildcard is an **opaque region**: declared, grantable, and checkable, but approximated wherever an answer would need expanding a pattern into keys. Those approximations are fail-closed.
 
-Scope wiring is deliberately the importer's: the owner publishes vocabulary, and only you can resolve your own resources' ancestry. A foreign scope type is a build error. So is a pattern broader than what you imported — importing `zoom.meetings.*` does not make `zoom.*` storable, because that is a widening claim over a namespace you do not own.
+Scope wiring is deliberately the importer's: the owner publishes vocabulary, and only you can resolve your own resources' ancestry. A foreign scope type is a build error. So is a pattern broader than what you imported. Importing `zoom.meetings.*` does not make `zoom.*` storable, because that is a widening claim over a namespace you do not own.
 
 Checking a permission you neither own nor import is an **implicit** import. `alfiz-verify` reports it: an error where no import source is configured, a warning where one is. At runtime it still throws unless you opt in with `createAlfizClient({ externalPermissions: "warn" })`. Two cases never soften: a permission under a namespace you own, and one outside an import that knows its own keys.
 
@@ -183,7 +183,7 @@ One new semantic joins the fixed-not-pluggable list: **a bare global `*` does no
 - `catalogFromDocument(document, { imports, documents })` rebuilds a catalog that knows its imports.
 - `alfiz-verify.config.json` gains `importManifest`, `imports`, `importSource`, `implicitImports`, and `implicitImportAllow`.
 - The permission tree gains a `region` node kind, so an imported subtree is tickable in a role editor.
-- `lintCatalog` skips imported entries — another application's keys answer to its conventions, not yours.
+- `lintCatalog` skips imported entries, because another application's keys answer to its conventions, not yours.
 - Optional provider surface: `publishImports` / `getPublishedImports`, gated by `capabilities().imports`, with an optional `AlfizImports` Prisma model and two new relay ops.
 
 ### Breaking
@@ -193,14 +193,14 @@ One new semantic joins the fixed-not-pluggable list: **a bare global `*` does no
 
 ---
 
-## 0.5.1 — usage over time
+## 0.5.1: usage over time
 
-`getPermissionUsage` and `getScopeTypeUsage` now return a `buckets` array alongside their totals — the same per-bucket *treatment* `RowUsage` has carried since 0.5.0, though the entries differ: a `RowUsage` bucket carries `matched` and `soleMatch`, a `PermissionUsage` bucket carries `gateAllow`, `gateDeny`, `visibilityAllow`, and `visibilityDeny`.
+`getPermissionUsage` and `getScopeTypeUsage` now return a `buckets` array alongside their totals, the same per-bucket *treatment* `RowUsage` has carried since 0.5.0, though the entries differ: a `RowUsage` bucket carries `matched` and `soleMatch`, a `PermissionUsage` bucket carries `gateAllow`, `gateDeny`, `visibilityAllow`, and `visibilityDeny`.
 
 ```ts
 const [usage] = await app.getPermissionUsage({ ids: ["docs.files.delete"] });
-usage.gateAllow;                        // 1_284 — the total, unchanged
-usage.buckets.map((b) => b.gateAllow);  // [201, 173, 244, …] — day by day
+usage.gateAllow;                        // 1_284, the total, unchanged
+usage.buckets.map((b) => b.gateAllow);  // [201, 173, 244, …] day by day
 ```
 
 The store has always bucketed by day; only the read collapsed it, which left a usage-over-time chart with no source for the one dimension that carries denials. Totals are exactly the series summed. Buckets with no traffic are absent rather than zero-filled.
@@ -209,13 +209,13 @@ Purely additive: a new field on a returned type, no contract method added, no st
 
 ---
 
-## 0.5.0 — permission metrics
+## 0.5.0: permission metrics
 
-Two questions had no good answer from access data alone. *Which permissions are actually exercised?* — the one a product owner asks before deprecating a surface. And *if I revoke this grant, what breaks?* — the one an administrator asks with the delete button already under the cursor. Both are answerable at the only place that sees every check: the Client, in your own process.
+Two questions had no good answer from access data alone. *Which permissions are actually exercised?* is the one a product owner asks before deprecating a surface. And *if I revoke this grant, what breaks?* is the one an administrator asks with the delete button already under the cursor. Both are answerable at the only place that sees every check: the Client, in your own process.
 
 ### The observation stream
 
-Every evaluated check can emit a structured `CheckObservation` — shape, decision, permission, scope type, principal, and the rows that decided it — to an observer you configure. It is off by default, synchronous, guarded, and fire-and-forget: an observer that throws, hangs, or falls over loses counts and never a decision.
+Every evaluated check can emit a structured `CheckObservation` carrying shape, decision, permission, scope type, principal, and the rows that decided it, to an observer you configure. It is off by default, synchronous, guarded, and fire-and-forget: an observer that throws, hangs, or falls over loses counts and never a decision.
 
 ```ts
 const alfiz = createAlfizClient({
@@ -230,17 +230,17 @@ const alfiz = createAlfizClient({
 
 ### Sampling
 
-`sampleRate` is evaluated with one random draw *inside the call*, before any observation is built — an unsampled check costs a comparison and allocates nothing. Gates and visibility traffic sample separately, because they differ by orders of magnitude: one server render fires hundreds of `canAny` and `holds` checks, while gates correspond one-to-one with user actions. Every observation carries the rate that kept it, so counts extrapolate honestly, and both figures survive — `observed` next to `estimated`.
+`sampleRate` is evaluated with one random draw *inside the call*, before any observation is built, so an unsampled check costs a comparison and allocates nothing. Gates and visibility traffic sample separately, because they differ by orders of magnitude: one server render fires hundreds of `canAny` and `holds` checks, while gates correspond one-to-one with user actions. Every observation carries the rate that kept it, so counts extrapolate honestly, and both figures survive, with `observed` next to `estimated`.
 
 Sampling decides only whether a check is **counted**. It can never change an answer.
 
 ### Reading them directly
 
-`createMetricsAggregator()` is a pure, windowed, bounded fold over the stream with a live `snapshot()` — a complete metrics API with no external system and no storage. Memory is fixed regardless of traffic: scope instances aggregate to scope *type* unless a type opts in, principals live in a bounded map with an overflow flag, and every counter map is capped.
+`createMetricsAggregator()` is a pure, windowed, bounded fold over the stream with a live `snapshot()`, a complete metrics API with no external system and no storage. Memory is fixed regardless of traffic: scope instances aggregate to scope *type* unless a type opts in, principals live in a bounded map with an overflow flag, and every counter map is capped.
 
 ### Storing them, and the revocation safeguard
 
-`metrics: {}` on the Application adds one table of rolling daily counters keyed by grant, revoke, role, permission, and scope type. `createProviderMetricsSink(app)` wires the client to it. Delivery is batched, pre-aggregated, unawaited, and back-pressured — under load it drops batches rather than growing a queue.
+`metrics: {}` on the Application adds one table of rolling daily counters keyed by grant, revoke, role, permission, and scope type. `createProviderMetricsSink(app)` wires the client to it. Delivery is batched, pre-aggregated, unawaited, and back-pressured, so under load it drops batches rather than growing a queue.
 
 ```ts
 const safeguard = revocationSafeguard((await app.getGrantUsage({ ids: [grantId] }))[0]);
@@ -248,27 +248,27 @@ const safeguard = revocationSafeguard((await app.getGrantUsage({ ids: [grantId] 
 //   headline: "This grant was the only thing allowing 1200 checks in the last 7 days."
 ```
 
-The warning keys on **`soleMatch`** — checks where the row was the *sole* matcher — not raw participation. A grant fully shadowed by a broader one loses nothing when revoked, and a warning that cries wolf gets clicked through. When a grant shows no recent use, the copy says exactly that and stops: absence of use is not evidence that revoking is safe.
+The warning keys on **`soleMatch`**, meaning checks where the row was the *sole* matcher, not raw participation. A grant fully shadowed by a broader one loses nothing when revoked, and a warning that cries wolf gets clicked through. When a grant shows no recent use, the copy says exactly that and stops: absence of use is not evidence that revoking is safe.
 
 ### Also in this release
 
 - **`capabilities().metrics`** joins the provider contract, gating `reportMetrics` and the `get*Usage` methods exactly as `audit` gates the audit log.
 - **`StorageDriver.recordMetrics` / `readMetrics` / `pruneMetrics`** are optional, implemented by the memory and Prisma drivers. The Prisma fragment gains one model, `AlfizMetric`.
-- **`explain()` gains `impliedBy`** — the grants at a descendant scope behind an ancestor implication. `matchedGrants` keeps its exact meaning: rows matching *at this scope*.
+- **`explain()` gains `impliedBy`**, the grants at a descendant scope behind an ancestor implication. `matchedGrants` keeps its exact meaning: rows matching *at this scope*.
 - **Check shapes take an optional `CheckOptions`** (`{ observe }`), and `snapshot()` an `observe` flag. View-as previews set it, so attribution never follows a preview.
 - **`require` and `requireAny` no longer delegate** to `can` / `canAny` internally. One call now produces one observation, named for the shape actually called.
 
 ### The guarantee, restated
 
-The old sentence — "checks are unmeterable by construction" — was the stronger claim and, with this release, the false one. The durable one is about dependency, and it is unchanged: **Alfiz Cloud is never in the path of a check**, so it cannot see one, bill for one, or slow one down. Permission metrics are your counts of your checks, in your database. There is no uplink and no central metrics store.
+The old sentence, "checks are unmeterable by construction", was the stronger claim and, with this release, the false one. The durable one is about dependency, and it is unchanged: **Alfiz Cloud is never in the path of a check**, so it cannot see one, bill for one, or slow one down. Permission metrics are your counts of your checks, in your database. There is no uplink and no central metrics store.
 
 ---
 
-## 0.4.0 — the catalog says what it means
+## 0.4.0: the catalog says what it means
 
 The catalog input was overcommitted to a shape the data model never had. `projects` → `groups` → `permissions` spelled out a three-level hierarchy in three different keywords, while the built catalog, the published document, and every consumer of both were already flat lists of leaves and groups. The key you check with was never the key you could grep for.
 
-Permissions are now declared by their **full dotted key** — the notation every check, grant, role pattern, and nav entry already used.
+Permissions are now declared by their **full dotted key**, the notation every check, grant, role pattern, and nav entry already used.
 
 ```ts
 defineCatalog({
@@ -284,7 +284,7 @@ Nothing about the permission grammar, the wire format, or evaluation changed. Th
 
 ### Groups are inferred, and optional
 
-Every dotted prefix of a declared key is a group. Nothing declares them into existence, so depth costs nothing and a small catalog needs no grouping construct at all — ten keys in one flat map is a complete, idiomatic catalog.
+Every dotted prefix of a declared key is a group. Nothing declares them into existence, so depth costs nothing and a small catalog needs no grouping construct at all: ten keys in one flat map is a complete, idiomatic catalog.
 
 For catalogs big enough that a flat map becomes a wall, `group()` bundles one group's keys into a named, foldable unit carrying its label and scope defaults, and `permissions` accepts an array of blocks mixed freely with bare maps:
 
@@ -297,7 +297,7 @@ export const files = group("docs.files", { label: "Files", scopes: ["docs.folder
 defineCatalog({ namespaces: ["docs"], permissions: [files, reports] });
 ```
 
-A key that does not start with its block's path is a **compile error** naming the fix. Because keys are absolute, blocks compose by concatenation — a large catalog splits into one file per feature, declared next to the code it gates, with no deep merge to reason about.
+A key that does not start with its block's path is a **compile error** naming the fix. Because keys are absolute, blocks compose by concatenation, so a large catalog splits into one file per feature, declared next to the code it gates, with no deep merge to reason about.
 
 - **`namespaces: [...]`** replaces `namespace` + `additionalNamespaces` (the first is primary).
 - **`groups: { … }`** is an optional metadata map for paths you did not write a block for.
@@ -313,19 +313,19 @@ conventions: { depth: 2 }      // an integration catalog
 conventions: { depth: "any" }  // opt out
 ```
 
-A deviation is now a `lintCatalog` error, failed by `alfiz-verify` in CI. Structural invalidity still fails at boot — and gains a check that flat keys make possible: a key that is also a group path (`docs.files` declared alongside `docs.files.read`) would be both a folder and a leaf, and is rejected.
+A deviation is now a `lintCatalog` error, failed by `alfiz-verify` in CI. Structural invalidity still fails at boot, and gains a check that flat keys make possible: a key that is also a group path (`docs.files` declared alongside `docs.files.read`) would be both a folder and a leaf, and is rejected.
 
 ### Breaking: the nested shape is gone
 
-No compatibility shim. `projects`, `namespace`, `additionalNamespaces`, and `allowArbitraryDepth` are **removed** — `namespaces` and `permissions` are now required, and everything else about `CatalogInput` is optional.
+No compatibility shim. `projects`, `namespace`, `additionalNamespaces`, and `allowArbitraryDepth` are **removed**. `namespaces` and `permissions` are now required, and everything else about `CatalogInput` is optional.
 
 Every key, pattern, stored grant row, and published document is unchanged, so this is a source edit with no data migration. The conversion is mechanical: flatten each leaf to its full key. `CatalogDocument` gains an optional `conventions` field at the same `formatVersion: 1`.
 
 ---
 
-## 0.3.0 — the relay seam, and caching that survives more than one process
+## 0.3.0: the relay seam, and caching that survives more than one process
 
-The staleness bound stops being "a TTL per process" and becomes "one revalidation window, any number of processes" — opt-in, with defaults byte-identical to 0.2.2, except two strict improvements: the object-chain cache is now bounded, and both client caches evict LRU.
+The staleness bound stops being "a TTL per process" and becomes "one revalidation window, any number of processes", opt-in, with defaults byte-identical to 0.2.2, except two strict improvements: the object-chain cache is now bounded, and both client caches evict LRU.
 
 ### The relay seam
 
@@ -338,16 +338,16 @@ Runtime checks never traverse the relay. Nothing here is on any request path.
 ### The event log
 
 - `events: { persist: true }` on the Application appends every invalidation event to a sequenced log before the write returns, exposed as `provider.epoch { head, since }`. Retention defaults to 7 days / 100 000 rows.
-- `revalidateAfterMs` on the client: past the window, one constant-cost head read — coalesced across concurrent checks — validates both caches for every principal. An unchanged head renews TTLs; a changed head replays only the missed events; a gap busts everything. Fail-closed: an unreachable epoch degrades to exactly the old TTL contract.
+- `revalidateAfterMs` on the client: past the window, one constant-cost head read, coalesced across concurrent checks, validates both caches for every principal. An unchanged head renews TTLs; a changed head replays only the missed events; a gap busts everything. Fail-closed: an unreachable epoch degrades to exactly the old TTL contract.
 - `ingestEvents` and `startEventPoller` give push-like invalidation for long-lived nodes.
 
 ### The shared cache tier
 
-`CacheStore` — three string-valued methods, zero dependencies — acts as an L2. Read order is L1 → L2 → provider; entries are served only under exactly the current log head, or within the TTL when there is no epoch; every error is a miss. `respCacheStore` adapts node-redis and ioredis call shapes structurally.
+`CacheStore`, three string-valued methods with zero dependencies, acts as an L2. Read order is L1 → L2 → provider; entries are served only under exactly the current log head, or within the TTL when there is no epoch; every error is a miss. `respCacheStore` adapts node-redis and ioredis call shapes structurally.
 
 ### The miss path, fixed
 
-`getSubjectAccess` no longer scans the entire group table per miss — the topology map is cached with `groupTopologyTtlMs` and busted synchronously by group writes — fetches each referenced role once via the optional `StorageDriver.getRoles`, and overlaps independent queries.
+`getSubjectAccess` no longer scans the entire group table per miss. The topology map is cached with `groupTopologyTtlMs` and busted synchronously by group writes, and fetches each referenced role once via the optional `StorageDriver.getRoles`, and overlaps independent queries.
 
 ### Client cache hygiene
 
@@ -355,14 +355,14 @@ Object-chain cache bounded (`maxObjectCacheEntries`, 10 000); LRU eviction on bo
 
 ---
 
-## 0.2.2 — typed end to end, errors that carry their fix
+## 0.2.2: typed end to end, errors that carry their fix
 
-No semantic changes: this release is developer experience. The derived types now cover every surface a human types a permission or scope into, and every error explains itself. Nothing breaks — new type parameters default to the old `string` behavior, and scope typing is a *hint*, not a gate.
+No semantic changes: this release is developer experience. The derived types now cover every surface a human types a permission or scope into, and every error explains itself. Nothing breaks, because new type parameters default to the old `string` behavior, and scope typing is a *hint*, not a gate.
 
 ### The derived-type family grows a third member: scopes
 
-- **`ScopeOf<typeof catalog>`** — `"*" | "docs.folder:${string}" | …`, derived from the declared `scopeTypes` exactly as `KeyOf` and `PatternOf` derive from the keys. Carried by the client, snapshot, and session as a third type parameter.
-- Scope parameters are **hints, not gates** (`LooseScopeId`): literal call sites autocomplete `*` and every declared `<scopeType>:` prefix, while ids from variables and databases flow through unchanged. Keys and patterns remain strictly gated — a scope id's instance half is runtime data; a permission key never is.
+- **`ScopeOf<typeof catalog>`** is `"*" | "docs.folder:${string}" | …`, derived from the declared `scopeTypes` exactly as `KeyOf` and `PatternOf` derive from the keys. Carried by the client, snapshot, and session as a third type parameter.
+- Scope parameters are **hints, not gates** (`LooseScopeId`): literal call sites autocomplete `*` and every declared `<scopeType>:` prefix, while ids from variables and databases flow through unchanged. Keys and patterns remain strictly gated, since a scope id's instance half is runtime data; a permission key never is.
 - **`scopeId(type, id)` narrows**, returning `` `${T}:${string}` ``, so ids built through the helper satisfy the derived scope union.
 
 ### The write paths are typed
@@ -372,7 +372,7 @@ No semantic changes: this release is developer experience. The derived types now
 ### Autocomplete crosses the wire: codegen
 
 - **`alfiz-verify codegen --catalog <doc.json> [--out <file>] [--prefix <Name>]`** emits a dependency-free module of literal unions (`AlfizKey` / `AlfizPattern` / `AlfizScopeType` / `AlfizScopeId`) from a published `CatalogDocument`. Deterministic, so regeneration diffs are exactly the catalog change.
-- **`catalogFromDocument<K, P, S>(doc)`** pins the emitted unions back onto a document-built catalog, and `createAlfizClient` picks them up — consumers of a published catalog get the same typed `can` as the team that owns the source module.
+- **`catalogFromDocument<K, P, S>(doc)`** pins the emitted unions back onto a document-built catalog, and `createAlfizClient` picks them up, so consumers of a published catalog get the same typed `can` as the team that owns the source module.
 
 ### Errors carry their fix
 
@@ -384,7 +384,7 @@ No semantic changes: this release is developer experience. The derived types now
 
 ---
 
-## 0.2.1 — second field report
+## 0.2.1: second field report
 
 ### Checks are verified against the catalog (behavior change)
 
@@ -392,8 +392,8 @@ Investigating a reported "`canAny("admin")` silently answers `false`" turned up 
 
 Both are the same missing rule, now enforced at every check boundary:
 
-- An undeclared key or pattern raises **`UnknownPermissionError`** instead of being evaluated. It is a programming error — map it to 500, never 403. `isUnknownPermission(err)` narrows it.
-- Enforced on `can`, `canAny`, `require*`, `explain`, `grantedScopes`, `holdsAnywhere` (later renamed `holds`), and every snapshot equivalent. Typed keys and `alfiz-verify` already covered literal call sites; this covers the runtime-string paths they cannot see — nav tables, config, generic wrappers.
+- An undeclared key or pattern raises **`UnknownPermissionError`** instead of being evaluated. It is a programming error: map it to 500, never 403. `isUnknownPermission(err)` narrows it.
+- Enforced on `can`, `canAny`, `require*`, `explain`, `grantedScopes`, `holdsAnywhere` (later renamed `holds`), and every snapshot equivalent. Typed keys and `alfiz-verify` already covered literal call sites; this covers the runtime-string paths they cannot see, such as nav tables, config and generic wrappers.
 - `assertCanViewAs` now denies rather than raising when a catalog is built with `includeAlfizInternal: false`. Previews fail closed.
 
 <Warning>
@@ -404,56 +404,56 @@ Both are the same missing rule, now enforced at every check boundary:
 
 ### The ignore pragma follows JavaScript's own rule
 
-`// alfiz-verify-ignore-file <reason>` is now recognized anywhere in the file **header** — above *or below* a `"use server"` / `"use client"` directive, exactly as the language permits comments between directive-prologue statements. A misplaced pragma is no longer a silent no-op: it is reported as a warning naming its line. `ignoreFilePragma` is replaced by `findIgnorePragma`, which returns `{ reason, line, effective }`.
+`// alfiz-verify-ignore-file <reason>` is now recognized anywhere in the file **header**, above *or below* a `"use server"` / `"use client"` directive, exactly as the language permits comments between directive-prologue statements. A misplaced pragma is no longer a silent no-op: it is reported as a warning naming its line. `ignoreFilePragma` is replaced by `findIgnorePragma`, which returns `{ reason, line, effective }`.
 
 ### Provenance validated at the write path
 
-A provenance missing its `actorUserId` used to pass through every write and fail inside the audit writer. `validateProvenance` (exported from core) now checks the required fields per kind, and the Application asserts it at the **top of every public write** — not after the row is inserted, which would leave a written row with no audit entry.
+A provenance missing its `actorUserId` used to pass through every write and fail inside the audit writer. `validateProvenance` (exported from core) now checks the required fields per kind, and the Application asserts it at the **top of every public write**, and not after the row is inserted, which would leave a written row with no audit entry.
 
 ### Grant queries that don't scan
 
-- `listGrants({ roleId })` on the provider contract — "who holds this role" without reading every grant in the organization.
+- `listGrants({ roleId })` on the provider contract answers "who holds this role" without reading every grant in the organization.
 - **`countGrants(filter)`** through the contract, the storage seam, and both drivers. *Breaking for third-party storage drivers:* implement `countGrants`.
 
 ### Derived types and hierarchical list pages
 
 - **`SnapshotOf<Cat>`**, **`ClientOf<Cat>`**, and **`SessionOf<Cat>`** round out `KeyOf` and `PatternOf`.
-- **`snapshot.resolve(scopes)`** extends an existing snapshot's chains without a second closure fetch — the shape a hierarchical list page needs, since it cannot know its row ids until after it queries. The data instant and clock are unchanged, so the consistency guarantee holds.
+- **`snapshot.resolve(scopes)`** extends an existing snapshot's chains without a second closure fetch, the shape a hierarchical list page needs, since it cannot know its row ids until after it queries. The data instant and clock are unchanged, so the consistency guarantee holds.
 
 ---
 
-## 0.2.0 — the alpha-feedback release
+## 0.2.0: the alpha-feedback release
 
-Shaped by the first real migration: an existing application with a 97-key catalog, roughly 400 call sites, and a hand-rolled scoping layer. The theme — the semantics were right; the surface around adopting them needed to grow.
+Shaped by the first real migration: an existing application with a 97-key catalog, roughly 400 call sites, and a hand-rolled scoping layer. The theme: the semantics were right; the surface around adopting them needed to grow.
 
 ### The request-scoped snapshot
 
-`client.snapshot(principal, { scopes?, fresh? })` returns an `AlfizSnapshot`: one provider round-trip, then **synchronous** `can` / `canAny` / `require` / `requireAny` / `explain` / `grantedScopes` / `holds` / `heldKeys`. This is the first-class pattern for server-rendered frameworks, where conditional-UI checks live in render helpers and `.map()` callbacks that cannot become async. A snapshot is one consistent instant — a stronger per-request guarantee than repeated `can` calls.
+`client.snapshot(principal, { scopes?, fresh? })` returns an `AlfizSnapshot`: one provider round-trip, then **synchronous** `can` / `canAny` / `require` / `requireAny` / `explain` / `grantedScopes` / `holds` / `heldKeys`. This is the first-class pattern for server-rendered frameworks, where conditional-UI checks live in render helpers and `.map()` callbacks that cannot become async. A snapshot is one consistent instant, a stronger per-request guarantee than repeated `can` calls.
 
 Every scope in the principal's own grant and revoke rows is chain-resolved at snapshot time, so revoke suppression, `canAny`, and ancestor implication agree exactly with `client.can`. Hierarchical check targets are pre-resolved via `{ scopes: [...] }`; checking an unresolved hierarchical scope throws rather than evaluating a truncated chain, which would fail open on ancestor revokes.
 
-**Semantic tightening:** a scope type declared `parent: null` now commits to flat instances — chains are `[scope, "*"]` by declaration, which is what keeps scoped checks on top-level types synchronous. Types whose instances nest under the same type declare themselves as their own parent (`"docs.folder": { parent: "docs.folder" }`).
+**Semantic tightening:** a scope type declared `parent: null` now commits to flat instances, so chains are `[scope, "*"]` by declaration, which is what keeps scoped checks on top-level types synchronous. Types whose instances nest under the same type declare themselves as their own parent (`"docs.folder": { parent: "docs.folder" }`).
 
 ### Referential cleanup and the missing write APIs
 
-- **`deleteSubject(subject, provenance)`** — grants key on subject strings, so deleting a principal in your own tables silently stranded its rows and a reused id inherited them. Sweeps every grant held by the subject; for users also revokes, the stored record, implicit-group grants, and pending requests.
-- **`deleteScope(scope, provenance)`** — the resource-deletion half: grants and revokes at the scope, plus cancellation of pending requests targeting it.
-- **`createGrants(inputs, provenance)`** — the bulk write migrations need: every input validated before any row is written, one audit entry, one invalidation event per distinct subject.
+- **`deleteSubject(subject, provenance)`.** Grants key on subject strings, so deleting a principal in your own tables silently stranded its rows and a reused id inherited them. Sweeps every grant held by the subject; for users also revokes, the stored record, implicit-group grants, and pending requests.
+- **`deleteScope(scope, provenance)`** is the resource-deletion half: grants and revokes at the scope, plus cancellation of pending requests targeting it.
+- **`createGrants(inputs, provenance)`** is the bulk write migrations need: every input validated before any row is written, one audit entry, one invalidation event per distinct subject.
 - **Caller-supplied ids** on `createRole` and `createGroup`, so migration SQL and runtime agree on well-known ids. Collisions are conflicts, never overwrites.
-- **`updateGroup(groupId, { name, description }, provenance)`** — renames no longer detour through `importDirectory`.
-- **`setUserActive(userId, active, provenance)`** — the reversible offboarding switch. Creates the record when absent, so deactivating a never-provisioned principal sticks.
+- **`updateGroup(groupId, { name, description }, provenance)`.** Renames no longer detour through `importDirectory`.
+- **`setUserActive(userId, active, provenance)`** is the reversible offboarding switch. Creates the record when absent, so deactivating a never-provisioned principal sticks.
 - Storage seam, breaking for driver implementors: `deleteUser(userId)` added; the `listRevokes` filter gains `scope`.
 
 ### The generated-client promise, pinned
 
-`@alfiz/prisma` narrows create-data JSON fields from `JsonValue` to `InputJsonValue`, declares optional properties Prisma-style so the structural match also holds under `exactOptionalPropertyTypes`, and adds `src/prisma-client-shape.ts` — a compile-only replica of the types `prisma generate` emits, with per-model assignability assertions. A delegate change that would break generated clients now fails this package's build rather than yours.
+`@alfiz/prisma` narrows create-data JSON fields from `JsonValue` to `InputJsonValue`, declares optional properties Prisma-style so the structural match also holds under `exactOptionalPropertyTypes`, and adds `src/prisma-client-shape.ts`, a compile-only replica of the types `prisma generate` emits, with per-model assignability assertions. A delegate change that would break generated clients now fails this package's build rather than yours.
 
 ### A verifier that can describe a real project
 
 - CLI config gains `gateNames`, `visibilityNames`, and `serverFilePatterns`. A project's own guard wrappers are the encouraged pattern, and without declaring them every wrapped action read as ungated. CLI lists are additive to the defaults; the programmatic options replace them, so spread `DEFAULT_GATE_NAMES` / `DEFAULT_VISIBILITY_NAMES` / `DEFAULT_SERVER_FILE_PATTERNS` in.
-- `// alfiz-verify-ignore-file <reason>` — the out-of-domain vocabulary for surfaces that authenticate outside the catalog by design.
+- `// alfiz-verify-ignore-file <reason>` is the out-of-domain vocabulary for surfaces that authenticate outside the catalog by design.
 
 ### Catalog ergonomics
 
-- **Group-level `scopes`** — declared once on a group, inherited by every leaf under it. Nearest declaration wins; a leaf's own `scopes`, including an explicit `[]`, overrides.
-- **`label` on leaves and groups** — the short picker name alongside the longer `description`, carried through the catalog document and the headless tree, so UI copy stops drifting into side tables.
+- **Group-level `scopes`** are declared once on a group and inherited by every leaf under it. Nearest declaration wins; a leaf's own `scopes`, including an explicit `[]`, overrides.
+- **`label` on leaves and groups** is the short picker name alongside the longer `description`, carried through the catalog document and the headless tree, so UI copy stops drifting into side tables.

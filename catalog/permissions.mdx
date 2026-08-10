@@ -4,11 +4,11 @@ sidebarTitle: "Permissions"
 description: "Learn Alfiz permission declarations: dotted keys, read vs. action kinds, destructive flags, scope wiring, and forward-inclusive wildcards."
 ---
 
-Every permission your application enforces must be declared in the catalog before any check can reference it. Alfiz will not evaluate a key it has never seen — passing an unknown key to `can()` or `require()` raises `UnknownPermissionError` at runtime and a type error at compile time. This section explains how to declare permissions correctly, name them consistently, and use wildcards safely.
+Every permission your application enforces must be declared in the catalog before any check can reference it. Alfiz will not evaluate a key it has never seen. Passing an unknown key to `can()` or `require()` raises `UnknownPermissionError` at runtime and a type error at compile time. This section explains how to declare permissions correctly, name them consistently, and use wildcards safely.
 
 ## Key shape
 
-A permission key is a dotted string whose **first segment is a namespace your application owns**. That is the only structural requirement — `defineCatalog` rejects a key whose first segment is not in `namespaces`, and accepts any depth beyond it.
+A permission key is a dotted string whose **first segment is a namespace your application owns**. That is the only structural requirement. `defineCatalog` rejects a key whose first segment is not in `namespaces`, and accepts any depth beyond it.
 
 Most application catalogs settle on three segments because the middle one is a useful place to put the feature area:
 
@@ -25,18 +25,18 @@ admin.users.invite_user
 admin.users.delete
 ```
 
-- The **first** segment is the namespace — declared, and enforced.
+- The **first** segment is the namespace, which is declared and enforced.
 - The **middle** segments are feature areas. Use as many as you find useful, or none.
 - The **last** segment is the leaf: the concrete thing someone may or may not do.
 
-The group levels (`admin`, `admin.users`) are **inferred**: every dotted prefix of a declared key is a group. You never declare them into existence, which is why depth costs nothing. Because a group is a folder and a permission is a leaf, one key can never be both — declaring `admin.users` alongside `admin.users.read` is a boot-time error.
+The group levels (`admin`, `admin.users`) are **inferred**: every dotted prefix of a declared key is a group. You never declare them into existence, which is why depth costs nothing. Because a group is a folder and a permission is a leaf, one key can never be both. Declaring `admin.users` alongside `admin.users.read` is a boot-time error.
 
-Depth is a **house-style setting**, not a rule. `conventions.depth` defaults to `3`, and `lintCatalog` is the only thing that reads it — `defineCatalog` never checks it, and neither does any check at runtime. If your keys are shaped differently, say so in one line rather than renaming to match a default:
+Depth is a **house-style setting** and not a rule. `conventions.depth` defaults to `3`, and `lintCatalog` is the only thing that reads it. `defineCatalog` never checks it, and neither does any check at runtime. If your keys are shaped differently, say so in one line rather than renaming to match a default:
 
 ```ts
 conventions: { depth: 2 }      // an integration catalog: zoom.host
 conventions: { depth: 4 }      // a deeper feature tree
-conventions: { depth: "any" }  // mixed depths — turn the check off
+conventions: { depth: "any" }  // mixed depths, so turn the check off
 ```
 
 <Tip>
@@ -45,7 +45,7 @@ conventions: { depth: "any" }  // mixed depths — turn the check off
 
 ## Declaring permissions: `PermissionLeafInput`
 
-Permissions are declared by their **full dotted key** — the same string you check with, so a key at a call site greps straight back to its declaration. The value is either the literal `true` (defaults for everything) or a `PermissionLeafInput` object:
+Permissions are declared by their **full dotted key**, the same string you check with, so a key at a call site greps straight back to its declaration. The value is either the literal `true` (defaults for everything) or a `PermissionLeafInput` object:
 
 ```ts
 defineCatalog({
@@ -83,7 +83,7 @@ export interface PermissionLeafInput {
 </ParamField>
 
 <ParamField body="destructive" type="boolean">
-  Marks the permission as destructive. Destructive actions pair with `can.fresh()` at enforcement points to bypass caches — the last-chance check before an irreversible operation. **Inferred automatically** for leaf names matching `delete`, `delete_*`, `destroy`, `destroy_*`, `purge`, or `purge_*`. Destructive actions should stand alone in their group rather than being bundled with related actions.
+  Marks the permission as destructive. Destructive actions pair with `can.fresh()` at enforcement points to bypass caches, giving you a last-chance check before an irreversible operation. **Inferred automatically** for leaf names matching `delete`, `delete_*`, `destroy`, `destroy_*`, `purge`, or `purge_*`. Destructive actions should stand alone in their group, unbundled from related actions.
 </ParamField>
 
 <ParamField body="scopes" type="readonly ScopeType[]">
@@ -91,11 +91,11 @@ export interface PermissionLeafInput {
 </ParamField>
 
 <ParamField body="impliedOnAncestors" type="boolean" default="false">
-  When `true`, holding any grant of this permission at a scope implies it on the **proper ancestors** of that scope — never on the global scope, so an unscoped `can()` is unaffected. Use this for the "shared doc shows its containing folder" pattern: a user who can read a specific document automatically sees the folder containing it. Off by default.
+  When `true`, holding any grant of this permission at a scope implies it on the **proper ancestors** of that scope, though never on the global scope, so an unscoped `can()` is unaffected. Use this for the "shared doc shows its containing folder" pattern: a user who can read a specific document automatically sees the folder containing it. Off by default.
 </ParamField>
 
 <ParamField body="requiresCondition" type="boolean" default="false">
-  The [condition seam](/enforcement/conditions): holding this permission is necessary but not **sufficient** — every gate must also pass `{ condition: () => … }` evaluating an application predicate ("under the approver's limit", "still Draft"). A gate without one throws `MissingConditionError` at runtime and fails `alfiz-verify` in CI. Visibility shapes are unaffected. Off by default.
+  The [condition seam](/enforcement/conditions): holding this permission is necessary but not **sufficient**, so every gate must also pass `{ condition: () => … }` evaluating an application predicate ("under the approver's limit", "still Draft"). A gate without one throws `MissingConditionError` at runtime and fails `alfiz-verify` in CI. Visibility shapes are unaffected. Off by default.
 </ParamField>
 
 ## The naming floor
@@ -103,8 +103,8 @@ export interface PermissionLeafInput {
 The naming floor is Alfiz's suggested house style, checked by `lintCatalog` and reported by `alfiz-verify`. Only the first rule is an error; the rest are warnings that do not fail a build. Adopt what suits you:
 
 1. **Every tab needs at least one `read` permission.** Name it `read` for general access to the section, or `read_<thing>` for a more specific read (e.g. `read_history`, `read_exports`).
-2. **Action permissions are named `<verb>_<noun>`** in `snake_case` — `invite_user`, `export_report`, `publish_file`. A short list of common standalone verbs (`create`, `update`, `delete`, `manage`, `approve`, `publish`, `archive`, `export`, `import`, `issue`, `revoke`, `view_as`) are allowed without a noun. Anything else — a single-word action like `share` — is a `lintCatalog` **warning**, not an error, so it does not fail the build; rename it `share_file` if you want a clean run.
-3. **Destructive actions stand alone.** Don't bundle `delete` with `update` in the same leaf — give them separate declarations so you can grant one without the other and so enforcement can apply `can.fresh()` selectively.
+2. **Action permissions are named `<verb>_<noun>`** in `snake_case`, as in `invite_user`, `export_report`, `publish_file`. A short list of common standalone verbs (`create`, `update`, `delete`, `manage`, `approve`, `publish`, `archive`, `export`, `import`, `issue`, `revoke`, `view_as`) are allowed without a noun. Anything else, such as a single-word action like `share`, is a `lintCatalog` **warning** and not an error, so it does not fail the build; rename it `share_file` if you want a clean run.
+3. **Destructive actions stand alone.** Don't bundle `delete` with `update` in the same leaf. Give them separate declarations so you can grant one without the other and so enforcement can apply `can.fresh()` selectively.
 
 Keys are always written **in full**, even inside a `group()` block. There is no
 short form: the first segment must be a declared namespace, or `defineCatalog`
@@ -121,13 +121,13 @@ permissions: {
   "docs.files.delete":             { destructive: true, description: "Permanently delete a file" },
 }
 
-// ❌ Below the naming floor — no read permission under docs.files
+// ❌ Below the naming floor: no read permission under docs.files
 permissions: {
   "docs.files.create":  { description: "Create a file" },
   "docs.files.publish": { description: "Publish a file" },
 }
 
-// ❌ Fails at boot — bare leaf names are not keys
+// ❌ Fails at boot: bare leaf names are not keys
 permissions: {
   read:   { kind: "read" },   // "read" is not under a declared namespace
   create: {},
@@ -136,7 +136,7 @@ permissions: {
 
 ## Organizing a large catalog: `group()`
 
-A flat map is the right shape for a small catalog — ten permissions in one object is complete and idiomatic, and groups are never required. Past a few dozen keys it becomes a wall of strings, and that is what `group()` is for: a named, foldable block carrying one group's metadata and the keys under it.
+A flat map is the right shape for a small catalog, since ten permissions in one object is complete and idiomatic, and groups are never required. Past a few dozen keys it becomes a wall of strings, and that is what `group()` is for: a named, foldable block carrying one group's metadata and the keys under it.
 
 ```ts
 import { defineCatalog, group } from "@alfiz/core";
@@ -174,7 +174,7 @@ defineCatalog({
 });
 ```
 
-Keys stay absolute inside a block, so nothing about grepping changes. Every key **must** start with the block's path — a key that does not is a compile error naming the fix:
+Keys stay absolute inside a block, so nothing about grepping changes. Every key **must** start with the block's path, and a key that does not is a compile error naming the fix:
 
 ```ts
 group("docs.files", {
@@ -183,12 +183,12 @@ group("docs.files", {
 ```
 
 <Tip>
-  Because keys are absolute, blocks compose by concatenation rather than by merging trees. That makes one file per feature a supported layout: put `export const files = group("docs.files", …)` next to the code it gates, and have your root catalog import and list them. Adding a surface then touches one small file, and the diff is exactly the permissions you added.
+  Because keys are absolute, blocks compose by concatenation, with no tree merging. That makes one file per feature a supported layout: put `export const files = group("docs.files", …)` next to the code it gates, and have your root catalog import and list them. Adding a surface then touches one small file, and the diff is exactly the permissions you added.
 </Tip>
 
 ### `GroupInput`
 
-The metadata a block (or a `groups` entry) carries. Groups themselves are never declared — this only decorates a path that keys already imply.
+The metadata a block (or a `groups` entry) carries. Groups themselves are never declared, so this only decorates a path that keys already imply.
 
 ```ts
 export interface GroupInput {
@@ -212,7 +212,7 @@ export interface GroupInput {
 
 ### Labelling a group without a block
 
-For paths you did not write a block for — typically the project level — use the optional top-level `groups` map:
+For paths you did not write a block for, typically the project level, use the optional top-level `groups` map:
 
 ```ts
 defineCatalog({
@@ -232,18 +232,18 @@ Alfiz supports three levels of wildcard pattern:
 | `docs.*` | Every permission under the `docs` project |
 | `docs.files.*` | Every permission under the `docs.files` tab |
 
-Wildcards are **forward-inclusive**: a stored grant of `docs.files.*` will match any permission added under `docs.files` in the future, including ones that did not exist when the grant was created. This is a deliberate semantic opinion — it is not configurable.
+Wildcards are **forward-inclusive**: a stored grant of `docs.files.*` will match any permission added under `docs.files` in the future, including ones that did not exist when the grant was created. That semantic is deliberate, and it is not configurable.
 
 <Warning>
   Forward-inclusive wildcards mean that a role or grant covering `admin.*` will silently acquire every permission you add under `admin` later, including destructive ones. Grant broad wildcards to roles only when "everything under this group, including future capabilities" is the correct intent. Scope specific grants to narrower patterns like `admin.users.*` when you need to limit reach.
 </Warning>
 
 <Tip>
-  Wildcards select only leaf permissions — never group paths. Passing the group path `"docs.files"` where a pattern is expected names nothing. The pattern selecting everything under a group is `"docs.files.*"`. `alfiz-verify` catches this and suggests the corrected pattern.
+  Wildcards select only leaf permissions, and never group paths. Passing the group path `"docs.files"` where a pattern is expected names nothing. The pattern selecting everything under a group is `"docs.files.*"`. `alfiz-verify` catches this and suggests the corrected pattern.
 </Tip>
 
 For roles and admin grants, the wildcard semantics mean:
 
 - A role granted `docs.*` today will also cover `docs.analytics.read` the day you add the analytics tab.
-- A user revoked `docs.files.delete` is revoked from that key even when a wildcard `docs.*` grant would otherwise cover it — personal revokes always win.
+- A user revoked `docs.files.delete` is revoked from that key even when a wildcard `docs.*` grant would otherwise cover it, because personal revokes always win.
 - `alfiz-verify` warns when a wildcard pattern in a nav entry currently matches zero keys.

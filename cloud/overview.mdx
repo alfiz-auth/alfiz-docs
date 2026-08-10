@@ -1,42 +1,42 @@
 ---
 title: "Alfiz Cloud: The Managed Provider for Hosted Administration and Federation"
 sidebarTitle: "Overview"
-description: "Alfiz Cloud is the managed Alfiz provider — the Dashboard and Federation, two features over one implementation, with runtime checks untouched in every topology."
+description: "Alfiz Cloud is the managed Alfiz provider: the Dashboard and Federation, two features over one implementation, with runtime checks untouched in every topology."
 ---
 
-Alfiz Cloud is the managed Alfiz provider: a hosted implementation of the same provider contract your Application already speaks. It exists for the work that genuinely benefits from a hosted vantage — administration by non-engineers, and organization-level composition across applications — and for nothing else. Runtime checks are not on that list, and never will be.
+Alfiz Cloud is the managed Alfiz provider: a hosted implementation of the same provider contract your Application already speaks. It exists for the work that genuinely benefits from a hosted vantage, meaning administration by non-engineers and organization-level composition across applications, and for nothing else. Runtime checks are not on that list, and never will be.
 
 ## Two features, one implementation
 
 <CardGroup cols={2}>
   <Card title="Dashboard" icon="layout-dashboard" href="/cloud/provider-api">
-    A hosted, styled, maintained admin UI for grants, roles, groups, approvals, and audit — every operation relayed to your Application for enforcement. Your Application stays the org root and the only writer.
+    A hosted, styled, maintained admin UI for grants, roles, groups, approvals, and audit, with every operation relayed to your Application for enforcement. Your Application stays the org root and the only writer.
   </Card>
   <Card title="Federation" icon="diagram-project" href="/growth/federated">
-    The hosted org root: the catalog registry, cross-application role composition, org-wide request aggregation, and provisioned connectors — for organizations with more than one application.
+    The hosted org root: the catalog registry, cross-application role composition, org-wide request aggregation, and provisioned connectors, for organizations with more than one application.
   </Card>
 </CardGroup>
 
-The relationship between the two is exact: **the Dashboard is Federation with one Application in play**. There is no separate linked-mode codebase — the same org surfaces, the same provider connection, the same approvals queue, with authority left exactly where it already lives. When you later federate, nothing is rebuilt; the org root moves and the surfaces stay.
+The relationship between the two is exact: **the Dashboard is Federation with one Application in play**. There is no separate linked-mode codebase: the same org surfaces, the same provider connection, the same approvals queue, with authority left exactly where it already lives. When you later federate, nothing is rebuilt; the org root moves and the surfaces stay.
 
 ## Three kinds of user
 
 Alfiz Cloud serves three audiences, and its surfaces divide cleanly along that line:
 
-- **Administrators** work the org domain — groups, roles, the reporting hierarchy, global grants and revokes, the approvals queue, the audit history.
-- **Application owners and developers** work their own applications — catalog publishes, credentials, scoped grants, connection health, and the drift report.
-- **Employees** use the portal — view their own access, request more, and approve what falls to them.
+- **Administrators** work the org domain: groups, roles, the reporting hierarchy, global grants and revokes, the approvals queue, the audit history.
+- **Application owners and developers** work their own applications: catalog publishes, credentials, scoped grants, connection health, and the drift report.
+- **Employees** use the portal to view their own access, request more, and approve what falls to them.
 
 <Note>
-  Alfiz Cloud is never in your request path. Every `can()` runs in-process against your catalog, your rows, and your resolver, in every topology — so Alfiz Cloud cannot add latency to a check, cannot throttle one, and cannot fail in a way that stops one. Check volume is not a billing dimension and will not become one.
+  Alfiz Cloud is never in your request path. Every `can()` runs in-process against your catalog, your rows, and your resolver, in every topology, so Alfiz Cloud cannot add latency to a check, cannot throttle one, and cannot fail in a way that stops one. Check volume is not a billing dimension and will not become one.
 </Note>
 
 ## The uniform authorization rule
 
 Alfiz Cloud gates its own surfaces with the same machinery it hosts, and the rule is uniform across every topology:
 
-- **Org-domain surfaces** gate on the `alfiz_internal.*` permissions of whichever provider currently holds the org root. For a linked org that is your Application; after federation it is Alfiz Cloud. The keys do not change when the authority moves — they resolve against wherever the org root currently lives.
-- **Account surfaces** — an application's own page: credentials, publishes, connection health — gate on admin seats plus grants scoped to `cloud.app:<id>`.
+- **Org-domain surfaces** gate on the `alfiz_internal.*` permissions of whichever provider currently holds the org root. For a linked org that is your Application; after federation it is Alfiz Cloud. The keys do not change when the authority moves. They resolve against wherever the org root currently lives.
+- **Account surfaces.** An application's own page: credentials, publishes, connection health. Gate on admin seats plus grants scoped to `cloud.app:<id>`.
 - **The portal** needs only a seat.
 
-Setup starts with the provider connection — see [Provider API setup](/cloud/provider-api). What is billed, and what never is, is covered in [Metering and caps](/cloud/metering).
+Setup starts with the provider connection. See [Provider API setup](/cloud/provider-api). What is billed, and what never is, is covered in [Metering and caps](/cloud/metering).

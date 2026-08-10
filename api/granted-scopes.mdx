@@ -1,10 +1,10 @@
 ---
-title: "grantedScopes() and holds() — Listing Utilities"
+title: "grantedScopes() and holds(): Listing Utilities"
 sidebarTitle: "grantedScopes()"
-description: "grantedScopes(principal, key) returns the set of scopes where a principal holds a permission — the primitive for building efficient listing queries."
+description: "grantedScopes(principal, key) returns the set of scopes where a principal holds a permission: the primitive for building efficient listing queries."
 ---
 
-`grantedScopes` is the database-query primitive for permission-filtered lists. Instead of loading every resource and checking `can` per row — an O(N) pattern that defeats the purpose of database indexes — you call `grantedScopes` once, obtain the set of scope instance IDs where the principal holds the key, and push that filter into your query. Alfiz's companion listing helpers turn those two sets into a query: `planListing` reduces them to a `ListingPlan` — one of `{ mode: "all" }`, `{ mode: "none" }`, `{ mode: "all_except", exclude }`, or `{ mode: "scoped", include, exclude }` — and `matPathCondition`, `closureTableCondition`, and `prismaMatPathWhere` build the actual predicate from it.
+`grantedScopes` is the database-query primitive for permission-filtered lists. Instead of loading every resource and checking `can` per row is an O(N) pattern that defeats the purpose of database indexes. You call `grantedScopes` once, obtain the set of scope instance IDs where the principal holds the key, and push that filter into your query. Alfiz's companion listing helpers turn those two sets into a query: `planListing` reduces them to a `ListingPlan`, one of `{ mode: "all" }`, `{ mode: "none" }`, `{ mode: "all_except", exclude }`, or `{ mode: "scoped", include, exclude }`, and `matPathCondition`, `closureTableCondition`, and `prismaMatPathWhere` build the actual predicate from it.
 
 ## `client.grantedScopes(principal, key)`
 
@@ -23,14 +23,14 @@ async grantedScopes(
 <ParamField body="key" type="LooseKey<K>" required>
   A concrete permission key declared in your catalog. The key is verified
   against the catalog before evaluation; an unknown key raises
-  `UnknownPermissionError`. Wildcard patterns are not valid here — this
+  `UnknownPermissionError`. Wildcard patterns are not valid here. This
   method returns scope sets for one specific leaf.
 </ParamField>
 
 ### Return value
 
 <ResponseField name="granted" type="Set<ScopeId>">
-  The scopes of the principal's unexpired grant **rows** that match `key` —
+  The scopes of the principal's unexpired grant **rows** that match `key`.
   including grants conferred through a role and through wildcard patterns.
   For an inactive principal, this set is always empty.
 
@@ -41,7 +41,7 @@ async grantedScopes(
   </Warning>
 
   These are the scopes the grants were *made at*, which in a hierarchical
-  deployment are usually ancestors — `docs.folder:42`, not the `docs.doc:*`
+  deployment are usually ancestors such as `docs.folder:42`, not the `docs.doc:*`
   ids on your rows. Match rows by ancestry (a closure table or a
   materialized path), not by scope-id equality.
 </ResponseField>
@@ -61,7 +61,7 @@ The pattern has three steps:
 
 1. Call `grantedScopes` to obtain the granted and revoked scope sets.
 2. Use the sets to build a SQL predicate that filters the resource table.
-3. Execute the query — the database applies the permission filter, so you
+3. Execute the query, and the database applies the permission filter, so you
    load only the rows the principal is allowed to see.
 
 <CodeGroup>
@@ -107,7 +107,7 @@ async function listAccessibleDocs(userId: string) {
   );
 
   const plan = planListing({ granted, revoked });
-  if (plan.mode === "none") return [];          // provably nothing — never query
+  if (plan.mode === "none") return [];          // provably nothing, so never query
 
   const opts = { pathColumn: "path", placeholder: "$" as const };
   const clauses: string[] = [];
@@ -139,7 +139,7 @@ async function listAccessibleDocs(userId: string) {
     "docs.files.read",
   );
 
-  // planListing folds every case — including a global REVOKE, which means
+  // planListing folds every case, including a global REVOKE, which means
   // provably nothing however broad the grants are.
   const plan = planListing({ granted, revoked });
   if (plan.mode === "none") return [];
@@ -178,7 +178,7 @@ async holds(
 ): Promise<boolean>
 ```
 
-Returns `true` if the principal holds `key` at **any** scope — the single-key "does this button exist at all?" probe. Use `holds` for unscoped conditional UI where the concrete scope is not yet known: someone who holds `publish_file` on only a handful of folders should still see the publish button surface. The button's server action still gates with `can` at its concrete scope.
+Returns `true` if the principal holds `key` at **any** scope: the single-key "does this button exist at all?" probe. Use `holds` for unscoped conditional UI where the concrete scope is not yet known: someone who holds `publish_file` on only a handful of folders should still see the publish button surface. The button's server action still gates with `can` at its concrete scope.
 
 <ParamField body="principal" type="PrincipalRef" required>
   The principal to check.
@@ -193,7 +193,7 @@ Returns `true` if the principal holds `key` at **any** scope — the single-key 
 <ResponseField name="Promise<boolean>" type="Promise<boolean>">
   `true` when the principal holds an unexpired, non-globally-revoked grant
   for `key` at any scope. `false` for inactive principals or when no grant
-  exists. Never a gate — use `can` for authorization.
+  exists. Never a gate; use `can` for authorization.
 </ResponseField>
 
 <Warning>
@@ -211,7 +211,7 @@ Returns `true` if the principal holds `key` at **any** scope — the single-key 
 async heldKeys(principal: PrincipalRef): Promise<PermissionKey[]>
 ```
 
-Returns every concrete catalog key the principal holds somewhere — granted by an unexpired row at any scope, suppressed only by a global-scope revoke. This is the full "what can this user do?" list, and it is the right feed for unscoped conditional UI that needs to render multiple surfaces at once.
+Returns every concrete catalog key the principal holds somewhere, granted by an unexpired row at any scope, suppressed only by a global-scope revoke. This is the full "what can this user do?" list, and it is the right feed for unscoped conditional UI that needs to render multiple surfaces at once.
 
 <ParamField body="principal" type="PrincipalRef" required>
   The principal to evaluate.
@@ -222,7 +222,7 @@ Returns every concrete catalog key the principal holds somewhere — granted by 
 <ResponseField name="Promise<PermissionKey[]>" type="Promise<PermissionKey[]>">
   An array of every concrete key the principal holds at some scope. Empty for
   inactive principals. Order matches the catalog's key order (alphabetical).
-  O(catalog size) — call once per request and reuse; `snapshot(principal).heldKeys`
+  O(catalog size), so call once per request and reuse; `snapshot(principal).heldKeys`
   does exactly that.
 </ResponseField>
 

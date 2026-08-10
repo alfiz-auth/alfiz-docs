@@ -1,15 +1,15 @@
 ---
 title: "Importing Permissions From Another Application"
 sidebarTitle: "Imports"
-description: "Declare the permissions your application references but does not own — from Alfiz Cloud or a federated application — and keep the same typed keys, verified call sites, and grants you have for your own."
+description: "Declare the permissions your application references but does not own, whether they come from Alfiz Cloud or a federated application, and keep the same typed keys, verified call sites, and grants you have for your own."
 ---
 
 Your catalog declares what your application owns. Sometimes it also needs to *reference* permissions it does not own: a connector's capabilities, or another application's keys that your roles bundle alongside your own.
 
 `namespaces` and `imports` are the two halves of that:
 
-- **`namespaces`** — prefixes you own. You define these keys, and you publish them.
-- **`imports`** — prefixes you reference. Another application defines them; you name the slice you interface with, and wire it to your own resources.
+- **`namespaces`.** Prefixes you own. You define these keys, and you publish them.
+- **`imports`.** Prefixes you reference. Another application defines them; you name the slice you interface with, and wire it to your own resources.
 
 Both live in the same catalog module, in code, for the same reason everything else does.
 
@@ -64,17 +64,17 @@ Attaching it is the recommended pattern, and the difference is concrete.
 | | With the document | Without it |
 |---|---|---|
 | `imports: { zoom: { permissions: { "zoom.meetings.*": true } } }` | expands to the published keys | stays an opaque **region** |
-| `can(user, "zoom.meetings.reed")` | throws — the catalog knows the real keys | evaluated; the typo is admitted |
+| `can(user, "zoom.meetings.reed")` | throws, because the catalog knows the real keys | evaluated; the typo is admitted |
 | `canAny(user, "zoom.meetings.*")` | exact | approximate, fail-closed |
 | A pattern the owner no longer publishes | **build error** | unnoticed |
 | Permission tree | renders each key | renders one selectable unit |
 
-A region is not broken — it is grantable, checkable, and storable — but it is an approximation, and every approximation errs toward showing less. A revoke overlapping any part of a region suppresses the whole region for visibility checks.
+A region still works. It is grantable, checkable and storable, but it is an approximation, and every approximation errs toward showing less. A revoke overlapping any part of a region suppresses the whole region for visibility checks.
 
 If you must import without a document, `strict: true` closes the admission half: the wildcard still declares grantable vocabulary, but `can()` on a key you cannot name throws rather than being evaluated.
 
 <Warning>
-An import declares specific keys or subtree patterns — never the bare `*`. Importing everything from every namespace is not a contract.
+An import declares specific keys or subtree patterns, and never the bare `*`. Importing everything from every namespace is not a contract.
 </Warning>
 
 ## Scope types are yours, not theirs
@@ -90,9 +90,9 @@ imports: {
 }
 ```
 
-Writing `scopes: ["zoom.meeting"]` is a build error even though Zoom really does declare that scope type. The reason is structural rather than stylistic: resolving a scope's ancestor chain requires the resolver of the application that owns the resource, and your application does not have Zoom's. Scope types you *can* resolve are the only ones a check here can honestly use.
+Writing `scopes: ["zoom.meeting"]` is a build error even though Zoom really does declare that scope type. The reason is structural: resolving a scope's ancestor chain requires the resolver of the application that owns the resource, and your application does not have Zoom's. Scope types you *can* resolve are the only ones a check here can honestly use.
 
-The default is `[]` — grantable at the global scope only. Wire an import to a scope type when your own resources are what narrows it, as `docs.folder` does above.
+The default is `[]`, which is grantable at the global scope only. Wire an import to a scope type when your own resources are what narrows it, as `docs.folder` does above.
 
 ## Import the narrowest thing that works
 
@@ -111,7 +111,7 @@ await client.canAny(user, "zoom.*");                    // ❌ broader than the 
 
 ## Typed keys across the boundary
 
-A concrete import contributes its keys to `KeyOf<typeof catalog>` as literals, exactly like your own. A *wildcard* import cannot: a subtree you cannot enumerate has no closed key set, so it widens the union by one template member (`` `zoom.meetings.${string}` ``) — enough to autocomplete the prefix, not enough to catch a typo in the last segment.
+A concrete import contributes its keys to `KeyOf<typeof catalog>` as literals, exactly like your own. A *wildcard* import cannot: a subtree you cannot enumerate has no closed key set, so it widens the union by one template member (`` `zoom.meetings.${string}` ``). That is enough to autocomplete the prefix and not enough to catch a typo in the last segment.
 
 Close it with codegen, the same mechanism that types a published catalog anywhere else:
 
@@ -135,7 +135,7 @@ Now `zoom.meetings.reed` fails to compile.
 
 ## Publishing: what you announce vs. what you consume
 
-`catalog.toDocument()` carries **owned vocabulary only**. Imported keys are never in it — publishing them would mean defining keys in a namespace you do not own, which the registry's namespace ownership exists to prevent.
+`catalog.toDocument()` carries **owned vocabulary only**. Imported keys are never in it, because publishing them would mean defining keys in a namespace you do not own, which the registry's namespace ownership exists to prevent.
 
 What you consume publishes separately:
 
@@ -146,22 +146,22 @@ await app.publishImports(catalog.toImportManifest(), {
 });
 ```
 
-They are different contracts. The first is vocabulary others may write grants against; the second is a dependency others can only warn you about — and that warning is the point. The [drift report](/cloud/registry) can name roles and grants that reference a tombstoned key, but without manifests it can never name the *code* that still imports one.
+They are different contracts. The first is vocabulary others may write grants against; the second is a dependency others can only warn you about, and that warning is what it buys you. The [drift report](/cloud/registry) can name roles and grants that reference a tombstoned key, but without manifests it can never name the *code* that still imports one.
 
 ## Checking a permission you never declared
 
-A check for a permission in a namespace you neither own nor import is an **implicit import**. It is not a topology — it is a missing line — and both the verifier and the runtime say so.
+A check for a permission in a namespace you neither own nor import is an **implicit import**. It is a missing line rather than a topology, and both the verifier and the runtime say so.
 
 **In CI**, `alfiz-verify` reports the `implicit-import` rule:
 
 ```text
-✖ [implicit-import] src/app/page.ts:11 — "stripe.charges.read" is in namespace "stripe",
+✖ [implicit-import] src/app/page.ts:11  "stripe.charges.read" is in namespace "stripe",
   which this catalog neither owns nor imports. If it belongs to another application,
   declare it in the catalog's `imports`; otherwise it is a typo, and this check will
   throw at runtime
 ```
 
-The severity is an **error** when no import source is configured — an application that has never imported anything has no plausible source for a foreign key, so it is a typo — and a **warning** when one is, naming the declaration to paste. You usually get the warning without configuring anything: `importSource` defaults to `"registry"` as soon as your catalog declares any import at all. Override it in `alfiz-verify.config.json`:
+The severity is an **error** when no import source is configured, since an application that has never imported anything has no plausible source for a foreign key and it is therefore a typo. It is a **warning** when one is configured, naming the declaration to paste. You usually get the warning without configuring anything: `importSource` defaults to `"registry"` as soon as your catalog declares any import at all. Override it in `alfiz-verify.config.json`:
 
 ```json alfiz-verify.config.json
 {
@@ -196,12 +196,12 @@ const alfiz = createAlfizClient({
 Two things this never relaxes, whatever you set it to:
 
 - A permission under a namespace **you own**. Your catalog is enumerable, so an unknown key in it is a typo, and no configuration should hide one.
-- A permission outside an **enumerated import**. That import knows its own keys, so it can tell you which ones — and does, with a did-you-mean.
+- A permission outside an **enumerated import**. That import knows its own keys, so it tells you which ones, with a did-you-mean.
 
-And one thing it never does: **I/O**. There is no provider lookup, no lazy fetch, no registry call. Alfiz is never in your request path, and `snapshot.can()` is synchronous — which makes a fetch-on-unknown design structurally impossible there, not merely discouraged.
+And one thing it never does: **I/O**. There is no provider lookup, no lazy fetch, no registry call. Alfiz is never in your request path, and `snapshot.can()` is synchronous, which makes a fetch-on-unknown design impossible there by construction.
 
 <Note>
-A permission admitted this way is declared in no catalog, so a bare global `*` grant does not confer it — `*` means everything in the *declared* vocabulary. A grant naming the namespace (`zoom.*`, or narrower) confers it normally. Without that rule, a typo in a foreign namespace would pass for exactly the broadly-privileged users who review and test the gate, and deny everyone it was written for.
+A permission admitted this way is declared in no catalog, so a bare global `*` grant does not confer it, because `*` means everything in the *declared* vocabulary. A grant naming the namespace (`zoom.*`, or narrower) confers it normally. Without that rule, a typo in a foreign namespace would pass for exactly the broadly-privileged users who review and test the gate, and deny everyone it was written for.
 </Note>
 
 ## Next

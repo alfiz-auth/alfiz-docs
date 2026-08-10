@@ -12,10 +12,10 @@ This is the rule the rest of the page follows from.
 
 Alfiz caches two things, both of them *inputs* to a decision:
 
-- **The subject closure** — every subject string that applies to a principal right now: their user id, their groups and the groups above those, their org, `everyone`, and their implicit manager-chain subjects.
-- **The object ancestor chain** — the path from a scope instance up to `*`, as your ancestry resolver reports it.
+- **The subject closure.** Every subject string that applies to a principal right now: their user id, their groups and the groups above those, their org, `everyone`, and their implicit manager-chain subjects.
+- **The object ancestor chain.** The path from a scope instance up to `*`, as your ancestry resolver reports it.
 
-It never caches the answer. Every `can()` re-evaluates the grant rows, the revokes, and the expiry clock against whatever closure data it has. That is why a grant expiring at 14:03:00 stops working at 14:03:00 and not at the end of some cache window — expiry is evaluated, not cached.
+It never caches the answer. Every `can()` re-evaluates the grant rows, the revokes, and the expiry clock against whatever closure data it has. That is why a grant expiring at 14:03:00 stops working at 14:03:00 and not at the end of some cache window, because expiry is evaluated and never cached.
 
 ## The default bounds
 
@@ -32,7 +32,7 @@ It never caches the answer. Every `can()` re-evaluates the grant rows, the revok
 Two things cut that short in the process that made the write: the provider's invalidation stream busts the affected entries immediately, and object chains bust the moment you report a move.
 
 <Warning>
-The in-process stream only reaches the process that wrote the event. On a second node, or a second serverless invocation, the TTL alone would be the bound — which is why, since 0.7.0, the event log and revalidation below are **on by default** wherever the storage driver supports them. The blind-TTL posture is now the explicit opt-out, not the silent default.
+The in-process stream only reaches the process that wrote the event. On a second node, or a second serverless invocation, the TTL alone would be the bound. That is why, since 0.7.0, the event log and revalidation below are **on by default** wherever the storage driver supports them. The blind-TTL posture is now the explicit opt-out, not the silent default.
 </Warning>
 
 ## Moves are your responsibility to report
@@ -44,11 +44,11 @@ await db.docs.update({ where: { id }, data: { folderId: newFolderId } });
 await app.notifyScopeMoved(`docs.doc:${id}`);
 ```
 
-The promise resolves when the move event is durable. The 60-second object TTL exists to bound staleness for the moves that were never reported — it is a backstop, not the design.
+The promise resolves when the move event is durable. The 60-second object TTL exists to bound staleness for the moves that were never reported. It is a backstop and not the design.
 
 ## The cross-process bound is the default one (0.7.0)
 
-With a storage driver that implements the event methods — both bundled drivers do — the Application persists invalidation events **by default** (since 0.7.0), and a client attached to an epoch-bearing provider revalidates **by default** with a 5-second window. The default cross-process revocation bound is therefore the revalidation window, not the blind TTL. You configure nothing:
+With a storage driver that implements the event methods, which both bundled drivers do, the Application persists invalidation events **by default** (since 0.7.0), and a client attached to an epoch-bearing provider revalidates **by default** with a 5-second window. The default cross-process revocation bound is therefore the revalidation window, not the blind TTL. You configure nothing:
 
 ```ts
 const app = createApplication({
@@ -71,7 +71,7 @@ createApplication({ ..., events: { persist: false } });
 createAlfizClient({ ..., revalidateAfterMs: false }); // TTL-only: the pre-0.7.0 posture
 ```
 
-Past the window, the next check performs **one** read of the log head — coalesced across every concurrent check, and constant-cost regardless of organization size. An unchanged head proves nothing changed anywhere, so entry TTLs are *renewed* rather than expired. A changed head replays only the missed events through the same busting logic the live stream feeds.
+Past the window, the next check performs **one** read of the log head, coalesced across every concurrent check and constant-cost regardless of organization size. An unchanged head proves nothing changed anywhere, so entry TTLs are *renewed* rather than expired. A changed head replays only the missed events through the same busting logic the live stream feeds.
 
 ### What each mode costs you
 
@@ -80,13 +80,13 @@ Past the window, the next check performs **one** read of the log head — coales
 | Event log + revalidation (**default** with a capable driver) | The revalidation window (5 s default) plus one request | 0 queries warm; **one** single-row read per window, amortized over every principal |
 | TTL only (`revalidateAfterMs: false`, or a driver without event methods) | Subject / object TTL (30 s / 60 s) | 0 queries warm; full closure fetch per TTL expiry |
 | \+ `cacheStore` (L2) | Same as above | Cold starts read one cache entry and one head read, instead of the full closure fan-out |
-| Epoch unreachable | Falls back to the TTL bounds | Fail-closed to the database — stale data is never served past its window |
+| Epoch unreachable | Falls back to the TTL bounds | Fail-closed to the database, so stale data is never served past its window |
 
 <Note>
-`revalidateAfterMs` is inert against a provider with no `epoch` (TTL-only is all such a deployment can have), and every L2 failure — error, timeout, unparseable or version-mismatched envelope — is a **miss**, never an answer. The L2 tier remains opt-in.
+`revalidateAfterMs` is inert against a provider with no `epoch` (TTL-only is all such a deployment can have), and every L2 failure (error, timeout, unparseable or version-mismatched envelope) is a **miss**, never an answer. The L2 tier remains opt-in.
 </Note>
 
-An L2 entry is served only when provably fresh: with epoch revalidation on, only when it was written under exactly the current log head. Any intervening write anywhere discards it. That is strict, and still a hit whenever writes are quiet — which is the common case.
+An L2 entry is served only when provably fresh: with epoch revalidation on, only when it was written under exactly the current log head. Any intervening write anywhere discards it. That is strict, and still a hit whenever writes are quiet, which is the common case.
 
 <Warning>
 The cache store holds closure data inside your server trust boundary. Point it only at authenticated, private cache infrastructure.
@@ -94,7 +94,7 @@ The cache store holds closure data inside your server trust boundary. Point it o
 
 ## The incident switch
 
-`strict: true` on the client makes **every check on every surface** bypass both cache tiers — exactly as if each call were `can.fresh`. It exists for one moment: an active incident where "revocations must land *now*" outranks latency.
+`strict: true` on the client makes **every check on every surface** bypass both cache tiers, exactly as if each call were `can.fresh`. It exists for one moment: an active incident where "revocations must land *now*" outranks latency.
 
 ```ts
 export const alfiz = createAlfizClient({
@@ -106,16 +106,16 @@ export const alfiz = createAlfizClient({
 
 The runbook:
 
-1. **Cut the access** — revoke the grants, `setUserActive(userId, false)`, or both. This is the fix; strict mode is only how fast it lands everywhere.
+1. **Cut the access.** Revoke the grants, call `setUserActive(userId, false)`, or both. This is the fix; strict mode is only how fast it lands everywhere.
 2. **Flip strict on** (set the variable, restart or redeploy). Every check now pays provider round-trips; the propagation bound is zero.
 3. **Verify** with `explain()` that the principal's effective access is what you intend.
 4. **Flip strict off** once the window that mattered has passed. Caches rebuild on the next checks; nothing else to clean up.
 
-Strict mode is a blunt instrument priced accordingly — every check is a closure fetch. For one destructive surface, prefer `can.fresh` below; for one offboarding, `setUserActive` plus the default revalidation bound is usually already enough.
+Strict mode is a blunt instrument priced accordingly, since every check is a closure fetch. For one destructive surface, prefer `can.fresh` below; for one offboarding, `setUserActive` plus the default revalidation bound is usually already enough.
 
 ## The escape hatch
 
-`can.fresh` bypasses both caches — fresh closure supply, fresh ancestry — on every call. Pair it with the surfaces where the bounded staleness of the cached path is not acceptable:
+`can.fresh` bypasses both caches on every call, taking a fresh closure supply and fresh ancestry. Pair it with the surfaces where the bounded staleness of the cached path is not acceptable:
 
 ```ts
 await alfiz.can.fresh({ userId }, "docs.files.delete", "docs.folder:9");
@@ -123,7 +123,7 @@ await alfiz.can.fresh({ userId }, "docs.files.delete", "docs.folder:9");
 
 - **Destructive actions**, where acting on a stale "yes" is irreversible. This is why destructive permissions are declared as their own leaf: the fresh check pays for one surface, not the whole page.
 - **Just-in-time elevations**, where the expiry boundary matters at the second rather than the minute.
-- Any endpoint where a revocation has to be visible immediately rather than within the TTL.
+- Any endpoint where a revocation has to be visible immediately, not within the TTL.
 
 `snapshot(principal, { fresh: true })` applies the same posture to every check on a snapshot, and `snap.resolve()` inherits the freshness the snapshot was taken with.
 
@@ -134,9 +134,9 @@ A [per-request snapshot](/api/snapshot) reads the same caches `can` does, so it 
 ## What is never cached
 
 - **The decision.** Always re-evaluated, against whatever closure data is in hand.
-- **Grant expiry.** Evaluated against the clock at check time, so a grant that expires mid-window stops matching at its expiry rather than at the end of the window.
+- **Grant expiry.** Evaluated against the clock at check time, so a grant that expires mid-window stops matching at its expiry, not at the end of the window.
 - **Anything outside your infrastructure.** There is no Alfiz-operated cache. Every layer described here is a map in your process, or a cache service you point at and operate.
 
 <Warning>
-A principal's **active** flag is *not* in that list. It arrives with the subject closure, so `setUserActive(userId, false, …)` is bounded by exactly the same window as a revocation: immediate in the process that wrote it, `subjectCacheTtlMs` elsewhere unless you have the event log on. Where deactivation has to bite at once — an offboarding kill switch — pair it with `can.fresh`.
+A principal's **active** flag is *not* in that list. It arrives with the subject closure, so `setUserActive(userId, false, …)` is bounded by exactly the same window as a revocation: immediate in the process that wrote it, `subjectCacheTtlMs` elsewhere unless you have the event log on. Where deactivation has to bite at once, as with an offboarding kill switch, pair it with `can.fresh`.
 </Warning>

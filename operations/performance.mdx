@@ -8,8 +8,8 @@ Numbers below are from the repository's reproducible benchmark (`npm run bench` 
 
 ## What is measured
 
-- **Cold closure + check** — the expensive path: a principal's first check in a process. One closure supply (groups walked, roles resolved, rows fetched) plus one scoped evaluation against a depth-20 hierarchy.
-- **Warm check** — the common path: cached closures, in-memory evaluation, no driver contact.
+- **Cold closure + check.** The expensive path, being a principal's first check in a process. One closure supply (groups walked, roles resolved, rows fetched) plus one scoped evaluation against a depth-20 hierarchy.
+- **Warm check.** The common path: cached closures, in-memory evaluation, no driver contact.
 
 Each scenario: users belong to the bottom of an N-deep nested group chain; grant rows spread across users, chain groups, and scopes; hierarchy depth 20 throughout.
 
@@ -25,14 +25,14 @@ Each scenario: users belong to the bottom of an N-deep nested group chain; grant
 
 **The memory driver scans; a database driver indexes.** Every closure fetch against the memory driver filters the full grant table per subject, so cold-miss numbers scale with *total* rows and are an **upper bound** for an indexed store, where the same fetch pays per *matching* row (`@@index([subject])` is in the shipped schema). The 10⁶ cold numbers are the scan cost, not the algebra's.
 
-**Warm checks transfer directly** — they never touch the driver. What they scale with is the number of rows *in the principal's own closure*: the 200-group chain at 10⁶ rows puts ~10⁵ rows in one closure, and that, not total table size, is what the 5.8 ms warm p50 measures. A realistic principal in that scenario (20 groups, dozens of rows) checks in the 10⁴-shape's double-digit microseconds. The design consequence: **deep group chains with heavy per-group grants are the shape to avoid**, and roles (one row, many patterns) are the tool that avoids it.
+**Warm checks transfer directly**, because they never touch the driver. What they scale with is the number of rows *in the principal's own closure*: the 200-group chain at 10⁶ rows puts ~10⁵ rows in one closure, and that is what the 5.8 ms warm p50 measures, rather than total table size. A realistic principal in that scenario (20 groups, dozens of rows) checks in the 10⁴-shape's double-digit microseconds. The design consequence: **deep group chains with heavy per-group grants are the shape to avoid**, and roles (one row, many patterns) are the tool that avoids them.
 
 **Hierarchy depth is cheap.** Depth-20 object chains are one resolver walk on a miss and cached thereafter; depth contributes O(depth) string comparisons per check.
 
-**The epoch adds one single-row read per revalidation window** per process — constant cost, independent of every size above; see [Caching & staleness](/enforcement/caching).
+**The epoch adds one single-row read per revalidation window** per process, a constant cost independent of every size above. See [Caching & staleness](/enforcement/caching).
 
 ## Practical sizing
 
-For the deployment shapes Alfiz targets — organizations in the 10²–10⁵ user range, catalogs in the hundreds of keys, principals in tens of groups — cold misses are single-digit-to-low-tens of milliseconds against an indexed store, warm checks are tens of microseconds, and neither figure moves with total grant count. What to watch as you scale is closure *width* (groups per principal × rows per group), the one dimension with a superlinear story above.
+For the deployment shapes Alfiz targets (organizations in the 10²–10⁵ user range, catalogs in the hundreds of keys, principals in tens of groups) cold misses are single-digit-to-low-tens of milliseconds against an indexed store, warm checks are tens of microseconds, and neither figure moves with total grant count. What to watch as you scale is closure *width* (groups per principal × rows per group), the one dimension with a superlinear story above.
 
 Postgres-backed figures with the same scenarios are the natural next publication; until then the honest claim is the one this page makes: an upper bound from the scanning driver, and warm-path numbers that transfer.

@@ -1,37 +1,37 @@
 ---
 title: "Alfiz Cloud: Add Hosted Administration to Your Application"
 sidebarTitle: Linked
-description: "Link your standalone Application to Alfiz Cloud to unlock the Dashboard and admin seats — without federating or moving any authority."
+description: "Link your standalone Application to Alfiz Cloud to unlock the Dashboard and admin seats, without federating or moving any authority."
 ---
 
-Linking is triggered by an event, not by a size: the day someone who shouldn't have to open a pull request needs to grant access. That can happen at fifteen people with a first ops hire, or not until eighty, or never. Like standalone, linked is a place deployments stay — federation answers a different question, covered on the [next page](/growth/federated).
+An event triggers linking, not a size: the day someone who shouldn't have to open a pull request needs to grant access. That can happen at fifteen people with a first ops hire, or not until eighty, or never. Like standalone, linked is a place deployments stay. Federation answers a different question, covered on the [next page](/growth/federated).
 
-It adds the Dashboard — Alfiz Cloud's hosted admin UI — and an approvals inbox without touching anything about how your application runs. Your Application remains the org root, the sole writer, and the only thing on your request path. The only thing that changes is that Alfiz Cloud can now authenticate dashboard sessions and relay administrative operations back to your Application for enforcement.
+It adds an approvals inbox and the Dashboard, Alfiz Cloud's hosted admin UI, without touching anything about how your application runs. Your Application remains the org root, the sole writer, and the only thing on your request path. The only thing that changes is that Alfiz Cloud can now authenticate dashboard sessions and relay administrative operations back to your Application for enforcement.
 
 ## What linking means
 
 When you link, Alfiz Cloud records the association and begins brokering dashboard sessions. It does not receive a copy of your authorization data, become a writer, or sit between your application and any runtime check.
 
-The only data that flows to Alfiz Cloud is the **opt-in audit stream**: an append-only history of writes to your Application's organizational-domain data. That stream is never evaluated — it is retained for compliance and inspection, not for making access decisions. Your Application continues to own every decision.
+The only data that flows to Alfiz Cloud is the **opt-in audit stream**: an append-only history of writes to your Application's organizational-domain data. That stream is never evaluated. It is retained for compliance and inspection, and never for making access decisions. Your Application continues to own every decision.
 
 <Note>
-  A linked Application is still standalone in every meaningful sense. The Application is the org root and the sole writer. Alfiz Cloud records the link, authenticates dashboard sessions, and forwards administrative operations back to your Application for enforcement — it never writes your data directly.
+  A linked Application is still standalone in every meaningful sense. The Application is the org root and the sole writer. Alfiz Cloud records the link, authenticates dashboard sessions, and forwards administrative operations back to your Application for enforcement. It never writes your data directly.
 </Note>
 
 ## What you get
 
 <CardGroup cols={2}>
   <Card title="Dashboard" icon="layout-dashboard">
-    A styled, maintained admin dashboard that non-engineer administrators can use to manage roles, groups, grants, and access requests — speaking the same provider contract your own admin UI would, backed by your Application.
+    A styled, maintained admin dashboard that non-engineer administrators can use to manage roles, groups, grants, and access requests. It speaks the same provider contract your own admin UI would, backed by your Application.
   </Card>
   <Card title="Admin seats" icon="users">
     Authenticated dashboard sessions for non-engineer administrators. Seat billing starts when someone uses the dashboard, not when you link.
   </Card>
   <Card title="Hosted approvals inbox" icon="inbox">
-    A hosted queue where approvers work through pending access requests — rendered from your Application's own request data, with decisions written back through your Application's enforcement.
+    A hosted queue where approvers work through pending access requests, rendered from your Application's own request data, with decisions written back through your Application's enforcement.
   </Card>
   <Card title="Opt-in audit retention and export" icon="archive">
-    Choose to stream your Application's audit events to Alfiz Cloud for long-term retention and export — useful for compliance horizons longer than you want to manage locally.
+    Choose to stream your Application's audit events to Alfiz Cloud for long-term retention and export, which helps when your compliance horizon is longer than you want to manage locally.
   </Card>
 </CardGroup>
 
@@ -39,9 +39,9 @@ The only data that flows to Alfiz Cloud is the **opt-in audit stream**: an appen
 
 It is worth being explicit about what does not change when you link:
 
-- **No authority moves.** Your Application remains the org root. Every write to organizational-domain data — groups, roles, global grants, the reporting hierarchy — passes through your Application's enforcement. Alfiz Cloud forwards dashboard operations; it never originates writes directly.
+- **No authority moves.** Your Application remains the org root. Every write to organizational-domain data (groups, roles, global grants, the reporting hierarchy) passes through your Application's enforcement. Alfiz Cloud forwards dashboard operations; it never originates writes directly.
 - **No federated topology.** Linking is not federation. No catalog is published to a registry, no org-root read model syncs down, no upstream is acquired.
-- **No impact on the request path.** Runtime checks remain fully in-process. `can()`, `canAny()`, and `can.fresh()` still run against your catalog, your grant rows, and your ancestry resolver — exactly as they did before you linked.
+- **No impact on the request path.** Runtime checks remain fully in-process. `can()`, `canAny()`, and `can.fresh()` still run against your catalog, your grant rows, and your ancestry resolver, exactly as they did before you linked.
 - **Unlinking is clean.** Because no authority ever moved, unlinking deletes only the link registration at Alfiz Cloud. No snapshot, no handoff, no residual state. Your Application continues running exactly as it did before.
 
 ## Runtime checks are unaffected
@@ -49,14 +49,14 @@ It is worth being explicit about what does not change when you link:
 This is worth stating again plainly: nothing about your request path changes when you link.
 
 ```ts
-// Before linking — runs in-process:
+// Before linking, running in-process:
 await alfiz.can({ userId }, "docs.files.read", "docs.doc:123");
 
-// After linking — still runs in-process, identically:
+// After linking, still in-process and identical:
 await alfiz.can({ userId }, "docs.files.read", "docs.doc:123");
 ```
 
-Linking does not make Alfiz Cloud a dependency of your application. It cannot add latency to a check, cannot throttle one, and cannot fail in a way that stops one — and check volume is not a billing dimension in any topology. See [Metering and caps](/cloud/metering).
+Linking does not make Alfiz Cloud a dependency of your application. It cannot add latency to a check, cannot throttle one, and cannot fail in a way that stops one. Check volume is not a billing dimension in any topology. See [Metering and caps](/cloud/metering).
 
 ## Pricing
 
@@ -65,7 +65,7 @@ Linking does not make Alfiz Cloud a dependency of your application. It cannot ad
     **$0 / month.** A linked application itself is included at no cost. You pay only for the work Alfiz Cloud performs.
   </Card>
   <Card title="Admin seats" icon="user">
-    **$20 / seat / month** (or $24 month-to-month). Metered on authenticated dashboard sessions — an idle link accrues nothing.
+    **$20 / seat / month** (or $24 month-to-month). Metered on authenticated dashboard sessions, so an idle link accrues nothing.
   </Card>
 </CardGroup>
 
@@ -73,19 +73,19 @@ Opt-in hosted audit retention is billed separately at $0.60 per 10,000 events in
 
 ## How to link
 
-Linking is a registration step — you associate your Application with an Alfiz Cloud organization and configure the connection. The `ApplicationOptions` shape does not change; `orgRoot` stays `true` (or its default).
+Linking is a registration step: you associate your Application with an Alfiz Cloud organization and configure the connection. The `ApplicationOptions` shape does not change; `orgRoot` stays `true` (or its default).
 
 <Steps>
   <Step title="Create an Alfiz Cloud account">
-    Register your organization at [alfiz.dev](https://alfiz.dev). No payment method is required to link — billing begins when admin seats are used.
+    Register your organization at [alfiz.dev](https://alfiz.dev). No payment method is required to link, and billing begins when admin seats are used.
   </Step>
 
   <Step title="Register your Application">
-    From the Dashboard, create a linked application entry and copy your connection credentials. These connect your Application to Alfiz Cloud — they are not used for runtime checks.
+    From the Dashboard, create a linked application entry and copy your connection credentials. These connect your Application to Alfiz Cloud, and are not used for runtime checks.
   </Step>
 
   <Step title="Configure the Alfiz Cloud connection in your Application">
-    The connection is the **Provider API** — the provider contract your Application already implements, served over HTTPS by a handler that ships in `@alfiz/application`. Mount it as a catch-all POST route, and Alfiz Cloud forwards administrative operations through it to your Application for enforcement. Your `createApplication` options do not change.
+    The connection is the **Provider API**: the provider contract your Application already implements, served over HTTPS by a handler that ships in `@alfiz/application`. Mount it as a catch-all POST route, and Alfiz Cloud forwards administrative operations through it to your Application for enforcement. Your `createApplication` options do not change.
 
     ```ts src/app/api/alfiz/[...op]/route.ts
     import { createProviderHandler } from "@alfiz/application";
@@ -104,7 +104,7 @@ Linking is a registration step — you associate your Application with an Alfiz 
     [promotion](/cloud/promotion), and a linked deployment does not need them.
     Add `storage` when you federate, not before.
 
-    The [Provider API setup guide](/cloud/provider-api) covers the full flow — registration, the connection URL, the secret, and the connection health probe.
+    The [Provider API setup guide](/cloud/provider-api) covers the full flow, including registration, the connection URL, the secret, and the connection health probe.
 
     <Tip>
       Your `alfiz` client instance (`createAlfizClient`) does not change at all. The Alfiz Cloud connection is an Application-layer concern; the Client is unaware of it.
@@ -118,14 +118,14 @@ Linking is a registration step — you associate your Application with an Alfiz 
 
 ## Replacing the hosted dashboard
 
-The hosted dashboard is convenience, not capability. It speaks the same provider contract your own code does, and every write it makes lands in the same `Application` methods — so there is no workflow it can perform that your own admin UI cannot.
+The hosted dashboard buys convenience. It buys no capability. It speaks the same provider contract your own code does, and every write it makes lands in the same `Application` methods, so there is no workflow it can perform that your own admin UI cannot.
 
-If you outgrow it or need a custom look, build your own admin surface against the `Application` you already have, using the headless permission tree in `@alfiz/core` for the role editor and grant picker logic. Unlinking your Alfiz Cloud registration removes the relay and the hosted access — nothing else changes.
+If you outgrow it or need a custom look, build your own admin surface against the `Application` you already have, using the headless permission tree in `@alfiz/core` for the role editor and grant picker logic. Unlinking your Alfiz Cloud registration removes the relay and the hosted access, and nothing else changes.
 
 ## Next: federation
 
-Linking covers the single-application case. When a second application arrives — or when you need provisioned third-party integrations (Zoom, Slack, and similar) — the next step is federation.
+Linking covers the single-application case. When a second application arrives, or when you need provisioned third-party integrations such as Zoom or Slack, the next step is federation.
 
 <Card title="Federating applications" icon="share-nodes" href="/growth/federated">
-  Federation moves the org root to Alfiz Cloud, unlocking cross-application role composition, a shared catalog registry, and provision-and-reconcile integrations. Promotion from the linked state is the typical path — the connection to Alfiz Cloud is already established.
+  Federation moves the org root to Alfiz Cloud, unlocking cross-application role composition, a shared catalog registry, and provision-and-reconcile integrations. Promotion from the linked state is the typical path, because the connection to Alfiz Cloud is already established.
 </Card>
